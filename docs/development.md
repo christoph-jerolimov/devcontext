@@ -48,9 +48,21 @@ They are Sätteri plugins rather than rehype ones so the site does not pull the
 whole `unified` pipeline in as a dependency; Astro's default processor already
 takes hast plugins.
 
-`site/scripts/check-links.mjs` walks the built output and fails on an internal
-link that does not resolve. CI runs it after the build, which is what catches a
-renamed page.
+Code blocks are highlighted in two themes at once. Shiki writes every token
+twice, as `--shiki-light` and `--shiki-dark`, and `docs.css` turns those
+variables into a colour per scheme — dark first, like the rest of the palette.
+`defaultColor: false` keeps either theme from being baked into an inline
+`color`, because a baked in colour wins over both variables and leaves one
+scheme stuck on the other's palette.
+
+Two scripts check the built output, and CI runs both after the build:
+
+- `check-links.mjs` fails on an internal link that does not resolve, which is
+  what catches a renamed page.
+- `check-code-themes.mjs` fails if a token carries a baked in colour, or if
+  nothing in the page's CSS reads one of the two variables. That combination
+  builds cleanly and looks styled while rendering one scheme in the other's
+  colours, so nothing else would notice.
 
 `astro check` is deliberately not used: it needs `@astrojs/check`, which calls
 a TypeScript compiler API that TypeScript 7 no longer exposes. The site's real

@@ -10,7 +10,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "tsc -p tsconfig.check.json",
-    "check:links": "node scripts/check-links.mjs"
+    "check:links": "node scripts/check-links.mjs",
+    "check:themes": "node scripts/check-code-themes.mjs"
   },
   "dependencies": {
     "astro": "^7.2.0"

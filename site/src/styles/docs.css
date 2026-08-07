@@ -140,6 +140,29 @@
   white-space: pre;
 }
 
+/*
+ * Syntax colours, dark first like the rest of the palette.
+ *
+ * Shiki writes every token twice, as --shiki-light and --shiki-dark; these two
+ * rules are what turn those variables into an actual colour. Without them a
+ * dual theme block renders in whichever palette got baked in, which is how
+ * dark mode ended up showing github-light's navy strings on near-black.
+ *
+ * The span selector is not redundant: each token carries its own variables, so
+ * colouring only the `pre` would leave every keyword inheriting.
+ */
+.prose .astro-code,
+.prose .astro-code span {
+  color: var(--shiki-dark);
+}
+
+@media (prefers-color-scheme: light) {
+  .prose .astro-code,
+  .prose .astro-code span {
+    color: var(--shiki-light);
+  }
+}
+
 .prose blockquote {
   margin: 0 0 16px;
   padding: 2px 0 2px 16px;

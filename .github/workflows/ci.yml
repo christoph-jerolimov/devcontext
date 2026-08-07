@@ -78,6 +78,9 @@ jobs:
       - name: Check the rendered links
         run: npm run check:links --workspace @devcontext/site
 
+      - name: Check both syntax themes are wired up
+        run: npm run check:themes --workspace @devcontext/site
+
   # Syncs this repository from the real GitHub API. Kept separate so a GitHub
   # outage or a rate limit cannot make the offline checks look broken.
   e2e:
