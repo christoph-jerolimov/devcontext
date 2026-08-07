@@ -72,7 +72,11 @@ Branch names are matched in the shapes people actually use:
 - `devcontext jira workitem PLAT-45` shows a **GitHub** section listing the
   pull requests and issues that reference it.
 - The yaml / markdown / json exports carry the same fields.
-- The web API answers `GET /api/links/PLAT-42`.
+- The **web viewer** shows a **Links** section on every issue, pull request and
+  work item, and clicking a row crosses to the other platform. See
+  [the web viewer](web.md#cross-links).
+- The web API answers `GET /api/links/PLAT-42`, and
+  `GET /api/links/acme/platform%2342` from the GitHub side.
 - The MCP server exposes `get_links`, so an assistant can ask "which pull
   requests implemented this ticket".
 

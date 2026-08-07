@@ -32,26 +32,26 @@ Two surfaces read the same SQLite database through the same query layer, so they
 can never disagree: the CLI, and the React viewer that `devcontext serve`
 starts. Some features exist in one and not the other, on purpose.
 
-| Feature               | CLI                                                                | Web viewer                                                              |
-| --------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| **Sync**              | `sync`, `sync --full`, `sync --only PLAT-42`                       | Nothing to run — every view reads what a sync wrote                     |
-| **Setup**             | `init` detects the repository of the current directory             | —                                                                       |
-| **Freshness**         | `status`: runs, cursors, row counts                                | **Overview** shows the same runs and cursors                            |
-| **GitHub issues**     | `gh issues`, `gh issues 12` for body, comments and timeline        | **GitHub issues**, click a row for the same detail                      |
-| **Pull requests**     | `gh prs`, `gh prs 42` for reviews, commits and changed files       | **Pull requests**, click for reviews with their inline comments         |
-| **Actions**           | `gh workflows`, `runs`, `jobs`, `steps`, `logs`                    | **Workflow runs**, click for every job and step (logs via the API only) |
-| **Jira work items**   | `jira workitems`, `stories`, `epics`, `bugs`, …, `jira workitem X` | **Jira work items**, click for description, comments and full history   |
-| **Sprints**           | `jira sprints`, `jira sprint 7`                                    | **Sprints**, click for the work items of one                            |
-| **Jira hierarchy**    | `jira tree PLAT-42` — parents and children as a tree               | The tree of the open work item, with a roll-up; every key walks         |
-| **Search**            | `search "rate limit"` — ranked, comments included                  | <kbd>⌘K</kbd> palette on the same index, plus per-view filters          |
-| **Cross links**       | `links PLAT-42` — what references what                             | Present in the JSON documents; no view renders them yet                 |
-| **Insights**          | `insights cycle-time`, `review-latency`, `wip`, `stale`, `flaky`   | **Insights**, with adjustable windows                                   |
-| **Digest**            | `digest --since 1w -o markdown` for a standup                      | **Digest**, last day / week / month                                     |
-| **Audit**             | `audit`, `audit secrets` — what is stored, and what leaked into it | Not in the viewer: it is about the machine, not the data                |
-| **yaml / md mirrors** | Written by `sync`, rewritten by `export`                           | —                                                                       |
-| **Markdown**          | `-o markdown` on every command                                     | Bodies, comments and reviews rendered, not shown as source              |
-| **Sharing**           | `--list` and `-o json` to pipe into other tools                    | Filters _and_ the open item live in the URL                             |
-| **AI access**         | `mcp` serves the same queries over stdio                           | —                                                                       |
+| Feature               | CLI                                                                | Web viewer                                                                |
+| --------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| **Sync**              | `sync`, `sync --full`, `sync --only PLAT-42`                       | Nothing to run — every view reads what a sync wrote                       |
+| **Setup**             | `init` detects the repository of the current directory             | —                                                                         |
+| **Freshness**         | `status`: runs, cursors, row counts                                | **Overview** shows the same runs and cursors                              |
+| **GitHub issues**     | `gh issues`, `gh issues 12` for body, comments and timeline        | **GitHub issues**, click a row for the same detail                        |
+| **Pull requests**     | `gh prs`, `gh prs 42` for reviews, commits and changed files       | **Pull requests**, click for reviews with their inline comments           |
+| **Actions**           | `gh workflows`, `runs`, `jobs`, `steps`, `logs`                    | **Workflow runs**, click for every job and step (logs via the API only)   |
+| **Jira work items**   | `jira workitems`, `stories`, `epics`, `bugs`, …, `jira workitem X` | **Jira work items**, click for description, comments and full history     |
+| **Sprints**           | `jira sprints`, `jira sprint 7`                                    | **Sprints**, click for the work items of one                              |
+| **Jira hierarchy**    | `jira tree PLAT-42` — parents and children as a tree               | The tree of the open work item, with a roll-up; every key walks           |
+| **Search**            | `search "rate limit"` — ranked, comments included                  | <kbd>⌘K</kbd> palette on the same index, plus per-view filters            |
+| **Cross links**       | `links PLAT-42` — what references what                             | **Links** on every issue, pull request and work item; click to cross over |
+| **Insights**          | `insights cycle-time`, `review-latency`, `wip`, `stale`, `flaky`   | **Insights**, with adjustable windows                                     |
+| **Digest**            | `digest --since 1w -o markdown` for a standup                      | **Digest**, last day / week / month                                       |
+| **Audit**             | `audit`, `audit secrets` — what is stored, and what leaked into it | Not in the viewer: it is about the machine, not the data                  |
+| **yaml / md mirrors** | Written by `sync`, rewritten by `export`                           | —                                                                         |
+| **Markdown**          | `-o markdown` on every command                                     | Bodies, comments and reviews rendered, not shown as source                |
+| **Sharing**           | `--list` and `-o json` to pipe into other tools                    | Filters _and_ the open item live in the URL                               |
+| **AI access**         | `mcp` serves the same queries over stdio                           | —                                                                         |
 
 The CLI-only rows are the ones that **feed** the viewer rather than compete with
 it: `sync` fills the database, `init` writes the configuration that points at

@@ -121,10 +121,16 @@ async function handleRequest(
 
 function handleApi(url: URL, ctx: RequestContext): unknown {
   const { db } = ctx;
+  // Split first, then decode: a segment may legitimately contain an encoded
+  // slash, and decoding earlier would split it into two. This matters for
+  // /api/links/:ref, where a GitHub reference arrives as acme/platform%2342 —
+  // left encoded, the `#` never reappears and the whole thing gets uppercased
+  // as if it were a Jira key.
   const segments = url.pathname
     .replace(/^\/api\/?/, '')
     .split('/')
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(decodeSegment);
   const query = url.searchParams;
 
   const limit = numberParam(query, 'limit') ?? 100;
@@ -399,6 +405,19 @@ function sendJson(response: ServerResponse, status: number, payload: unknown): v
     'content-length': Buffer.byteLength(body),
   });
   response.end(body);
+}
+
+/**
+ * Percent-decodes one path segment, leaving it as it came if it cannot be
+ * decoded. A malformed escape like `%zz` is somebody's typo, and it should
+ * reach a 404 rather than a 500.
+ */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
 }
 
 function numberParam(query: URLSearchParams, name: string): number | undefined {

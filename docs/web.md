@@ -32,6 +32,23 @@ The command used to be called `web`, which still works as an alias.
 
 The viewer follows the light or dark preference of your system.
 
+## Cross links
+
+Every issue, pull request and work item shows what it is connected to on the
+other platform — the same graph `devcontext links` reads, computed during sync
+by scanning branch names, titles, bodies, commit messages and comments.
+
+Clicking a row crosses over: from a ticket to the pull request that implemented
+it, and back again. GitHub items open with `state=all`, because the one you are
+looking for has usually been closed or merged.
+
+Each row states **where** the reference was found, because that is what
+separates a deliberate link from a passing mention. A key in a branch name or a
+title was put there on purpose and is shown in full strength; one found in a
+body or a comment is stated but dimmed. High confidence rows sort first.
+
+An item that references nothing shows no section at all.
+
 ## Hierarchy
 
 Opening a work item shows where it sits: the chain of parents above it, and
@@ -112,34 +129,34 @@ and `mailto` links are made clickable. A body containing markup or a
 
 The same endpoints power the viewer and are useful on their own:
 
-| Endpoint                                                            | Description                                        |
-| ------------------------------------------------------------------- | -------------------------------------------------- |
-| `GET /api/status`                                                   | Configuration, counts, recent runs, sync state     |
-| `GET /api/github/repos`                                             | Synced repositories                                |
-| `GET /api/github/issues?repo=&state=&label=&author=&search=&limit=` | Issue list                                         |
-| `GET /api/github/issues/:owner/:repo/:number`                       | One issue with comments and events                 |
-| `GET /api/github/pulls?...`                                         | Pull request list                                  |
-| `GET /api/github/pulls/:owner/:repo/:number`                        | One pull request with reviews, commits and files   |
-| `GET /api/github/workflows?repo=`                                   | Workflows                                          |
-| `GET /api/github/runs?repo=&conclusion=&branch=&workflow=`          | Workflow runs                                      |
-| `GET /api/github/runs/:id`                                          | One run with jobs and steps                        |
-| `GET /api/github/jobs?run=`                                         | Jobs                                               |
-| `GET /api/github/steps?job=&run=`                                   | Steps                                              |
-| `GET /api/github/logs/:jobId`                                       | Stored job log                                     |
-| `GET /api/jira/projects`                                            | Jira projects                                      |
-| `GET /api/jira/fields`                                              | Fields and their mapped names                      |
-| `GET /api/jira/workitems?project=&type=&status=&category=&q=`       | Work items (`q` searches comments too)             |
-| `GET /api/jira/workitems/:key`                                      | One work item with comments and history            |
-| `GET /api/jira/tree/:key?depth=&ancestors=&links=`                  | The hierarchy around one work item, with a roll-up |
-| `GET /api/jira/sprints?state=`                                      | Sprints                                            |
-| `GET /api/jira/sprints/:id`                                         | One sprint with its work items                     |
-| `GET /api/insights`                                                 | Every insight section at once                      |
-| `GET /api/insights/{cycle-time,review-latency,wip,stale,flaky}`     | One section                                        |
-| `GET /api/insights/sprint/:id`                                      | One sprint report                                  |
-| `GET /api/digest?since=&until=&repo=&project=&person=&staleAfter=`  | Activity digest for a window                       |
-| `GET /api/search?q=&kind=&repo=&project=&exact=&limit=`             | Ranked full text search across both platforms      |
-| `GET /api/links?limit=&offset=`                                     | Cross references between GitHub and Jira           |
-| `GET /api/links/:ref`                                               | What references one item, and what it references   |
+| Endpoint                                                            | Description                                                                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/status`                                                   | Configuration, counts, recent runs, sync state                                                                           |
+| `GET /api/github/repos`                                             | Synced repositories                                                                                                      |
+| `GET /api/github/issues?repo=&state=&label=&author=&search=&limit=` | Issue list                                                                                                               |
+| `GET /api/github/issues/:owner/:repo/:number`                       | One issue with comments and events                                                                                       |
+| `GET /api/github/pulls?...`                                         | Pull request list                                                                                                        |
+| `GET /api/github/pulls/:owner/:repo/:number`                        | One pull request with reviews, commits and files                                                                         |
+| `GET /api/github/workflows?repo=`                                   | Workflows                                                                                                                |
+| `GET /api/github/runs?repo=&conclusion=&branch=&workflow=`          | Workflow runs                                                                                                            |
+| `GET /api/github/runs/:id`                                          | One run with jobs and steps                                                                                              |
+| `GET /api/github/jobs?run=`                                         | Jobs                                                                                                                     |
+| `GET /api/github/steps?job=&run=`                                   | Steps                                                                                                                    |
+| `GET /api/github/logs/:jobId`                                       | Stored job log                                                                                                           |
+| `GET /api/jira/projects`                                            | Jira projects                                                                                                            |
+| `GET /api/jira/fields`                                              | Fields and their mapped names                                                                                            |
+| `GET /api/jira/workitems?project=&type=&status=&category=&q=`       | Work items (`q` searches comments too)                                                                                   |
+| `GET /api/jira/workitems/:key`                                      | One work item with comments and history                                                                                  |
+| `GET /api/jira/tree/:key?depth=&ancestors=&links=`                  | The hierarchy around one work item, with a roll-up                                                                       |
+| `GET /api/jira/sprints?state=`                                      | Sprints                                                                                                                  |
+| `GET /api/jira/sprints/:id`                                         | One sprint with its work items                                                                                           |
+| `GET /api/insights`                                                 | Every insight section at once                                                                                            |
+| `GET /api/insights/{cycle-time,review-latency,wip,stale,flaky}`     | One section                                                                                                              |
+| `GET /api/insights/sprint/:id`                                      | One sprint report                                                                                                        |
+| `GET /api/digest?since=&until=&repo=&project=&person=&staleAfter=`  | Activity digest for a window                                                                                             |
+| `GET /api/search?q=&kind=&repo=&project=&exact=&limit=`             | Ranked full text search across both platforms                                                                            |
+| `GET /api/links?limit=&offset=`                                     | Cross references between GitHub and Jira                                                                                 |
+| `GET /api/links/:ref`                                               | What references one item, and what it references. A GitHub reference is percent encoded: `/api/links/acme/platform%2342` |
 
 ```bash
 curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '.[].key'

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Body, StateMessage } from './common.tsx';
+import { CrossLinks, referenceFor } from './CrossLinks.tsx';
 import type { IssueDocument } from '../api.ts';
 import { formatRelative } from '../api.ts';
 
@@ -76,6 +77,7 @@ export function DetailPanel({
   const reviews = (document?.reviews as Review[] | undefined) ?? [];
   const jobs = (document?.jobs as Array<Record<string, unknown>> | undefined) ?? [];
   const workitems = (document?.workitems as Array<Record<string, unknown>> | undefined) ?? [];
+  const crossLinkRef = document ? referenceFor(document) : null;
 
   return (
     <aside className="detail">
@@ -111,6 +113,14 @@ export function DetailPanel({
           ) : null}
 
           <Body text={(document.body ?? document.description) as string | null} />
+
+          {/*
+           * Cross links are rendered here rather than by each view, because
+           * they are the one section that means the same thing on both
+           * platforms: an issue, a pull request and a work item all sit in the
+           * same graph.
+           */}
+          {crossLinkRef ? <CrossLinks reference={crossLinkRef} /> : null}
 
           {extra}
 

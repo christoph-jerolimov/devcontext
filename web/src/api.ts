@@ -110,6 +110,21 @@ export interface Sprint {
   workitem_count?: number;
 }
 
+/** The other end of a cross reference, as `/api/links/<ref>` returns it. */
+export interface CrossLink {
+  ref: string;
+  source: 'github' | 'jira';
+  kind: string;
+  /** Where the reference was found: branch, title, body, commit or comment. */
+  via: string;
+  confidence: 'high' | 'medium';
+}
+
+export interface LinksResponse {
+  ref: string;
+  links: CrossLink[];
+}
+
 /** One work item in the hierarchy that `/api/jira/tree/<key>` returns. */
 export interface TreeNode {
   key: string;
@@ -327,6 +342,8 @@ export const api = {
     request<DigestResponse>('/api/digest', params),
   search: (params: Record<string, string | undefined>) =>
     request<SearchHit[]>('/api/search', params),
+  links: (reference: string) =>
+    request<LinksResponse>(`/api/links/${reference.split('/').map(encodeURIComponent).join('/')}`),
 };
 
 export function parseList(value: string | null): string[] {
