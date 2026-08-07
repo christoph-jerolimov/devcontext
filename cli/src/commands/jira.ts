@@ -1,14 +1,17 @@
 import { Command } from 'commander';
 
 import * as jira from '../db/queries/jira.js';
+import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildSprintDocument, buildWorkitemDocument } from '../documents/jira.js';
 import { renderDocument } from '../output/document.js';
+import { renderTree } from '../output/tree.js';
 import { printOutput, renderTable, truncate } from '../output/format.js';
 import type { Column } from '../output/format.js';
 import { CliError } from '../util/errors.js';
 import { formatRelative } from '../util/time.js';
 import {
   addListOptions,
+  addOutputOptions,
   addTimeFilterOptions,
   collect,
   openReadContext,
@@ -26,6 +29,7 @@ export function createJiraCommand(): Command {
   command.addCommand(workitemsCommand('features', ['feature'], ['Feature']));
   command.addCommand(workitemsCommand('bugs', ['bug'], ['Bug', 'Defect']));
   command.addCommand(workitemsCommand('tasks', ['task'], ['Task', 'Sub-task', 'Subtask']));
+  command.addCommand(treeCommand());
   command.addCommand(searchCommand());
   command.addCommand(sprintsCommand());
   command.addCommand(projectsCommand());
@@ -109,6 +113,38 @@ function workitemsCommand(
             emptyMessage: 'No work items match these filters.',
           }),
         );
+      } finally {
+        ctx.close();
+      }
+    },
+  );
+}
+
+/** `jira tree PLAT-1`: the parents above a work item and everything below it. */
+function treeCommand(): Command {
+  const command = new Command('tree')
+    .description('show the parents and children of a work item as a tree')
+    .argument('<key>', 'work item key, e.g. PLAT-42')
+    .option('--depth <levels>', 'how many levels below the item to show', '5')
+    .option('--no-ancestors', 'do not walk up to the parents')
+    .option('--links', 'also show the GitHub pull requests and issues that reference each item');
+
+  return addOutputOptions(command).action(
+    (key: string, options: Record<string, unknown>, self: Command) => {
+      const ctx = openReadContext(self);
+      try {
+        const depth = Number(options['depth']);
+        const tree = buildWorkitemTree(ctx.db, key, {
+          maxDepth: Number.isFinite(depth) && depth > 0 ? Math.floor(depth) : 5,
+          ancestors: options['ancestors'] !== false,
+          withLinks: options['links'] === true,
+        });
+
+        if (!tree) {
+          throw new CliError(`No work item "${key.toUpperCase()}" in the database.`);
+        }
+
+        printOutput(renderTree(tree, summariseTree(tree), { format: ctx.format, list: ctx.list }));
       } finally {
         ctx.close();
       }
