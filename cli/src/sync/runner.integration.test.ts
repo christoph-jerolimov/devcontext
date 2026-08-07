@@ -128,9 +128,73 @@ function json(body: unknown, headers: Record<string, string> = {}): Response {
   });
 }
 
+/**
+ * A pull request that only exists once this is set, so a test can simulate the
+ * repository changing between two syncs — which is what actually happens when
+ * CI runs on a merge.
+ */
+let mergedDuringTheRun = false;
+
+const LATE_PULL_AS_ISSUE = {
+  id: 201,
+  number: 43,
+  title: 'Merged while the sync was running',
+  body: 'Landed between the two passes',
+  state: 'closed',
+  user: { id: 1, login: 'alice', type: 'User' },
+  labels: [],
+  assignees: [],
+  comments: 0,
+  pull_request: { url: 'https://api.github.com/repos/acme/platform/pulls/43' },
+  created_at: '2024-03-02T00:00:00Z',
+  updated_at: '2024-03-03T00:00:00Z',
+  html_url: 'https://github.com/acme/platform/pull/43',
+};
+
 function route(rawUrl: string): Response {
   const url = new URL(rawUrl);
   const path = url.pathname;
+
+  if (mergedDuringTheRun) {
+    if (path === '/repos/acme/platform/issues/43') return json(LATE_PULL_AS_ISSUE);
+    if (path === '/repos/acme/platform/issues/43/comments') return json([]);
+    if (path === '/repos/acme/platform/issues/43/timeline') return json([]);
+    if (path === '/repos/acme/platform/pulls/43') {
+      return json({
+        ...LATE_PULL_AS_ISSUE,
+        merged: true,
+        merged_at: '2024-03-03T00:00:00Z',
+        merged_by: { login: 'bob' },
+        head: { ref: 'feature/late', sha: 'ccc333', repo: { full_name: 'acme/platform' } },
+        base: { ref: 'main', sha: 'bbb222' },
+        additions: 1,
+        deletions: 0,
+        changed_files: 1,
+        commits: 1,
+      });
+    }
+    if (path === '/repos/acme/platform/pulls/43/reviews') return json([]);
+    if (path === '/repos/acme/platform/pulls/43/comments') return json([]);
+    if (path === '/repos/acme/platform/pulls/43/commits') {
+      return json([
+        {
+          sha: 'dec0de1',
+          commit: {
+            message: 'Land it',
+            author: { name: 'Alice', email: 'alice@acme.test', date: '2024-03-03T00:00:00Z' },
+            committer: { name: 'Alice', date: '2024-03-03T00:00:00Z' },
+          },
+          author: { login: 'alice' },
+          parents: [{ sha: 'beef' }],
+        },
+      ]);
+    }
+    if (path === '/repos/acme/platform/pulls/43/files') {
+      return json([
+        { filename: 'README.md', status: 'modified', additions: 1, deletions: 0, changes: 1 },
+      ]);
+    }
+  }
 
   // ---- GitHub -------------------------------------------------------------
   if (path === '/repos/acme/platform') {
@@ -152,7 +216,9 @@ function route(rawUrl: string): Response {
     return json([{ id: 3, number: 1, title: 'v1.0', state: 'open' }]);
   }
   if (path === '/repos/acme/platform/issues') {
-    return json([ISSUE, PULL_AS_ISSUE]);
+    return json(
+      mergedDuringTheRun ? [ISSUE, PULL_AS_ISSUE, LATE_PULL_AS_ISSUE] : [ISSUE, PULL_AS_ISSUE],
+    );
   }
   if (path === '/repos/acme/platform/issues/12') return json(ISSUE);
   if (path === '/repos/acme/platform/issues/42') return json(PULL_AS_ISSUE);
@@ -417,6 +483,7 @@ beforeEach(() => {
   workspace = mkdtempSync(join(tmpdir(), 'devcontext-test-'));
   config = parseConfig(CONFIG_YAML, { configPath: join(workspace, 'devcontext.yaml') });
   requestedUrls.length = 0;
+  mergedDuringTheRun = false;
 
   vi.stubGlobal('fetch', async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -436,6 +503,38 @@ function readCursors(): Record<string, string | null> {
     return Object.fromEntries(
       new SyncJournal(db).listState().map((row) => [row.scope, row.cursor]),
     );
+  } finally {
+    db.close();
+  }
+}
+
+interface Snapshot {
+  issues: number[];
+  pullRequests: number[];
+  comments: number;
+  events: number;
+  duplicateCommits: number;
+}
+
+function snapshot(): Snapshot {
+  const db = Database.open(config.databasePath, { create: false, readOnly: true });
+  try {
+    return {
+      issues: db
+        .all<{ number: number }>('SELECT number FROM gh_issues ORDER BY number')
+        .map((row) => row.number),
+      pullRequests: db
+        .all<{ number: number }>('SELECT number FROM gh_pull_requests ORDER BY number')
+        .map((row) => row.number),
+      comments: db.count('gh_comments'),
+      events: db.count('gh_events'),
+      duplicateCommits:
+        db.get<{ total: number }>(
+          `SELECT COUNT(*) AS total FROM (
+             SELECT host, pr_id, sha FROM gh_commits GROUP BY host, pr_id, sha HAVING COUNT(*) > 1
+           )`,
+        )?.total ?? 0,
+    };
   } finally {
     db.close();
   }
@@ -579,6 +678,50 @@ describe('runSync', () => {
 
     const jqlRequest = requestedUrls.find((url) => url.includes('/search/jql'));
     expect(jqlRequest).toBeDefined();
+  });
+
+  it('keeps everything exactly once when a pull request lands between two runs', async () => {
+    /*
+     * The scenario the live end to end test kept failing on: CI runs on a
+     * merge, so the repository changes while the two passes are running. The
+     * counts legitimately grow — what must not happen is a row disappearing or
+     * being stored twice.
+     */
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    const before = snapshot();
+    expect(before.pullRequests).toEqual([42]);
+
+    mergedDuringTheRun = true;
+
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    const after = snapshot();
+
+    // The new pull request arrived...
+    expect(after.pullRequests).toEqual([42, 43]);
+    // ...nothing from the first pass was lost...
+    expect(after.issues).toEqual(expect.arrayContaining(before.issues));
+    expect(after.comments).toBeGreaterThanOrEqual(before.comments);
+    expect(after.events).toBeGreaterThanOrEqual(before.events);
+    // ...and nothing was stored twice.
+    expect(new Set(after.pullRequests).size).toBe(after.pullRequests.length);
+    expect(new Set(after.issues).size).toBe(after.issues.length);
+    expect(after.duplicateCommits).toBe(0);
   });
 
   it('leaves the database untouched on a dry run', async () => {

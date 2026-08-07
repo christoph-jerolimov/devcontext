@@ -107,6 +107,7 @@ describe.skipIf(!enabled)('github end to end sync', () => {
 
     const db = Database.open(config.databasePath, { create: false, readOnly: true });
     let counts: Record<string, number>;
+    let pullRequestNumbers: number[];
     try {
       // --- the repository itself ---------------------------------------
       const repositories = gh.listRepositories(db);
@@ -137,17 +138,28 @@ describe.skipIf(!enabled)('github end to end sync', () => {
       expect(Array.isArray(issueRows)).toBe(true);
 
       // --- everything that hangs off a pull request ----------------------
-      const newest = pullRequests.reduce((best, row) => (row.number > best.number ? row : best));
-      const timeline = gh.listEvents(db, repo, newest.number);
-      expect(timeline.length).toBeGreaterThan(0);
-      expect(timeline.every((event) => event.event.length > 0)).toBe(true);
+      // Deliberately not "the newest pull request": one opened seconds ago may
+      // genuinely have no timeline events yet, and this test runs on merges.
+      // What has to hold is that the sub-resources were fetched for the pull
+      // requests that have them, and that their shapes are right.
+      const withCommits = pullRequests.filter(
+        (row) => gh.listCommits(db, repo, row.number).length > 0,
+      );
+      expect(withCommits.length).toBeGreaterThan(0);
 
-      const commits = gh.listCommits(db, repo, newest.number);
-      expect(commits.length).toBeGreaterThan(0);
-      expect(commits.every((commit) => commit.sha.length === 40)).toBe(true);
+      for (const pullRequest of withCommits) {
+        const commits = gh.listCommits(db, repo, pullRequest.number);
+        expect(commits.every((commit) => commit.sha.length === 40)).toBe(true);
+      }
 
-      const files = gh.listChangedFiles(db, repo, newest.number);
-      expect(files.length).toBeGreaterThan(0);
+      const sample = withCommits[withCommits.length - 1] as gh.PullRequestRow;
+      expect(gh.listChangedFiles(db, repo, sample.number).length).toBeGreaterThan(0);
+
+      const timelines = pullRequests.map((row) => gh.listEvents(db, repo, row.number));
+      expect(timelines.some((events) => events.length > 0)).toBe(true);
+      for (const events of timelines) {
+        expect(events.every((event) => event.event.length > 0)).toBe(true);
+      }
 
       // --- bookkeeping ---------------------------------------------------
       const journal = new SyncJournal(db);
@@ -156,6 +168,7 @@ describe.skipIf(!enabled)('github end to end sync', () => {
       expect(journal.listRuns().every((entry) => entry.status === 'completed')).toBe(true);
 
       counts = tableCounts(db);
+      pullRequestNumbers = pullRequests.map((row) => row.number).toSorted((a, b) => a - b);
     } finally {
       db.close();
     }
@@ -173,16 +186,69 @@ describe.skipIf(!enabled)('github end to end sync', () => {
     expect(second.results[0]?.error ?? null).toBeNull();
     expect(second.results[0]?.status).toBe('completed');
     expect(second.results[0]?.mode).toBe('incremental');
+    // The whole point of a cursor: the second pass costs a fraction of the first.
     expect(second.apiCalls).toBeLessThan(first.apiCalls);
 
     const db2 = Database.open(config.databasePath, { create: false, readOnly: true });
     try {
-      expect(tableCounts(db2)).toEqual(counts);
+      /*
+       * The counts are deliberately *not* compared for equality.
+       *
+       * This runs against a live repository, and on every merge to main — so a
+       * pull request can land between the two syncs and legitimately change
+       * every number. Asserting a snapshot made the test fail on exactly the
+       * event it is meant to cover.
+       *
+       * What has to hold on a second pass is the invariant: nothing the first
+       * run stored may disappear, and nothing may be stored twice.
+       */
+      const after = tableCounts(db2);
+      const shrunk = Object.entries(counts)
+        .filter(([table, before]) => (after[table] ?? 0) < before)
+        .map(([table, before]) => `${table}: ${before} -> ${String(after[table])}`);
+      expect(shrunk).toEqual([]);
+
+      const numbersAfter = gh
+        .listPullRequests(db2, { state: 'all' })
+        .map((row) => row.number)
+        .toSorted((a, b) => a - b);
+
+      // Still every pull request from the first run...
+      expect(numbersAfter).toEqual(expect.arrayContaining(pullRequestNumbers));
+      // ...and each of them exactly once.
+      expect(new Set(numbersAfter).size).toBe(numbersAfter.length);
+      expect(duplicateKeys(db2)).toEqual([]);
     } finally {
       db2.close();
     }
   });
 });
+
+/**
+ * Rows sharing a primary key. Impossible if the upserts are right, which is
+ * precisely why it is worth asserting after a re-sync.
+ */
+function duplicateKeys(db: Database): string[] {
+  const tables: Array<[string, string]> = [
+    ['gh_issues', 'host, id'],
+    ['gh_pull_requests', 'host, id'],
+    ['gh_comments', 'host, id'],
+    ['gh_events', 'host, id'],
+    ['gh_commits', 'host, pr_id, sha'],
+    ['gh_pull_request_files', 'host, pr_id, filename'],
+  ];
+
+  return tables
+    .filter(([table, key]) => {
+      const row = db.get<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM (
+           SELECT ${key} FROM ${table} GROUP BY ${key} HAVING COUNT(*) > 1
+         )`,
+      );
+      return (row?.total ?? 0) > 0;
+    })
+    .map(([table]) => table);
+}
 
 function tableCounts(db: Database): Record<string, number> {
   return {
