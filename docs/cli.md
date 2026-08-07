@@ -220,6 +220,37 @@ devcontext jira search "rate limit"
 devcontext jira search "flaky" --open -o markdown
 ```
 
+### `jira tree <key>`
+
+The parents above a work item and everything below it, following both the
+`parent` link (subtasks, team managed epics) and the epic link custom field
+(classic epics), with a roll-up of story points and done counts.
+
+```
+$ devcontext jira tree PLAT-100
+PLAT-100 (Epic) Improve the sync  · In Progress
+├─ PLAT-101 (Story) Batch the API calls  ✓ Done  Alice  5sp
+│  └─ PLAT-103 (Sub-task) Add the tests  ✓ Done  2sp
+└─ PLAT-102 (Story) Document it  · To Do  Bob  3sp  (epic link)
+
+Items:        4
+Done:         2/4
+Story points: 7/10
+Types:        Epic 1, Story 2, Sub-task 1
+```
+
+Asking for a leaf shows the chain above it instead, so you always see where an
+item sits.
+
+| Option             | Description                                                              |
+| ------------------ | ------------------------------------------------------------------------ |
+| `--depth <levels>` | How many levels below the item (default 5)                               |
+| `--no-ancestors`   | Do not walk up to the parents                                            |
+| `--links`          | Also attach the GitHub pull requests and issues that reference each item |
+
+`-o markdown` renders a task list with checkboxes reflecting the status, which
+pastes straight into a ticket or a status update; `--list` prints the keys.
+
 ### `jira sprints [id]` (alias `sprint`)
 
 Without an argument: the sprint list with the number of work items. With an id:
