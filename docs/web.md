@@ -24,6 +24,7 @@ nothing the viewer does can change your data.
 | Pull requests   | Same, plus reviews with their inline comments and the changed files                                                                                  |
 | Workflow runs   | Filter by repository and conclusion; click a run for its jobs and every step                                                                         |
 | Jira work items | Filter by project, type, status category and full text (summary, description and comments); click for description, comments and the complete history |
+| Insights        | Cycle time, review latency, WIP, reviewers, flaky steps and stale work, with adjustable windows                                                      |
 | Sprints         | Filter by state; click for the work items of a sprint                                                                                                |
 
 The viewer follows the light or dark preference of your system.
@@ -52,6 +53,9 @@ The same endpoints power the viewer and are useful on their own:
 | `GET /api/jira/workitems/:key`                                      | One work item with comments and history          |
 | `GET /api/jira/sprints?state=`                                      | Sprints                                          |
 | `GET /api/jira/sprints/:id`                                         | One sprint with its work items                   |
+| `GET /api/insights`                                                 | Every insight section at once                    |
+| `GET /api/insights/{cycle-time,review-latency,wip,stale,flaky}`     | One section                                      |
+| `GET /api/insights/sprint/:id`                                      | One sprint report                                |
 
 ```bash
 curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '.[].key'

@@ -10,6 +10,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
+import * as insights from '../insights/index.js';
 import {
   buildIssueDocument,
   buildPullRequestDocument,
@@ -149,6 +150,45 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       runs: ctx.journal.listRuns({ limit: 20 }),
       state: ctx.journal.listState(),
     };
+  }
+
+  if (area === 'insights') {
+    const since = query.get('since') ?? new Date(Date.now() - 90 * 86_400_000).toISOString();
+    const staleThreshold =
+      query.get('staleAfter') ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const filter = {
+      since,
+      repos: listParam(query, 'repo'),
+      projects: listParam(query, 'project'),
+      limit,
+    };
+
+    switch (resource) {
+      case 'cycle-time':
+        return insights.cycleTime(db, filter);
+      case 'review-latency':
+        return insights.reviewLatency(db, filter);
+      case 'wip':
+        return insights.wip(db, filter);
+      case 'stale':
+        return insights.staleItems(db, staleThreshold, filter);
+      case 'flaky':
+        return insights.flakySteps(db, { since, repos: filter.repos, limit });
+      case 'sprint': {
+        const id = rest[0] ? Number(rest[0]) : numberParam(query, 'id');
+        return id === undefined || Number.isNaN(id) ? undefined : insights.sprintReport(db, id);
+      }
+      case undefined:
+        return {
+          cycleTime: insights.cycleTime(db, filter),
+          reviewLatency: insights.reviewLatency(db, filter),
+          wip: insights.wip(db, filter),
+          stale: insights.staleItems(db, staleThreshold, filter),
+          flaky: insights.flakySteps(db, { since, repos: filter.repos, limit }),
+        };
+      default:
+        return undefined;
+    }
   }
 
   if (area === 'links') {

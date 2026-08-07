@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { createExportCommand } from './commands/export.js';
 import { createGithubCommand } from './commands/github.js';
 import { createInitCommand } from './commands/init.js';
+import { createInsightsCommand } from './commands/insights.js';
 import { createJiraCommand } from './commands/jira.js';
 import { createLinksCommand } from './commands/links.js';
 import { createMcpCommand } from './commands/mcp.js';
@@ -32,6 +33,7 @@ export function createProgram(): Command {
   program.addCommand(createGithubCommand());
   program.addCommand(createJiraCommand());
   program.addCommand(createWebCommand());
+  program.addCommand(createInsightsCommand());
   program.addCommand(createLinksCommand());
   program.addCommand(createMcpCommand());
 
@@ -50,6 +52,7 @@ Examples:
   devcontext jira stories --sprint "Sprint 7" stories of a sprint
   devcontext jira search "rate limit" -o json search work items and their comments
   devcontext web                              open the React viewer on the local data
+  devcontext insights                         cycle time, review latency, WIP, stale, flaky steps
   devcontext links PLAT-42                    pull requests and issues that reference a ticket
   devcontext mcp --tools                      list the tools the MCP server exposes
 `,
