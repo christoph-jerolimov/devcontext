@@ -30,6 +30,21 @@ nothing the viewer does can change your data.
 
 The viewer follows the light or dark preference of your system.
 
+## Rendered text
+
+Descriptions, comments and reviews are rendered as markdown: headings, lists,
+task lists, tables, fenced code, quotes, links and images.
+
+Both platforms end up in the same format. GitHub returns GitHub flavoured
+markdown; Jira returns either Atlassian Document Format (Cloud, REST API v3) or
+wiki markup (Data Center and Server, v2), and the sync converts both to
+markdown before storing them. So the database, the markdown mirrors, the
+`-o markdown` output and this viewer all show the same text.
+
+The renderer builds React elements rather than HTML, and only `http`, `https`
+and `mailto` links are made clickable. A body containing markup or a
+`javascript:` link is therefore displayed as the text it is.
+
 ## JSON API
 
 The same endpoints power the viewer and are useful on their own:

@@ -74,8 +74,10 @@ describe('adfToMarkdown', () => {
     expect(adfToMarkdown(doc)).toBe('## Steps\n\n- first\n- second\n\n```bash\nnpm test\n```');
   });
 
-  it('passes wiki markup from API v2 through unchanged', () => {
-    expect(adfToMarkdown('h1. Title')).toBe('h1. Title');
+  it('converts wiki markup from API v2 to markdown as well', () => {
+    // Both Jira flavours reach the database as markdown; see wiki.test.ts.
+    expect(adfToMarkdown('h1. Title')).toBe('# Title');
+    expect(adfToMarkdown('')).toBeNull();
     expect(adfToMarkdown(null)).toBeNull();
   });
 });

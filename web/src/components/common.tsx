@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
+import { Markdown } from '../markdown/Markdown.tsx';
+
 interface AsyncResult<T> {
   data: T | null;
   error: string | null;
@@ -109,8 +111,13 @@ export function Labels({ values }: { values: string[] }): ReactNode {
   );
 }
 
-/** Renders the body of an issue / work item as preformatted, wrapped text. */
+/**
+ * Renders the body of an issue, pull request, review or work item.
+ *
+ * Both platforms end up as markdown: GitHub returns GitHub flavoured markdown,
+ * and the CLI converts Jira's Atlassian Document Format and wiki markup during
+ * sync, so one renderer serves both.
+ */
 export function Body({ text }: { text: string | null | undefined }): ReactNode {
-  if (!text) return null;
-  return <pre className="body">{text}</pre>;
+  return <Markdown text={text} />;
 }
