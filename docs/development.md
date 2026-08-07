@@ -80,6 +80,7 @@ the types promise but the oldest supported runtime does not have.
 | `documents/`        | Database rows → one complete "document" per issue / pull request / work item    |
 | `sources/github/`   | REST client, payload → row mapping, the repository syncer                       |
 | `sources/jira/`     | REST client, ADF and wiki markup → markdown, payload → row mapping, the syncer  |
+| `audit/`            | What is stored locally, and the credential scanner behind `audit secrets`       |
 | `search/`           | The FTS5 index, the query builder, and the scan used without FTS5               |
 | `sync/`             | Rate limiter, progress reporter, HTTP client, the sync runner                   |
 | `output/`           | Table and document rendering for `default`, `json`, `markdown`, `plain`         |

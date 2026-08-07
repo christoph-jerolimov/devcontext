@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 
+import { createAuditCommand } from './commands/audit.js';
 import { createDigestCommand } from './commands/digest.js';
 import { createExportCommand } from './commands/export.js';
 import { createGithubCommand } from './commands/github.js';
@@ -39,6 +40,7 @@ export function createProgram(): Command {
   program.addCommand(createInsightsCommand());
   program.addCommand(createDigestCommand());
   program.addCommand(createLinksCommand());
+  program.addCommand(createAuditCommand());
   program.addCommand(createMcpCommand());
 
   program.addHelpText(
@@ -60,6 +62,8 @@ Examples:
   devcontext insights                         cycle time, review latency, WIP, stale, flaky steps
   devcontext digest --since 1w -o markdown    a weekly summary to paste into a standup
   devcontext links PLAT-42                    pull requests and issues that reference a ticket
+  devcontext audit                            what is stored locally and what a sync fetches
+  devcontext audit secrets                    credentials pasted into tickets and CI logs
   devcontext mcp --tools                      list the tools the MCP server exposes
 `,
   );

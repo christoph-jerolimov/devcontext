@@ -139,6 +139,26 @@ run node with `--no-warnings=ExperimentalWarning`.
 
 `node:sqlite` needs Node.js 22.5 or newer. Check with `node --version`.
 
+## "What exactly is in this database?"
+
+Usually asked by somebody who has to approve devcontext being used on work
+data. `devcontext audit` answers it from the data itself — what is stored,
+whose names are in it, where the files are, whether git would track them, and
+what a sync fetches. `-o markdown` gives you a document to hand over.
+
+## A credential ended up in the database
+
+Someone pasted a token into a ticket or a CI log, and devcontext mirrored it
+like any other text. Find it with:
+
+```bash
+devcontext audit secrets
+```
+
+The report never prints the value, only where it is. **Rotate the credential**:
+it was already in GitHub or Jira before devcontext copied it, so the exposure
+is not local. Deleting the local database does not undo it.
+
 ## Starting over
 
 The database and the mirrors can always be rebuilt:
