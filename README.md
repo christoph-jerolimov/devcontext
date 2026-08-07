@@ -16,7 +16,7 @@ devcontext gh issues --stale 90d                 # what has been rotting for a q
 devcontext gh prs 42 -o markdown                 # a pull request with every review
 devcontext jira search "rate limit"              # work items, descriptions and comments
 devcontext jira stories --sprint "Sprint 7"      # the current sprint
-devcontext web                                   # browse it all in the browser
+devcontext serve                                   # browse it all in the browser
 ```
 
 ## Why
@@ -146,7 +146,7 @@ sqlite3 .devcontext/devcontext.db \
 ## Browse
 
 ```bash
-devcontext web
+devcontext serve
 ```
 
 A local React viewer with the same filters, detail views for issues, pull
@@ -188,7 +188,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 | Directory       | Contents                                                            |
 | --------------- | ------------------------------------------------------------------- |
 | [`cli/`](cli)   | The `devcontext` command: sync, database, read commands, web server |
-| [`web/`](web)   | The React viewer, served by `devcontext web`                        |
+| [`web/`](web)   | The React viewer, served by `devcontext serve`                      |
 | [`docs/`](docs) | End user documentation                                              |
 
 ## Documentation

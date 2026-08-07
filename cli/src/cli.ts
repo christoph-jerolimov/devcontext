@@ -10,9 +10,9 @@ import { createJiraCommand } from './commands/jira.js';
 import { createLinksCommand } from './commands/links.js';
 import { createMcpCommand } from './commands/mcp.js';
 import { createSearchCommand } from './commands/search.js';
+import { createServeCommand } from './commands/serve.js';
 import { createStatusCommand } from './commands/status.js';
 import { createSyncCommand } from './commands/sync.js';
-import { createWebCommand } from './commands/web.js';
 import { VERSION } from './version.js';
 
 export { VERSION };
@@ -36,7 +36,7 @@ export function createProgram(): Command {
   program.addCommand(createSearchCommand());
   program.addCommand(createGithubCommand());
   program.addCommand(createJiraCommand());
-  program.addCommand(createWebCommand());
+  program.addCommand(createServeCommand());
   program.addCommand(createInsightsCommand());
   program.addCommand(createDigestCommand());
   program.addCommand(createLinksCommand());
@@ -58,7 +58,7 @@ Examples:
   devcontext gh runs --conclusion failure     failed workflow runs
   devcontext jira stories --sprint "Sprint 7" stories of a sprint
   devcontext jira search "rate limit" -o json search work items and their comments
-  devcontext web                              open the React viewer on the local data
+  devcontext serve                            open the React viewer on the local data
   devcontext insights                         cycle time, review latency, WIP, stale, flaky steps
   devcontext digest --since 1w -o markdown    a weekly summary to paste into a standup
   devcontext links PLAT-42                    pull requests and issues that reference a ticket

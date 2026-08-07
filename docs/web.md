@@ -1,13 +1,15 @@
 # Web viewer
 
 ```bash
-devcontext web
-# devcontext web is running on http://127.0.0.1:4173
+devcontext serve
+# devcontext is serving the viewer on http://127.0.0.1:4173
 ```
 
 The CLI serves a React application together with a JSON API for the local
 database. It binds to `127.0.0.1` by default and opens the database read only —
 nothing the viewer does can change your data.
+
+The command used to be called `web`, which still works as an alias.
 
 | Option              | Default                 | Description             |
 | ------------------- | ----------------------- | ----------------------- |
@@ -125,11 +127,11 @@ curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '
 ## Developing the viewer
 
 ```bash
-devcontext web                 # terminal 1: API + data on :4173
+devcontext serve                 # terminal 1: API + data on :4173
 npm run dev:web                # terminal 2: Vite with hot reload on :5173
 ```
 
 Vite proxies `/api` to `http://127.0.0.1:4173`; set `DEVCONTEXT_API` to point it
 somewhere else. `npm run build:web` type checks and writes `web/dist`, which is
-what `devcontext web` serves in production. If the viewer has not been built,
-`devcontext web` still serves the API and says so.
+what `devcontext serve` hands out in production. If the viewer has not been
+built, the command still serves the API and says so.

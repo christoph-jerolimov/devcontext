@@ -158,7 +158,7 @@ done
 ## Browse the data
 
 ```bash
-devcontext web
+devcontext serve
 ```
 
 opens a local server (default <http://127.0.0.1:4173>) with a React viewer for
