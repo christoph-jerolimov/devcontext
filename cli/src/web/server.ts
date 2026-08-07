@@ -9,6 +9,7 @@ import { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
+import * as crossLinks from '../db/queries/links.js';
 import {
   buildIssueDocument,
   buildPullRequestDocument,
@@ -144,9 +145,16 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       },
       github: gh.githubStats(db),
       jira: jira.jiraStats(db),
+      links: crossLinks.linkStats(db),
       runs: ctx.journal.listRuns({ limit: 20 }),
       state: ctx.journal.listState(),
     };
+  }
+
+  if (area === 'links') {
+    const ref = resource ? [resource, ...rest].join('/') : (query.get('ref') ?? undefined);
+    if (ref) return { ref: crossLinks.normaliseRef(ref), links: crossLinks.linksFor(db, ref) };
+    return crossLinks.listLinks(db, { limit, offset });
   }
 
   if (area === 'github') {

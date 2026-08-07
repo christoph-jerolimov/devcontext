@@ -1,6 +1,7 @@
 import type { Database } from '../db/database.js';
 import { parseJsonColumn } from '../db/database.js';
 import * as jira from '../db/queries/jira.js';
+import { githubRefsFor } from '../db/queries/links.js';
 import type { Document } from '../output/document.js';
 import { formatTimestamp } from './github.js';
 
@@ -12,9 +13,11 @@ export function buildWorkitemDocument(db: Database, workitem: jira.WorkitemRow):
   const changelog = jira.listChangelog(db, workitem.key);
   const links = jira.listLinks(db, workitem.key);
   const customFields = parseJsonColumn<Record<string, unknown>>(workitem.custom_fields, {});
+  const github = githubRefsFor(db, workitem.key);
 
   const data = {
     kind: 'jira-workitem',
+    github,
     site: workitem.site,
     key: workitem.key,
     project: workitem.project_key,
@@ -81,12 +84,20 @@ export function buildWorkitemDocument(db: Database, workitem: jira.WorkitemRow):
       ['Updated', formatTimestamp(workitem.updated_at)],
       ['Resolved', formatTimestamp(workitem.resolved_at)],
       ['Due', workitem.due_date],
+      ['GitHub', github.map((entry) => entry.ref).join(', ')],
       ...Object.entries(customFields).map(
         ([name, value]) => [name, formatCustomValue(value)] as [string, string],
       ),
     ],
     body: workitem.description,
     sections: [
+      {
+        heading: `GitHub (${github.length})`,
+        table: {
+          columns: ['Reference', 'Kind', 'Found in'],
+          rows: github.map((entry) => [entry.ref, entry.kind, entry.via]),
+        },
+      },
       {
         heading: `Links (${links.length})`,
         table: {
