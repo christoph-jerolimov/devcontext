@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Astro's generated type definitions
+.astro/
+
 # Local devcontext workspace (database + generated yaml/markdown/json outputs)
 .devcontext/
 

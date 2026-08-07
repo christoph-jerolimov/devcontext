@@ -1,0 +1,75 @@
+---
+import Base from '../layouts/Base.astro';
+import { buildNav, labelFor, neighbours, routeFor } from '../nav.ts';
+import '../styles/docs.css';
+
+interface Props {
+  id: string;
+  title: string;
+  ids: string[];
+}
+
+const { id, title, ids } = Astro.props;
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const groups = buildNav(ids);
+const { previous, next } = neighbours(groups, id);
+const source = `https://github.com/christoph-jerolimov/devcontext/blob/main/docs/${id}.md`;
+---
+
+<Base title={`${title} — devcontext`}>
+  <div class="shell docs">
+    <aside class="docs-nav">
+      {
+        groups.map((group) => (
+          <>
+            <h2>{group.title}</h2>
+            <ul>
+              {group.ids.map((entry) => (
+                <li>
+                  <a
+                    href={`${base}/${routeFor(entry)}`}
+                    aria-current={entry === id ? 'page' : undefined}
+                  >
+                    {labelFor(entry)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        ))
+      }
+    </aside>
+
+    <article class="docs-main">
+      <div class="docs-meta">
+        <span>docs/{id}.md</span>
+        <span>·</span>
+        <a href={source}>Edit on GitHub</a>
+      </div>
+
+      <div class="prose">
+        <slot />
+      </div>
+
+      {
+        (previous || next) && (
+          <nav class="docs-pager">
+            {previous && (
+              <a href={`${base}/${routeFor(previous)}`}>
+                <span class="direction">Previous</span>
+                {labelFor(previous)}
+              </a>
+            )}
+            {next && (
+              <a class="next" href={`${base}/${routeFor(next)}`}>
+                <span class="direction">Next</span>
+                {labelFor(next)}
+              </a>
+            )}
+          </nav>
+        )
+      }
+    </article>
+  </div>
+</Base>

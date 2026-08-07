@@ -1,0 +1,163 @@
+---
+import Base from '../layouts/Base.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const repo = 'https://github.com/christoph-jerolimov/devcontext';
+
+const capabilities = [
+  {
+    command: 'sync',
+    title: 'Everything, once',
+    body: 'Issues, pull requests, every review and comment, the full timeline, Actions runs and job logs, Jira work items with their complete field history. The first run downloads it all; every later run continues from a stored cursor.',
+  },
+  {
+    command: 'search',
+    title: 'One query, both platforms',
+    body: 'An FTS5 index over issues, pull requests and work items together with their comments. A phrase buried in the fortieth comment still finds the ticket — in milliseconds, offline.',
+  },
+  {
+    command: 'insights',
+    title: 'Questions a tracker cannot answer',
+    body: 'Cycle time from the changelog rather than created-to-closed, review latency excluding self-reviews, work in progress, stale work, and which workflow steps are genuinely flaky rather than just broken.',
+  },
+  {
+    command: 'digest',
+    title: 'What happened this week',
+    body: 'Merged, finished, started, who did it, and what is still stuck — read from the history, so a ticket started this week and finished next appears in both.',
+  },
+  {
+    command: 'links',
+    title: 'The two sides, connected',
+    body: 'Neither platform records the other reliably, but people write the reference into a branch name, a title, a commit. devcontext holds both datasets, so it can find them.',
+  },
+  {
+    command: 'mcp',
+    title: 'Give it to an assistant',
+    body: 'The same queries over the Model Context Protocol. An AI reads the full history of a ticket or a CI failure from your machine — no API round trips, no rate limit, and it works offline.',
+  },
+];
+
+const surfaces = [
+  ['Sync', 'sync, sync --only PLAT-42', 'Nothing to run — every view reads what a sync wrote'],
+  ['Issues, PRs, Actions', 'gh issues, gh prs, gh runs', 'Filterable lists with the full detail on click'],
+  ['Jira', 'jira workitems, jira tree', 'Work items with description, comments and history'],
+  ['Search', 'search "rate limit"', '⌘K palette on the same ranked index'],
+  ['Insights & digest', 'insights, digest --since 1w', 'Both, with adjustable windows'],
+  ['Audit', 'audit secrets', 'CLI only — it is about the machine, not the data'],
+];
+---
+
+<Base title="devcontext — your project history, local and queryable">
+  <section class="hero">
+    <div class="shell hero-inner">
+      <span class="eyebrow"><span class="dot"></span> local · read only · offline</span>
+      <h1>Your project history, on your machine.</h1>
+      <p class="lede">
+        devcontext syncs GitHub and Jira into a local SQLite database — every issue, review,
+        comment, field change and CI log — then lets you query it with a CLI, a browser, SQL, or an
+        AI assistant. At the speed of a local read.
+      </p>
+      <div class="actions">
+        <a class="button button-primary" href={`${base}/docs/getting-started`}>Get started</a>
+        <a class="button button-ghost" href={`${base}/docs`}>Read the docs</a>
+        <a class="button button-ghost" href={repo}>GitHub</a>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span></span><span></span><span></span>
+          <span class="label">~/work/platform</span>
+        </div>
+        <pre><code><span class="prompt">$ </span><span class="cmd">devcontext sync</span>
+<span class="out">[##########------]  62% | 615/1442 calls | 388 items | ~2m 10s left</span>
+<span class="ok">✓</span> <span class="out">acme/platform · 214 issues, 187 pull requests, 1 204 comments</span>
+<span class="ok">✓</span> <span class="out">PLAT · 96 work items, 412 history entries</span>
+
+<span class="prompt">$ </span><span class="cmd">devcontext search</span> <span class="flag">"rate limit"</span>
+<span class="out">acme/platform#412  pull-request  merged  Respect the secondary rate limit</span>
+<span class="out">PLAT-42            workitem      Done    Sync stalls on large repositories</span>
+
+<span class="prompt">$ </span><span class="cmd">devcontext insights</span> <span class="flag">cycle-time</span>
+<span class="out">Median   2d 4h        P85   9d 1h        Completed   38</span>
+
+<span class="prompt">$ </span><span class="cmd">devcontext audit</span> <span class="flag">secrets</span>
+<span class="warn">!</span> <span class="out">PLAT-88  work item comment  GitHub token  ghp…aa (40 chars)</span>
+<span class="note"># the value is never printed — rotate it</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="shell">
+      <div class="section-head">
+        <h2>Why keep it locally</h2>
+        <p>
+          Issue trackers are good at “what is open right now” and bad at everything else. Once the
+          data is on your disk you can ask real questions, feed a whole discussion to an assistant
+          without a dozen API calls, and keep working on a plane.
+        </p>
+      </div>
+      <div class="grid">
+        {
+          capabilities.map((item) => (
+            <article class="card">
+              <h3>
+                <code>{item.command}</code>
+                {item.title}
+              </h3>
+              <p>{item.body}</p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="shell">
+      <div class="section-head">
+        <h2>A terminal and a browser, over one database</h2>
+        <p>
+          Both surfaces read the same SQLite file through the same query layer, so they cannot
+          disagree. <code>devcontext serve</code> starts the viewer; nothing is uploaded anywhere.
+        </p>
+      </div>
+      <div class="table-scroll">
+        <table class="surfaces">
+          <thead>
+            <tr><th>Feature</th><th>CLI</th><th>Web viewer</th></tr>
+          </thead>
+          <tbody>
+            {
+              surfaces.map(([feature, cli, web]) => (
+                <tr>
+                  <td>{feature}</td>
+                  <td><code>{cli}</code></td>
+                  <td class="muted">{web}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="shell">
+      <div class="section-head">
+        <h2>It never writes to GitHub or Jira</h2>
+        <p>
+          Every API call devcontext makes is a GET. Tokens are read from environment variables you
+          name in the configuration and never stored. <code>devcontext audit</code> reports exactly
+          what is on your disk, whose data it is, and whether a credential leaked into a ticket or
+          a CI log — without ever printing the credential.
+        </p>
+      </div>
+      <div class="actions">
+        <a class="button button-primary" href={`${base}/docs/getting-started`}>Install it</a>
+        <a class="button button-ghost" href={`${base}/docs/audit`}>How the audit works</a>
+      </div>
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,58 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Sync GitHub and Jira into a local SQLite database and query it offline.' } =
+  Astro.props;
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const here = Astro.url.pathname.replace(/\/$/, '');
+const isDocs = here.startsWith(`${base}/docs`);
+const repo = 'https://github.com/christoph-jerolimov/devcontext';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <link rel="canonical" href={Astro.url.href} />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236ea8fe'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='19' font-weight='bold' text-anchor='middle' fill='%230b0d10'%3Ed%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="shell topbar-inner">
+        <a class="brand" href={`${base}/`}>devcontext<span class="brand-dot">.</span></a>
+        <nav>
+          <a href={`${base}/docs`} aria-current={isDocs ? 'page' : undefined}>Documentation</a>
+          <a href={`${base}/docs/getting-started`}>Get started</a>
+          <a href={repo}>GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="footer shell">
+      <span>Apache-2.0</span>
+      <span class="muted">·</span>
+      <a href={repo}>Source</a>
+      <a href={`${base}/docs`}>Documentation</a>
+      <span class="spacer">Runs entirely on your machine.</span>
+    </footer>
+  </body>
+</html>
