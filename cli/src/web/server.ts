@@ -261,7 +261,8 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         }
         return gh.listPullRequests(db, {
           repos,
-          state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'open',
+          // All states by default, unlike issues: see the `prs` command.
+          state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
           labels: listParam(query, 'label'),
           author: query.get('author') ?? undefined,
           search,

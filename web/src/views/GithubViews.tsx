@@ -132,7 +132,9 @@ export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
 
 export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode {
   const [repo, setRepo] = useUrlState('repo');
-  const [state, setState] = useUrlState('state', 'open');
+  // All states by default, unlike issues: a merged pull request is the normal
+  // end of one, and hiding them makes the list read as if nothing shipped.
+  const [state, setState] = useUrlState('state', 'all');
   const [search, setSearch] = useUrlState('search');
 
   const detail = useSelection((reference) => {

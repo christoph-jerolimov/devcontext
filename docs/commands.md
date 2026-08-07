@@ -243,7 +243,7 @@ devcontext github prs [options] [number]
 | Option | Values | Default | Description |
 | --- | --- | --- | --- |
 | `-r, --repo <repo>` | — | — | repository (owner/name), repeatable |
-| `-s, --state <state>` | — | `open` | open, closed or all |
+| `-s, --state <state>` | — | `all` | open, closed or all |
 | `-l, --label <label>` | — | — | label filter, repeatable |
 | `-a, --author <login>` | — | — | pull request author |
 | `--assignee <login>` | — | — | assigned to this user |
