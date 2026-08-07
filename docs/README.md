@@ -40,7 +40,7 @@ node cli/bin/devcontext.js init     # writes a commented devcontext.yaml
 node cli/bin/devcontext.js sync     # fills .devcontext/devcontext.db + yaml + markdown
 node cli/bin/devcontext.js gh issues --stale 90d
 node cli/bin/devcontext.js jira stories --sprint "Sprint 7"
-node cli/bin/devcontext.js web      # http://127.0.0.1:4173
+node cli/bin/devcontext.js serve      # http://127.0.0.1:4173
 node cli/bin/devcontext.js mcp      # serve it to an AI assistant over MCP
 ```
 

@@ -38,7 +38,7 @@ variable with `tokenEnv` instead.
 | `database` | string or `{ path }` | `.devcontext/devcontext.db` | Where the SQLite database lives.     |
 | `sync`     | object               | see below                   | How the sync talks to the APIs.      |
 | `outputs`  | object               | see below                   | The yaml / markdown / json mirrors.  |
-| `web`      | object               | see below                   | Defaults for `devcontext web`.       |
+| `web`      | object               | see below                   | Defaults for `devcontext serve`.     |
 | `github`   | object               | —                           | GitHub hosts and default sync flags. |
 | `jira`     | object               | —                           | Jira sites and default sync flags.   |
 | `projects` | array                | required                    | At least one project.                |
@@ -85,6 +85,9 @@ with `devcontext export`. They never feed back into the database — see
 [Outputs](outputs.md) for the file layout.
 
 ## `web`
+
+Defaults for `devcontext serve`. The key keeps the name `web` so existing
+configuration files stay valid.
 
 ```yaml
 web:

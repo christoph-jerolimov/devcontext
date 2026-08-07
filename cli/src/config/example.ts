@@ -46,7 +46,7 @@ outputs:
     enabled: false
     path: .devcontext/json
 
-# Settings for \`devcontext web\`.
+# Settings for \`devcontext serve\`.
 web:
   port: 4173
   host: 127.0.0.1

@@ -331,9 +331,10 @@ optional section: `storage`, `content`, `people`, `secrets` or `config`. See
 and job logs for credentials. It reports where they are and a masked
 fingerprint, never the value.
 
-## `devcontext web`
+## `devcontext serve` (alias `web`)
 
-Serves the React viewer and the JSON API for the local database.
+Serves the React viewer and the JSON API for the local database. The command was
+called `web` originally; that name still works.
 
 | Option              | Description                                 |
 | ------------------- | ------------------------------------------- |

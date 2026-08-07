@@ -126,7 +126,7 @@ devcontext sync --full --target acme/platform
 
 ## "The web viewer is not built"
 
-`devcontext web` serves `web/dist`. Run `npm run build:web` (or `npm run build`)
+`devcontext serve` serves `web/dist`. Run `npm run build:web` (or `npm run build`)
 in the repository root. Until then the JSON API under `/api` still works.
 
 ## `ExperimentalWarning: SQLite is an experimental feature`
