@@ -245,6 +245,54 @@ describe('jira queries', () => {
     });
   });
 
+  it('matches a type group, not just the literal name', () => {
+    /*
+     * Jira spells a subtask three ways depending on the deployment, and
+     * filtering on "Task" while getting none of the subtasks under it is not
+     * what anybody means by it.
+     */
+    for (const [key, type] of [
+      ['PLAT-90', 'Sub-task'],
+      ['PLAT-91', 'Subtask'],
+      ['PLAT-92', 'Task'],
+      ['PLAT-93', 'Defect'],
+      ['PLAT-94', 'Outcome'],
+      ['PLAT-95', 'Some Custom Type'],
+    ] as const) {
+      db.upsert('jira_workitems', {
+        site: 'acme',
+        id: key,
+        key,
+        project_key: 'PLAT',
+        summary: key,
+        type,
+        labels: '[]',
+        components: '[]',
+        fix_versions: '[]',
+        custom_fields: '{}',
+        synced_at: SYNCED_AT,
+        raw: '{}',
+      });
+    }
+
+    const keys = (types: string[]): string[] =>
+      jira
+        .listWorkitems(db, { types })
+        .map((row) => row.key)
+        .toSorted();
+
+    // PLAT-43 is the fixture's own Task; the three added ones join it.
+    expect(keys(['Task'])).toEqual(['PLAT-43', 'PLAT-90', 'PLAT-91', 'PLAT-92']);
+    // Defect is what some sites call a bug.
+    expect(keys(['bug'])).toEqual(['PLAT-93']);
+    expect(keys(['Outcome'])).toEqual(['PLAT-94']);
+    // A type that names no group is still matched exactly, so a site's own
+    // custom types stay filterable.
+    expect(keys(['Some Custom Type'])).toEqual(['PLAT-95']);
+    // And the groups compose.
+    expect(keys(['Outcome', 'bug'])).toEqual(['PLAT-93', 'PLAT-94']);
+  });
+
   it('filters by type, status and resolution', () => {
     expect(jira.listWorkitems(db, { types: ['story'] }).map((row) => row.key)).toEqual(['PLAT-42']);
     expect(jira.listWorkitems(db, { statusCategories: ['done'] }).map((row) => row.key)).toEqual([

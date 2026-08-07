@@ -238,7 +238,7 @@ its description, links, every comment and the complete history.
 | `--sort <field>`        | `updated` (default), `created`, `key`, `status` |
 | time filters            | see above                                       |
 
-### `jira stories` / `epics` / `features` / `bugs` / `tasks`
+### `jira outcomes` / `epics` / `features` / `stories` / `tasks` / `bugs`
 
 The same command with a preset type filter (singular aliases work too):
 
@@ -246,6 +246,24 @@ The same command with a preset type filter (singular aliases work too):
 devcontext jira stories --sprint "Sprint 7"
 devcontext jira epics --open
 devcontext jira bugs --project PLAT --stale 60d --list
+```
+
+Each name is a **group**, not a literal type, and `--type` uses the same groups:
+
+| Filter                     | Also matches                      |
+| -------------------------- | --------------------------------- |
+| `task`                     | `Sub-task`, `Subtask`, `Sub Task` |
+| `bug`                      | `Defect`                          |
+| `outcome`                  | —                                 |
+| `epic`, `feature`, `story` | —                                 |
+
+Jira lets every site rename its types, and a subtask arrives spelled
+differently on Cloud and Server — asking for tasks and getting none of the
+subtasks under them is not what anybody means. A type that names no group is
+matched exactly, so a site's own custom types stay filterable:
+
+```bash
+devcontext jira workitems --type "Spike"
 ```
 
 ### `jira search <query>`

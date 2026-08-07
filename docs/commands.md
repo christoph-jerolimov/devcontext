@@ -47,11 +47,12 @@ devcontext [options] <command>
   - [`logs`, `log`](#devcontext-github-logs) — print the stored log of a workflow job
 - [`jira`](#devcontext-jira) — read Jira data from the local database
   - [`workitems`, `workitem`, `items`, `item`](#devcontext-jira-workitems) — list work items, or show one with comments and full history
-  - [`stories`, `story`](#devcontext-jira-stories) — list stories (work items of type Story)
-  - [`epics`, `epic`](#devcontext-jira-epics) — list epics (work items of type Epic)
-  - [`features`, `feature`](#devcontext-jira-features) — list features (work items of type Feature)
-  - [`bugs`, `bug`](#devcontext-jira-bugs) — list bugs (work items of type Bug / Defect)
-  - [`tasks`, `task`](#devcontext-jira-tasks) — list tasks (work items of type Task / Sub-task / Subtask)
+  - [`stories`, `story`](#devcontext-jira-stories) — list stories (work items of type story)
+  - [`epics`, `epic`](#devcontext-jira-epics) — list epics (work items of type epic)
+  - [`features`, `feature`](#devcontext-jira-features) — list features (work items of type feature)
+  - [`outcomes`, `outcome`](#devcontext-jira-outcomes) — list outcomes (work items of type outcome)
+  - [`bugs`, `bug`](#devcontext-jira-bugs) — list bugs (work items of type bug)
+  - [`tasks`, `task`](#devcontext-jira-tasks) — list tasks (work items of type task)
   - [`tree`](#devcontext-jira-tree) — show the parents and children of a work item as a tree
   - [`search`](#devcontext-jira-search) — search work items by key, summary, description and comments
   - [`sprints`, `sprint`](#devcontext-jira-sprints) — list sprints, or show one sprint with its work items
@@ -441,7 +442,7 @@ devcontext jira workitems [options] [key]
 
 Alias: `story`
 
-List stories (work items of type Story)
+List stories (work items of type story)
 
 ```
 devcontext jira stories [options] [key]
@@ -483,7 +484,7 @@ devcontext jira stories [options] [key]
 
 Alias: `epic`
 
-List epics (work items of type Epic)
+List epics (work items of type epic)
 
 ```
 devcontext jira epics [options] [key]
@@ -525,10 +526,52 @@ devcontext jira epics [options] [key]
 
 Alias: `feature`
 
-List features (work items of type Feature)
+List features (work items of type feature)
 
 ```
 devcontext jira features [options] [key]
+```
+
+| Argument | Required | Description |
+| -------- | -------- | ----------- |
+| `key` | no | work item key (e.g. PROJ-123) to show in detail |
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `-p, --project <key>` | — | — | Jira project key, repeatable |
+| `--site <name>` | — | — | Jira site name from the configuration |
+| `--status <status>` | — | — | status name, repeatable |
+| `--category <category>` | — | — | "To Do", "In Progress" or "Done" |
+| `--assignee <name>` | — | — | assignee display name (substring match) |
+| `--reporter <name>` | — | — | reporter display name (substring match) |
+| `-l, --label <label>` | — | — | label filter, repeatable |
+| `--component <name>` | — | — | component filter, repeatable |
+| `--sprint <name>` | — | — | sprint name (substring match) |
+| `--epic <key>` | — | — | items belonging to this epic |
+| `--parent <key>` | — | — | items with this parent |
+| `--open` | — | — | only unresolved work items |
+| `--resolved` | — | — | only resolved work items |
+| `--sort <field>` | — | `updated` | updated, created, key or status |
+| `--order <direction>` | — | `desc` | asc or desc |
+| `--created-since <when>` | — | — | created at or after (30d, 6w, 2024-01-31) |
+| `--created-before <when>` | — | — | created before (30d, 6w, 2024-01-31) |
+| `--updated-since <when>` | — | — | updated at or after (30d, 6w, 2024-01-31) |
+| `--updated-before <when>` | — | — | updated before, i.e. untouched since then |
+| `--stale <duration>` | — | — | only items not updated for this long (e.g. 90d) |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+| `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
+| `--offset <count>` | — | — | skip this many rows |
+| `--search <text>` | — | — | match text in the title / summary / body |
+
+### `devcontext jira outcomes`
+
+Alias: `outcome`
+
+List outcomes (work items of type outcome)
+
+```
+devcontext jira outcomes [options] [key]
 ```
 
 | Argument | Required | Description |
@@ -567,7 +610,7 @@ devcontext jira features [options] [key]
 
 Alias: `bug`
 
-List bugs (work items of type Bug / Defect)
+List bugs (work items of type bug)
 
 ```
 devcontext jira bugs [options] [key]
@@ -609,7 +652,7 @@ devcontext jira bugs [options] [key]
 
 Alias: `task`
 
-List tasks (work items of type Task / Sub-task / Subtask)
+List tasks (work items of type task)
 
 ```
 devcontext jira tasks [options] [key]

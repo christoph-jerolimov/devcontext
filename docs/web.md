@@ -19,16 +19,16 @@ The command used to be called `web`, which still works as an alias.
 
 ## Views
 
-| View            | Contents                                                                                                                                                            |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview        | Configured projects, row counts per table group, the last sync runs and the current cursors                                                                         |
-| GitHub issues   | Filter by repository, state and text; click a row for body, comments and timeline                                                                                   |
-| Pull requests   | Same, plus reviews with their inline comments and the changed files. Shows every state by default, since a merged pull request is the normal end of one             |
-| Workflow runs   | Filter by repository and conclusion; click a run for its jobs and every step                                                                                        |
-| Jira work items | Filter by project, type, status category and full text (summary, description and comments); click for description, comments, the complete history and the hierarchy |
-| Insights        | Cycle time, review latency, WIP, reviewers, flaky steps and stale work, with adjustable windows                                                                     |
-| Digest          | What happened in the last day, week or month: merged, finished, started, who did it, and what is still waiting                                                      |
-| Sprints         | Filter by state; click for the work items of a sprint                                                                                                               |
+| View            | Contents                                                                                                                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview        | Configured projects, row counts per table group, the last sync runs and the current cursors                                                                                                                |
+| GitHub issues   | Filter by repository, state and text; click a row for body, comments and timeline                                                                                                                          |
+| Pull requests   | Same, plus reviews with their inline comments and the changed files. Shows every state by default, since a merged pull request is the normal end of one                                                    |
+| Workflow runs   | Filter by repository and conclusion; click a run for its jobs and every step                                                                                                                               |
+| Jira work items | Filter by project, type group (Task also matches its subtasks), status category and full text (summary, description and comments); click for description, comments, the complete history and the hierarchy |
+| Insights        | Cycle time, review latency, WIP, reviewers, flaky steps and stale work, with adjustable windows                                                                                                            |
+| Digest          | What happened in the last day, week or month: merged, finished, started, who did it, and what is still waiting                                                                                             |
+| Sprints         | Filter by state; click for the work items of a sprint                                                                                                                                                      |
 
 The viewer follows the light or dark preference of your system.
 

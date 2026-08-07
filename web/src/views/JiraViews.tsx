@@ -14,7 +14,13 @@ import { DetailPanel } from '../components/DetailPanel.tsx';
 import { Hierarchy } from '../components/Hierarchy.tsx';
 import { useUrlState } from '../router.ts';
 
-export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
+export function WorkitemsView({
+  projects,
+  types,
+}: {
+  projects: string[];
+  types: string[];
+}): ReactNode {
   const [project, setProject] = useUrlState('project');
   const [type, setType] = useUrlState('type');
   const [category, setCategory] = useUrlState('category');
@@ -49,11 +55,16 @@ export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
             </select>
             <select value={type} onChange={(event) => setType(event.target.value)}>
               <option value="">any type</option>
-              <option value="Epic">Epic</option>
-              <option value="Feature">Feature</option>
-              <option value="Story">Story</option>
-              <option value="Task">Task</option>
-              <option value="Bug">Bug</option>
+              {/*
+               * Type groups, not literal type names: "Task" also matches the
+               * subtasks under it, which Jira spells three different ways.
+               * The server expands them — see WORKITEM_TYPE_GROUPS.
+               */}
+              {types.map((option) => (
+                <option key={option} value={option}>
+                  {option === 'Task' ? 'Task (incl. subtask)' : option}
+                </option>
+              ))}
             </select>
             <select value={category} onChange={(event) => setCategory(event.target.value)}>
               <option value="">any status</option>
