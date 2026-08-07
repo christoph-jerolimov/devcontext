@@ -22,6 +22,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import { nullLogger } from '../util/logger.js';
 import { runSync } from '../sync/runner.js';
+import { duplicateEvents } from '../testing/duplicates.js';
 
 /**
  * Opt in explicitly: `DEVCONTEXT_E2E=1` or a token in `$DEVCONTEXT_E2E_TOKEN`.
@@ -217,38 +218,14 @@ describe.skipIf(!enabled)('github end to end sync', () => {
       expect(numbersAfter).toEqual(expect.arrayContaining(pullRequestNumbers));
       // ...and each of them exactly once.
       expect(new Set(numbersAfter).size).toBe(numbersAfter.length);
-      expect(duplicateKeys(db2)).toEqual([]);
+      // The timeline is the one place a second pass can duplicate a row: its
+      // key is synthesised, not given by the API. See testing/duplicates.ts.
+      expect(duplicateEvents(db2)).toEqual([]);
     } finally {
       db2.close();
     }
   });
 });
-
-/**
- * Rows sharing a primary key. Impossible if the upserts are right, which is
- * precisely why it is worth asserting after a re-sync.
- */
-function duplicateKeys(db: Database): string[] {
-  const tables: Array<[string, string]> = [
-    ['gh_issues', 'host, id'],
-    ['gh_pull_requests', 'host, id'],
-    ['gh_comments', 'host, id'],
-    ['gh_events', 'host, id'],
-    ['gh_commits', 'host, pr_id, sha'],
-    ['gh_pull_request_files', 'host, pr_id, filename'],
-  ];
-
-  return tables
-    .filter(([table, key]) => {
-      const row = db.get<{ total: number }>(
-        `SELECT COUNT(*) AS total FROM (
-           SELECT ${key} FROM ${table} GROUP BY ${key} HAVING COUNT(*) > 1
-         )`,
-      );
-      return (row?.total ?? 0) > 0;
-    })
-    .map(([table]) => table);
-}
 
 function tableCounts(db: Database): Record<string, number> {
   return {

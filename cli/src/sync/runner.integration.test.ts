@@ -11,6 +11,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import { nullLogger } from '../util/logger.js';
+import { duplicateEvents, type DuplicateEvent } from '../testing/duplicates.js';
 import { runSync } from './runner.js';
 
 /* -------------------------------------------------------------------------- */
@@ -513,7 +514,7 @@ interface Snapshot {
   pullRequests: number[];
   comments: number;
   events: number;
-  duplicateCommits: number;
+  duplicatedEvents: DuplicateEvent[];
 }
 
 function snapshot(): Snapshot {
@@ -528,12 +529,7 @@ function snapshot(): Snapshot {
         .map((row) => row.number),
       comments: db.count('gh_comments'),
       events: db.count('gh_events'),
-      duplicateCommits:
-        db.get<{ total: number }>(
-          `SELECT COUNT(*) AS total FROM (
-             SELECT host, pr_id, sha FROM gh_commits GROUP BY host, pr_id, sha HAVING COUNT(*) > 1
-           )`,
-        )?.total ?? 0,
+      duplicatedEvents: duplicateEvents(db),
     };
   } finally {
     db.close();
@@ -721,7 +717,9 @@ describe('runSync', () => {
     // ...and nothing was stored twice.
     expect(new Set(after.pullRequests).size).toBe(after.pullRequests.length);
     expect(new Set(after.issues).size).toBe(after.issues.length);
-    expect(after.duplicateCommits).toBe(0);
+    expect(after.duplicatedEvents).toEqual([]);
+    // The first pass has to be clean too, or the second proves nothing.
+    expect(before.duplicatedEvents).toEqual([]);
   });
 
   it('leaves the database untouched on a dry run', async () => {
