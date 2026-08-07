@@ -51,7 +51,18 @@ export function DetailPanel({
 }): ReactNode {
   if (!loading && !error && !document) return null;
 
-  const title = document?.title ?? document?.summary ?? document?.key ?? 'Details';
+  // A workflow run has no title and no number — it is identified by its
+  // workflow and run number, which is why both are handled here rather than
+  // falling through to a bare "Details" under `acme/platform#undefined`.
+  const runLabel =
+    document?.workflow === undefined
+      ? undefined
+      : `${String(document.workflow)} #${String(document.runNumber ?? document.id)}`;
+  const title = document?.title ?? document?.summary ?? document?.key ?? runLabel ?? 'Details';
+  const reference =
+    document?.repository !== undefined && document?.number !== undefined
+      ? `${document.repository}#${document.number} `
+      : '';
   const comments = (document?.comments as Comment[] | undefined) ?? [];
   const history = ((document?.history ?? document?.events) as HistoryEntry[] | undefined) ?? [];
   const reviews = (document?.reviews as Review[] | undefined) ?? [];
@@ -62,7 +73,7 @@ export function DetailPanel({
     <aside className="detail">
       <header className="detail-header">
         <h2>
-          {document?.repository ? `${document.repository}#${document.number} ` : ''}
+          {reference}
           {title}
         </h2>
         <button type="button" onClick={onClose} aria-label="Close details">
