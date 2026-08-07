@@ -15,6 +15,7 @@ function find(name: string) {
 suite('the command surface', () => {
   it('registers every command', () => {
     expect(commandNames().toSorted()).toEqual([
+      'agent',
       'audit',
       'digest',
       'export',

@@ -24,6 +24,7 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [Audit](audit.md)                     | What is stored locally, whose data it is, and what a sync fetches   |
 | [Web viewer](web.md)                  | The React viewer and the JSON API behind it                         |
 | [MCP server](mcp.md)                  | Serving the same data to an AI assistant                            |
+| [Agent (experimental)](agent.md)      | An eve based agent on the same tools, via Anthropic on Vertex AI    |
 | [Development](development.md)         | Monorepo layout, tests, how to extend devcontext                    |
 | [Troubleshooting](troubleshooting.md) | Tokens, rate limits, permissions, common errors                     |
 

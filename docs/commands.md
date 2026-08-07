@@ -63,6 +63,7 @@ devcontext [options] <command>
 - [`links`, `link`](#devcontext-links) — cross references between GitHub issues/pull requests and Jira work items
 - [`audit`](#devcontext-audit) — what is stored locally, who is in it, and what a sync would fetch
 - [`mcp`](#devcontext-mcp) — serve the local database over the Model Context Protocol (stdio)
+- [`agent`](#devcontext-agent) — start the @devcontext/eve agent in dev mode (experimental)
 
 ## `devcontext init`
 
@@ -883,3 +884,15 @@ devcontext mcp [options]
 | `--tools` | — | — | list the exposed tools and exit |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+
+## `devcontext agent`
+
+Start the @devcontext/eve agent in dev mode (experimental)
+
+```
+devcontext agent [args...]
+```
+
+| Argument | Required | Description |
+| -------- | -------- | ----------- |
+| `args...` | no | arguments passed through to "eve dev", e.g. --no-ui |

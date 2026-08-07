@@ -215,12 +215,19 @@ failure straight from your machine — no API round trips, no rate limit, and it
 works offline. Read only, and it exposes the same queries the CLI uses. See
 [docs/mcp.md](docs/mcp.md).
 
+There is also an **experimental** agent built on the eve framework that
+answers questions about the same data in a conversation, using Anthropic
+Claude served through Google Vertex AI. It exposes exactly the tools the MCP
+server exposes. Start it with `npm run agent` (or `devcontext agent`); see
+[docs/agent.md](docs/agent.md).
+
 ## Repository layout
 
 | Directory       | Contents                                                            |
 | --------------- | ------------------------------------------------------------------- |
 | [`cli/`](cli)   | The `devcontext` command: sync, database, read commands, web server |
 | [`web/`](web)   | The React viewer, served by `devcontext serve`                      |
+| [`eve/`](eve)   | Experimental eve agent on the same tools the MCP server exposes     |
 | [`docs/`](docs) | End user documentation                                              |
 | [`site/`](site) | The public site, which renders `docs/` — nothing is duplicated      |
 
@@ -240,6 +247,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 - [Cross links](docs/links.md)
 - [Web viewer](docs/web.md)
 - [MCP server](docs/mcp.md)
+- [Agent (experimental)](docs/agent.md)
 - [Development](docs/development.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
