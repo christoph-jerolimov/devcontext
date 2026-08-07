@@ -123,6 +123,66 @@ export interface IssueDocument {
   [key: string]: unknown;
 }
 
+export interface Distribution {
+  count: number;
+  p50: number | null;
+  p85: number | null;
+  p95: number | null;
+  min: number | null;
+  max: number | null;
+  average: number | null;
+  total: number;
+}
+
+export interface InsightsResponse {
+  cycleTime: {
+    overall: Distribution;
+    byType: Array<{ type: string; distribution: Distribution }>;
+    items: Array<{ key: string; summary: string | null; hours: number }>;
+    withoutStart: number;
+  };
+  reviewLatency: {
+    toFirstReview: Distribution;
+    toMerge: Distribution;
+    mergedWithoutReview: number;
+    byReviewer: Array<{ reviewer: string; reviews: number; medianResponseHours: number | null }>;
+  };
+  wip: {
+    workitems: number;
+    openPullRequests: number;
+    draftPullRequests: number;
+    openIssues: number;
+    byAssignee: Array<{
+      assignee: string;
+      workitems: number;
+      pullRequests: number;
+      oldestHours: number | null;
+    }>;
+  };
+  stale: {
+    threshold: string;
+    items: Array<{
+      kind: string;
+      ref: string;
+      title: string | null;
+      owner: string | null;
+      updatedAt: string | null;
+    }>;
+  };
+  flaky: {
+    minRuns: number;
+    steps: Array<{
+      workflow: string | null;
+      job: string | null;
+      step: string | null;
+      runs: number;
+      failures: number;
+      failureRate: number | null;
+      retriedGreen: number;
+    }>;
+  };
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(
@@ -162,6 +222,8 @@ export const api = {
   sprints: (params: Record<string, string | undefined>) =>
     request<Sprint[]>('/api/jira/sprints', params),
   sprint: (id: number) => request<IssueDocument>(`/api/jira/sprints/${id}`),
+  insights: (params: Record<string, string | undefined>) =>
+    request<InsightsResponse>('/api/insights', params),
 };
 
 export function parseList(value: string | null): string[] {
