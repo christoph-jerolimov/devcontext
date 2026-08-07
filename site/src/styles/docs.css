@@ -1,9 +1,15 @@
+/*
+ * The horizontal padding repeats `.shell`'s rather than inheriting it: this
+ * rule is on the same element, so a shorthand `padding` here replaces all four
+ * sides. Written as `32px 0 80px` it silently dropped the 24px that keeps the
+ * text off the edge of a narrow window.
+ */
 .docs {
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
   gap: 48px;
   align-items: start;
-  padding: 32px 0 80px;
+  padding: 32px 24px 80px;
 }
 
 /* --- sidebar --------------------------------------------------------------- */
