@@ -89,6 +89,26 @@ export class GithubClient {
     }
   }
 
+  /**
+   * How many items a collection endpoint would yield, in one request.
+   *
+   * This is what lets the sync know the size of the job before doing it: one
+   * call per resource buys an exact item count, from which every follow up
+   * call it implies can be counted too.
+   *
+   * Null means the endpoint would not say, and the caller has to fall back to
+   * discovering the size as it goes.
+   */
+  async countItems(
+    path: string,
+    query: Record<string, string | number | boolean | undefined> = {},
+  ): Promise<number | null> {
+    const url = this.http.buildUrl(path, { ...query, per_page: 1 });
+    const response = await this.http.request<unknown>(url);
+    const items = Array.isArray(response.data) ? response.data.length : 0;
+    return totalFromLinkHeader(response.headers.get('link'), items);
+  }
+
   async collect(
     path: string,
     query: Record<string, string | number | boolean | undefined> = {},
@@ -260,12 +280,43 @@ export class GithubClient {
   }
 }
 
-/** Extracts the `rel="next"` URL from a GitHub `Link` header. */
-export function nextPageUrl(linkHeader: string | null): string | null {
+/** Extracts the URL of one `rel` from a GitHub `Link` header. */
+export function linkUrl(linkHeader: string | null, rel: string): string | null {
   if (!linkHeader) return null;
   for (const part of linkHeader.split(',')) {
     const match = /<([^>]+)>\s*;\s*rel="([^"]+)"/.exec(part.trim());
-    if (match && match[2] === 'next') return match[1] ?? null;
+    if (match && match[2] === rel) return match[1] ?? null;
   }
   return null;
+}
+
+export function nextPageUrl(linkHeader: string | null): string | null {
+  return linkUrl(linkHeader, 'next');
+}
+
+/**
+ * How many items a collection holds, from its `Link` header.
+ *
+ * Asked for one item per page, the last page number *is* the item count — so
+ * a single request answers "how many are there" exactly, without walking the
+ * collection. GitHub omits the header entirely when everything fits on one
+ * page, which at this page size means zero or one item, and the body says
+ * which.
+ *
+ * Returns null when the header is present but unreadable, so a caller can tell
+ * "no idea" from "none".
+ */
+export function totalFromLinkHeader(linkHeader: string | null, itemsOnPage: number): number | null {
+  if (!linkHeader) return itemsOnPage;
+
+  const last = linkUrl(linkHeader, 'last');
+  if (!last) {
+    // A `next` with no `last` happens on cursor paginated endpoints, where the
+    // total is genuinely unknowable up front.
+    return linkUrl(linkHeader, 'next') ? null : itemsOnPage;
+  }
+
+  const page = new URL(last, 'https://api.github.com').searchParams.get('page');
+  const parsed = Number(page);
+  return page !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }

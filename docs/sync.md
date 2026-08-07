@@ -101,11 +101,30 @@ rate limit headers.
 [##########--------------]  42% | 615/1442 calls | 388 items | 3m 12s elapsed | ~4m 20s left | acme/platform: pull requests
 ```
 
-The expectation grows while the sync learns more: after listing a page of 100
-issues the syncer knows it needs two more calls per issue (comments and
-timeline) and adds 200 to the expected total; after counting the Jira work items
-it adds one call per item for the history. That is why the percentage is honest
-from the start of a phase instead of jumping when a phase ends.
+The total is worked out **before anything is fetched**. Every target is sized
+first, in a planning pass that logs what it found:
+
+```
+Planned 2 target(s): about 1440 API call(s).
+```
+
+Sizing is cheap. Asked for one item per page, a GitHub list endpoint reports
+the number of the last page in its `Link` header — and with one item per page,
+that number _is_ the item count. So one request per collection buys an exact
+count, and every follow up call an item implies (comments, timeline, reviews,
+commits, files) is known from the configuration. Jira is easier still: a search
+reports how many work items match the JQL.
+
+Two things stay unknowable until the work is under way, and only these are
+still discovered as the sync runs: how many jobs a workflow run has, and how
+many sprints hang off a board. Both are small, so the percentage and the
+estimated time are meaningful from the first call rather than only near the
+end.
+
+The syncers replace the planned figure for their part of the work with the real
+one as they go, so a plan that guessed high or low is corrected rather than
+compounded. A target that cannot be sized — an endpoint that will not report a
+total — simply falls back to being discovered while it is fetched.
 
 Outside a terminal (CI, `| tee`) the progress line is not redrawn; a summary
 line is logged every 10 % instead. `--no-progress` turns it off completely.

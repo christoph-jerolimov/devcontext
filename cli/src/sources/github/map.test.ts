@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { nextPageUrl } from './client.js';
+import { nextPageUrl, totalFromLinkHeader } from './client.js';
 import {
   isPullRequest,
   issueLabelRows,
@@ -178,5 +178,46 @@ describe('nextPageUrl', () => {
   it('returns null on the last page', () => {
     expect(nextPageUrl('<https://api.github.com/x?page=1>; rel="prev"')).toBeNull();
     expect(nextPageUrl(null)).toBeNull();
+  });
+});
+
+describe('totalFromLinkHeader', () => {
+  /*
+   * Asked for one item per page, the last page number is the item count. This
+   * is what lets the sync size the job in one request per resource instead of
+   * discovering it while walking, so the arithmetic is worth pinning down.
+   */
+  it('reads the count off the last page number', () => {
+    const header =
+      '<https://api.github.com/repositories/1/issues?per_page=1&page=2>; rel="next", ' +
+      '<https://api.github.com/repositories/1/issues?per_page=1&page=273>; rel="last"';
+    expect(totalFromLinkHeader(header, 1)).toBe(273);
+  });
+
+  it('trusts the body when there is no header at all', () => {
+    // GitHub omits Link entirely when everything fits on one page, which at
+    // one item per page means zero or one item.
+    expect(totalFromLinkHeader(null, 1)).toBe(1);
+    expect(totalFromLinkHeader(null, 0)).toBe(0);
+  });
+
+  it('treats a header with neither next nor last as a single page', () => {
+    expect(totalFromLinkHeader('<https://api.github.com/x?page=1>; rel="first"', 1)).toBe(1);
+  });
+
+  it('says "no idea" rather than guessing when there is a next but no last', () => {
+    // Cursor paginated endpoints report a next page without a total; a wrong
+    // number here would be worse than admitting the size is unknown.
+    expect(totalFromLinkHeader('<https://api.github.com/x?after=abc>; rel="next"', 1)).toBeNull();
+  });
+
+  it('says "no idea" when the last link has no usable page number', () => {
+    for (const last of [
+      '<https://api.github.com/x?page=nope>; rel="last"',
+      '<https://api.github.com/x?page=0>; rel="last"',
+      '<https://api.github.com/x>; rel="last"',
+    ]) {
+      expect(totalFromLinkHeader(last, 1)).toBeNull();
+    }
   });
 });

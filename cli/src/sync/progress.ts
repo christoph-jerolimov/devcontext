@@ -30,6 +30,8 @@ export class ProgressReporter {
   private phase = '';
   private apiCalls = 0;
   private apiCallsExpected = 0;
+  /** Per-slice expectations, set by the survey and revised by the syncers. */
+  private readonly expectedByKey = new Map<string, number>();
   private items = 0;
   private readonly startedAt = Date.now();
   private lastRenderAt = 0;
@@ -49,7 +51,7 @@ export class ProgressReporter {
     return {
       phase: this.phase,
       apiCalls: this.apiCalls,
-      apiCallsExpected: Math.max(this.apiCallsExpected, this.apiCalls),
+      apiCallsExpected: this.expectedApiCallCount,
       items: this.items,
       elapsedMs,
       etaMs: this.estimateEta(elapsedMs),
@@ -60,8 +62,14 @@ export class ProgressReporter {
     return this.apiCalls;
   }
 
+  /**
+   * Never below the calls already made: a survey that guessed low should stop
+   * the bar at full rather than let it run past the end.
+   */
   get expectedApiCallCount(): number {
-    return Math.max(this.apiCallsExpected, this.apiCalls);
+    let total = this.apiCallsExpected;
+    for (const count of this.expectedByKey.values()) total += count;
+    return Math.max(total, this.apiCalls);
   }
 
   get itemCount(): number {
@@ -73,10 +81,33 @@ export class ProgressReporter {
     this.render(true);
   }
 
-  /** Adds `count` calls to the expectation as soon as they become predictable. */
+  /**
+   * Adds `count` calls to the expectation.
+   *
+   * For work whose size only becomes apparent as it is discovered — the job
+   * logs of a workflow run, say, where the job count is not known until the run
+   * has been fetched. Anything a survey can size up front should use
+   * `expectFor` instead, so the two do not both count it.
+   */
   expect(count: number): void {
     if (count <= 0) return;
     this.apiCallsExpected += count;
+    this.render();
+  }
+
+  /**
+   * Sets the expectation for one named slice of the work, replacing whatever
+   * that slice expected before.
+   *
+   * The survey seeds each slice before the sync starts, and the syncer revises
+   * it with the real number once it knows. Because a slice is set rather than
+   * added to, the two cannot double count, and a survey that guessed high or
+   * low is corrected rather than compounded.
+   */
+  expectFor(key: string, count: number): void {
+    const next = Math.max(0, count);
+    if (this.expectedByKey.get(key) === next) return;
+    this.expectedByKey.set(key, next);
     this.render();
   }
 
@@ -104,8 +135,7 @@ export class ProgressReporter {
 
   private estimateEta(elapsedMs: number): number | null {
     if (this.apiCalls === 0) return null;
-    const expected = Math.max(this.apiCallsExpected, this.apiCalls);
-    const remaining = expected - this.apiCalls;
+    const remaining = this.expectedApiCallCount - this.apiCalls;
     if (remaining <= 0) return 0;
     const perCall = elapsedMs / this.apiCalls;
     return Math.round(perCall * remaining);
