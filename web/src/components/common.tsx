@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
+import type { IssueDocument } from '../api.ts';
 import { Markdown } from '../markdown/Markdown.tsx';
+import { useUrlState } from '../router.ts';
 
 interface AsyncResult<T> {
   data: T | null;
@@ -50,6 +52,35 @@ export function useAsync<T>(loader: () => Promise<T>, deps: unknown[]): AsyncRes
 
   if (settled.key !== key) return { data: null, error: null, loading: true };
   return { data: settled.data, error: settled.error, loading: false };
+}
+
+export interface Selection {
+  document: IssueDocument | null;
+  error: string | null;
+  loading: boolean;
+  open: (reference: string) => void;
+  close: () => void;
+}
+
+/**
+ * Which item is open is part of the URL, so a link somebody shares opens the
+ * same ticket rather than the same list. `load` turns the reference back into
+ * a request, which is the only part each view has to supply.
+ */
+export function useSelection(load: (reference: string) => Promise<IssueDocument>): Selection {
+  const [reference, setReference] = useUrlState('open');
+  const { data, error, loading } = useAsync<IssueDocument | null>(
+    () => (reference === '' ? Promise.resolve(null) : load(reference)),
+    [reference],
+  );
+
+  return {
+    document: reference === '' ? null : data,
+    error,
+    loading: reference !== '' && loading,
+    open: setReference,
+    close: () => setReference(''),
+  };
 }
 
 export function Panel({

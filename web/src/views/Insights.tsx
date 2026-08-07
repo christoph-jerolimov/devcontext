@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 
 import { api, formatRelative } from '../api.ts';
 import type { InsightsResponse } from '../api.ts';
 import { Panel, StateMessage, useAsync } from '../components/common.tsx';
+import { useUrlState } from '../router.ts';
 
 /** `36.5` -> `1d 12h`. Mirrors the CLI so both read the same. */
 function formatHours(hours: number | null | undefined): string {
@@ -36,8 +36,10 @@ function daysAgo(days: number): string {
 }
 
 export function InsightsView(): ReactNode {
-  const [days, setDays] = useState(90);
-  const [staleDays, setStaleDays] = useState(30);
+  const [windowDays, setWindowDays] = useUrlState('days', '90');
+  const [staleWindow, setStaleWindow] = useUrlState('stale', '30');
+  const days = Number(windowDays) || 90;
+  const staleDays = Number(staleWindow) || 30;
 
   // The timestamps are computed inside the loader on purpose: deriving them
   // during render would produce a new value on every render, and useAsync keys
@@ -53,17 +55,14 @@ export function InsightsView(): ReactNode {
         title="Insights"
         actions={
           <>
-            <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+            <select value={days} onChange={(event) => setWindowDays(event.target.value)}>
               {WINDOWS.map((window) => (
                 <option key={window.days} value={window.days}>
                   last {window.label}
                 </option>
               ))}
             </select>
-            <select
-              value={staleDays}
-              onChange={(event) => setStaleDays(Number(event.target.value))}
-            >
+            <select value={staleDays} onChange={(event) => setStaleWindow(event.target.value)}>
               {[14, 30, 60, 90, 180].map((value) => (
                 <option key={value} value={value}>
                   stale after {value}d

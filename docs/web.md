@@ -30,6 +30,26 @@ nothing the viewer does can change your data.
 
 The viewer follows the light or dark preference of your system.
 
+## Shareable URLs
+
+Every filter, and which item is open, lives in the address bar:
+
+```
+#/issues?repo=acme/platform&state=all&search=rate%20limit
+#/issues?state=all&open=acme%2Fplatform%2342
+#/workitems?project=PLAT&category=In%20Progress&open=PLAT-42
+#/insights?days=30&stale=14
+```
+
+So a link you paste into a chat opens the same list _and_ the same ticket for
+whoever clicks it, and reloading the page keeps you where you were.
+
+Two details make this comfortable rather than annoying: a filter left at its
+default is dropped from the URL, so the common case stays short; and filter
+changes replace the history entry instead of pushing one, so the back button
+leaves the view rather than walking backwards through every keystroke you typed
+into a search box. Switching views starts from clean filters.
+
 ## Rendered text
 
 Descriptions, comments and reviews are rendered as markdown: headings, lists,

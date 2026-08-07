@@ -1,32 +1,24 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 
 import { api, formatRelative, parseList } from '../api.ts';
-import type { Issue, IssueDocument, PullRequest, Repository, WorkflowRun } from '../api.ts';
-import { Badge, Labels, Panel, StateMessage, useAsync } from '../components/common.tsx';
+import type { Issue, PullRequest, Repository, WorkflowRun } from '../api.ts';
+import {
+  Badge,
+  Labels,
+  Panel,
+  StateMessage,
+  useAsync,
+  useSelection,
+} from '../components/common.tsx';
 import { DetailPanel } from '../components/DetailPanel.tsx';
+import { useUrlState } from '../router.ts';
 
-function useDocument() {
-  const [selection, setSelection] = useState<(() => Promise<IssueDocument>) | null>(null);
-  const [key, setKey] = useState(0);
-  const { data, error, loading } = useAsync<IssueDocument | null>(
-    () => (selection ? selection() : Promise.resolve(null)),
-    [key],
-  );
-
-  return {
-    document: selection ? data : null,
-    error,
-    loading: Boolean(selection) && loading,
-    open: (loader: () => Promise<IssueDocument>) => {
-      setSelection(() => loader);
-      setKey((value) => value + 1);
-    },
-    close: () => {
-      setSelection(null);
-      setKey((value) => value + 1);
-    },
-  };
+/** `acme/platform#42` — the reference the URL carries and the API needs. */
+function splitReference(reference: string): [string, number] | null {
+  const hash = reference.lastIndexOf('#');
+  if (hash === -1) return null;
+  const number = Number(reference.slice(hash + 1));
+  return Number.isFinite(number) ? [reference.slice(0, hash), number] : null;
 }
 
 function RepoFilter({
@@ -51,10 +43,15 @@ function RepoFilter({
 }
 
 export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
-  const [repo, setRepo] = useState('');
-  const [state, setState] = useState('open');
-  const [search, setSearch] = useState('');
-  const detail = useDocument();
+  const [repo, setRepo] = useUrlState('repo');
+  const [state, setState] = useUrlState('state', 'open');
+  const [search, setSearch] = useUrlState('search');
+
+  const detail = useSelection((reference) => {
+    const parts = splitReference(reference);
+    if (!parts) throw new Error(`Not an issue reference: ${reference}`);
+    return api.issue(parts[0], parts[1]);
+  });
 
   const { data, error, loading } = useAsync<Issue[]>(
     () => api.issues({ repo: repo || undefined, state, search: search || undefined, limit: '200' }),
@@ -104,7 +101,7 @@ export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
               {data.map((issue) => (
                 <tr
                   key={`${issue.repo_full_name}#${issue.number}`}
-                  onClick={() => detail.open(() => api.issue(issue.repo_full_name, issue.number))}
+                  onClick={() => detail.open(`${issue.repo_full_name}#${issue.number}`)}
                 >
                   <td className="muted">{issue.repo_full_name}</td>
                   <td className="right">{issue.number}</td>
@@ -134,10 +131,15 @@ export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
 }
 
 export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode {
-  const [repo, setRepo] = useState('');
-  const [state, setState] = useState('open');
-  const [search, setSearch] = useState('');
-  const detail = useDocument();
+  const [repo, setRepo] = useUrlState('repo');
+  const [state, setState] = useUrlState('state', 'open');
+  const [search, setSearch] = useUrlState('search');
+
+  const detail = useSelection((reference) => {
+    const parts = splitReference(reference);
+    if (!parts) throw new Error(`Not a pull request reference: ${reference}`);
+    return api.pull(parts[0], parts[1]);
+  });
 
   const { data, error, loading } = useAsync<PullRequest[]>(
     () => api.pulls({ repo: repo || undefined, state, search: search || undefined, limit: '200' }),
@@ -187,7 +189,7 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
               {data.map((pull) => (
                 <tr
                   key={`${pull.repo_full_name}#${pull.number}`}
-                  onClick={() => detail.open(() => api.pull(pull.repo_full_name, pull.number))}
+                  onClick={() => detail.open(`${pull.repo_full_name}#${pull.number}`)}
                 >
                   <td className="muted">{pull.repo_full_name}</td>
                   <td className="right">{pull.number}</td>
@@ -219,9 +221,9 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
 }
 
 export function WorkflowRunsView({ repos }: { repos: Repository[] }): ReactNode {
-  const [repo, setRepo] = useState('');
-  const [conclusion, setConclusion] = useState('');
-  const detail = useDocument();
+  const [repo, setRepo] = useUrlState('repo');
+  const [conclusion, setConclusion] = useUrlState('conclusion');
+  const detail = useSelection((reference) => api.workflowRun(Number(reference)));
 
   const { data, error, loading } = useAsync<WorkflowRun[]>(
     () =>
@@ -271,7 +273,7 @@ export function WorkflowRunsView({ repos }: { repos: Repository[] }): ReactNode 
             </thead>
             <tbody>
               {data.map((run) => (
-                <tr key={run.id} onClick={() => detail.open(() => api.workflowRun(run.id))}>
+                <tr key={run.id} onClick={() => detail.open(String(run.id))}>
                   <td className="muted">{run.repo_full_name}</td>
                   <td>{run.workflow_name}</td>
                   <td className="right">{run.run_number}</td>
