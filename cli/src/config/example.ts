@@ -1,0 +1,136 @@
+/**
+ * The template written by `devcontext init`.
+ *
+ * Keep this in sync with devcontext.example.yaml in the repository root; the
+ * unit test in src/config/example.test.ts fails when the two drift apart.
+ */
+export const EXAMPLE_CONFIG = `# devcontext configuration
+#
+# Copy this file to devcontext.yaml (or devcontext.local.yaml, which is
+# git ignored) and adjust it. Every relative path is resolved against the
+# directory of this file. \`\${ENV_VAR}\` and \`\${ENV_VAR:-fallback}\` are expanded
+# from the environment, so no secret has to live in this file.
+version: 1
+
+# The SQLite database is the primary target of every sync.
+database:
+  path: .devcontext/devcontext.db
+
+# How the sync talks to the APIs.
+sync:
+  # Minimum pause between two API calls. Raise it to be gentle with the API,
+  # lower it (0) to go as fast as the rate limit allows.
+  minDelayMs: 250
+  maxRetries: 5
+  retryBaseMs: 1000
+  # Wait for the rate limit window to reset instead of running into HTTP 403.
+  respectRateLimit: true
+  rateLimitReserve: 50
+  requestTimeoutMs: 60000
+  pageSize: 100
+  progress: true
+
+# Extra outputs. They are written from the database after every sync and are
+# meant for grepping and reading; the database stays the source of truth.
+outputs:
+  yaml:
+    enabled: true
+    path: .devcontext/yaml
+  markdown:
+    enabled: true
+    path: .devcontext/markdown
+  json:
+    enabled: false
+    path: .devcontext/json
+
+# Settings for \`devcontext web\`.
+web:
+  port: 4173
+  host: 127.0.0.1
+  open: false
+
+github:
+  hosts:
+    - name: github.com
+      apiUrl: https://api.github.com
+      tokenEnv: GITHUB_TOKEN
+    # A GitHub Enterprise Server looks like this:
+    # - name: ghe
+    #   apiUrl: https://github.example.com/api/v3
+    #   tokenEnv: GHE_TOKEN
+
+  # Defaults for every repository; can be overridden per repository below.
+  sync:
+    issues: true
+    issueComments: true
+    issueTimeline: true
+    pullRequests: true
+    pullRequestReviews: true
+    pullRequestComments: true
+    pullRequestCommits: true
+    pullRequestFiles: true
+    workflows: true
+    workflowRuns: true
+    workflowJobs: true
+    # Job logs are large; enable them per repository when you need them.
+    workflowLogs: false
+    releases: false
+
+jira:
+  sites:
+    - name: acme
+      baseUrl: https://acme.atlassian.net
+      # Jira Cloud: apiVersion 3 with basic auth (email + API token).
+      # Jira Data Center: apiVersion 2 with auth "bearer" and a personal access token.
+      apiVersion: '3'
+      auth: basic
+      email: \${JIRA_EMAIL}
+      tokenEnv: JIRA_API_TOKEN
+      # Custom fields get readable names. \`devcontext jira fields\` lists what
+      # your site offers; storyPoints, epicLink and sprint are understood by
+      # devcontext itself and fill dedicated database columns.
+      fields:
+        customfield_10016: storyPoints
+        customfield_10014: epicLink
+        customfield_10020: sprint
+
+# A project links any number of GitHub repositories and Jira projects.
+projects:
+  - key: acme-platform
+    name: ACME Platform
+    description: Everything the platform team works on.
+    github:
+      - repo: acme/platform
+        host: github.com
+        # How far back the initial sync should go. Leave it out to fetch
+        # everything the API returns.
+        since: 12mo
+        maxWorkflowRuns: 250
+        sync:
+          workflowLogs: true
+      - repo: acme/platform-docs
+        since: 6mo
+        sync:
+          workflows: false
+          workflowRuns: false
+    jira:
+      - site: acme
+        project: PLAT
+        since: 12mo
+        # Extra JQL every synced work item has to match. Use it to keep
+        # security issues out of the local database.
+        filter: labels != security AND issuetype != "Vulnerability"
+        # Restrict the sprint sync to specific boards; omit to use every board
+        # of the project.
+        boards: []
+        fields:
+          customfield_10101: teamName
+        sync:
+          workitems: true
+          comments: true
+          changelog: true
+          links: true
+          attachments: true
+          sprints: true
+          worklogs: false
+`;

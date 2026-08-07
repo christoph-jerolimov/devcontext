@@ -1,0 +1,255 @@
+import type { GithubHost, SyncSettings } from '../../config/types.js';
+import { CliError } from '../../util/errors.js';
+import type { Logger } from '../../util/logger.js';
+import type { JsonObject } from '../../util/json.js';
+import { HttpClient, HttpError } from '../../sync/httpClient.js';
+import type { ProgressReporter } from '../../sync/progress.js';
+import { RateLimiter } from '../../sync/rateLimiter.js';
+
+const USER_AGENT = 'devcontext-cli';
+
+export interface GithubClientOptions {
+  host: GithubHost;
+  settings: SyncSettings;
+  progress: ProgressReporter;
+  logger: Logger;
+}
+
+export interface RateLimitInfo {
+  limit: number | null;
+  remaining: number | null;
+  resetAt: string | null;
+}
+
+/** Thin REST client for github.com and GitHub Enterprise Server. */
+export class GithubClient {
+  private readonly http: HttpClient;
+  private readonly rateLimiter: RateLimiter;
+  readonly host: GithubHost;
+
+  constructor(options: GithubClientOptions) {
+    this.host = options.host;
+
+    if (!options.host.token) {
+      options.logger.warn(
+        `No token for GitHub host "${options.host.name}" (expected in $${options.host.tokenEnv}). ` +
+          'Continuing unauthenticated: private data is invisible and the rate limit is 60 requests per hour.',
+      );
+    }
+
+    this.rateLimiter = new RateLimiter({
+      minDelayMs: options.settings.minDelayMs,
+      respectRateLimit: options.settings.respectRateLimit,
+      reserve: options.settings.rateLimitReserve,
+      logger: options.logger,
+    });
+
+    const headers: Record<string, string> = {
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+      'user-agent': USER_AGENT,
+    };
+    if (options.host.token) headers.authorization = `Bearer ${options.host.token}`;
+
+    this.http = new HttpClient({
+      baseUrl: options.host.apiUrl,
+      headers,
+      rateLimiter: this.rateLimiter,
+      progress: options.progress,
+      logger: options.logger,
+      maxRetries: options.settings.maxRetries,
+      retryBaseMs: options.settings.retryBaseMs,
+      timeoutMs: options.settings.requestTimeoutMs,
+      label: `GitHub (${options.host.name})`,
+    });
+  }
+
+  get rateLimit(): RateLimitInfo {
+    const state = this.rateLimiter.state;
+    return { limit: state.limit, remaining: state.remaining, resetAt: state.resetAt };
+  }
+
+  private get pageSize(): number {
+    return 100;
+  }
+
+  /** Yields every page of a paginated collection endpoint. */
+  async *paginate(
+    path: string,
+    query: Record<string, string | number | boolean | undefined> = {},
+  ): AsyncGenerator<JsonObject[]> {
+    let url: string | null = this.http.buildUrl(path, { per_page: this.pageSize, ...query });
+
+    while (url) {
+      const response = await this.http.request<unknown>(url);
+      const items = Array.isArray(response.data) ? (response.data as JsonObject[]) : [];
+      yield items;
+      url = nextPageUrl(response.headers.get('link'));
+    }
+  }
+
+  async collect(
+    path: string,
+    query: Record<string, string | number | boolean | undefined> = {},
+  ): Promise<JsonObject[]> {
+    const all: JsonObject[] = [];
+    for await (const page of this.paginate(path, query)) all.push(...page);
+    return all;
+  }
+
+  async getRepository(owner: string, repo: string): Promise<JsonObject> {
+    try {
+      const response = await this.http.request<JsonObject>(`/repos/${owner}/${repo}`);
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        throw new CliError(`Repository ${owner}/${repo} was not found on ${this.host.name}.`, {
+          hint: 'Check the spelling and make sure the token can read the repository.',
+        });
+      }
+      throw error;
+    }
+  }
+
+  /** Issues *and* pull requests, newest updates first, optionally since a date. */
+  issues(
+    owner: string,
+    repo: string,
+    options: { since?: string | null; state?: 'open' | 'closed' | 'all' } = {},
+  ): AsyncGenerator<JsonObject[]> {
+    return this.paginate(`/repos/${owner}/${repo}/issues`, {
+      state: options.state ?? 'all',
+      sort: 'updated',
+      direction: 'asc',
+      ...(options.since ? { since: options.since } : {}),
+    });
+  }
+
+  issueComments(owner: string, repo: string, issueNumber: number): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`);
+  }
+
+  issueTimeline(owner: string, repo: string, issueNumber: number): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/issues/${issueNumber}/timeline`);
+  }
+
+  pullRequests(
+    owner: string,
+    repo: string,
+    options: { state?: 'open' | 'closed' | 'all' } = {},
+  ): AsyncGenerator<JsonObject[]> {
+    return this.paginate(`/repos/${owner}/${repo}/pulls`, {
+      state: options.state ?? 'all',
+      sort: 'updated',
+      direction: 'desc',
+    });
+  }
+
+  async pullRequest(owner: string, repo: string, number: number): Promise<JsonObject> {
+    const response = await this.http.request<JsonObject>(`/repos/${owner}/${repo}/pulls/${number}`);
+    return response.data;
+  }
+
+  pullRequestReviews(owner: string, repo: string, number: number): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/pulls/${number}/reviews`);
+  }
+
+  pullRequestReviewComments(owner: string, repo: string, number: number): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/pulls/${number}/comments`);
+  }
+
+  pullRequestCommits(owner: string, repo: string, number: number): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/pulls/${number}/commits`);
+  }
+
+  pullRequestFiles(owner: string, repo: string, number: number): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/pulls/${number}/files`);
+  }
+
+  labels(owner: string, repo: string): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/labels`);
+  }
+
+  milestones(owner: string, repo: string): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/milestones`, { state: 'all' });
+  }
+
+  releases(owner: string, repo: string): Promise<JsonObject[]> {
+    return this.collect(`/repos/${owner}/${repo}/releases`);
+  }
+
+  async workflows(owner: string, repo: string): Promise<JsonObject[]> {
+    const response = await this.http.request<JsonObject>(
+      `/repos/${owner}/${repo}/actions/workflows`,
+      {
+        query: { per_page: this.pageSize },
+      },
+    );
+    const list = response.data?.workflows;
+    return Array.isArray(list) ? (list as JsonObject[]) : [];
+  }
+
+  /** Workflow runs are wrapped in an envelope, so pagination is manual. */
+  async *workflowRuns(
+    owner: string,
+    repo: string,
+    options: { created?: string | null; perPage?: number } = {},
+  ): AsyncGenerator<JsonObject[]> {
+    let page = 1;
+    for (;;) {
+      const response = await this.http.request<JsonObject>(`/repos/${owner}/${repo}/actions/runs`, {
+        query: {
+          per_page: options.perPage ?? this.pageSize,
+          page,
+          ...(options.created ? { created: `>=${options.created.slice(0, 10)}` } : {}),
+        },
+      });
+      const runs = Array.isArray(response.data?.workflow_runs)
+        ? (response.data.workflow_runs as JsonObject[])
+        : [];
+      if (runs.length === 0) return;
+      yield runs;
+      if (runs.length < (options.perPage ?? this.pageSize)) return;
+      page += 1;
+    }
+  }
+
+  async workflowRunJobs(owner: string, repo: string, runId: number): Promise<JsonObject[]> {
+    const jobs: JsonObject[] = [];
+    let page = 1;
+    for (;;) {
+      const response = await this.http.request<JsonObject>(
+        `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`,
+        { query: { per_page: this.pageSize, page, filter: 'all' } },
+      );
+      const items = Array.isArray(response.data?.jobs) ? (response.data.jobs as JsonObject[]) : [];
+      jobs.push(...items);
+      if (items.length < this.pageSize) return jobs;
+      page += 1;
+    }
+  }
+
+  /** Plain text log of a single job; `null` when GitHub expired the logs. */
+  async jobLogs(owner: string, repo: string, jobId: number): Promise<string | null> {
+    const response = await this.http.request<string>(
+      `/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`,
+      {
+        responseType: 'text',
+        allowStatus: [404, 410],
+        headers: { accept: 'application/vnd.github+json' },
+      },
+    );
+    if (response.status === 404 || response.status === 410) return null;
+    return typeof response.data === 'string' ? response.data : null;
+  }
+}
+
+/** Extracts the `rel="next"` URL from a GitHub `Link` header. */
+export function nextPageUrl(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(',')) {
+    const match = /<([^>]+)>\s*;\s*rel="([^"]+)"/.exec(part.trim());
+    if (match && match[2] === 'next') return match[1] ?? null;
+  }
+  return null;
+}

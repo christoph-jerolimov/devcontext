@@ -1,0 +1,606 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { parseConfig } from '../config/load.js';
+import type { ResolvedConfig } from '../config/types.js';
+import { Database } from '../db/database.js';
+import { SyncJournal } from '../db/journal.js';
+import * as gh from '../db/queries/github.js';
+import * as jira from '../db/queries/jira.js';
+import { nullLogger } from '../util/logger.js';
+import { runSync } from './runner.js';
+
+/* -------------------------------------------------------------------------- */
+/* Fixtures                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const ISSUE = {
+  id: 100,
+  number: 12,
+  title: 'Sync is slow',
+  body: 'It takes ages',
+  state: 'open',
+  user: { id: 1, login: 'alice', type: 'User' },
+  labels: [{ id: 1, name: 'bug' }],
+  assignees: [{ id: 2, login: 'bob', type: 'User' }],
+  comments: 1,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-02-01T00:00:00Z',
+  html_url: 'https://github.com/acme/platform/issues/12',
+};
+
+const PULL_AS_ISSUE = {
+  id: 200,
+  number: 42,
+  title: 'Speed up the sync',
+  body: 'Batches the API calls',
+  state: 'closed',
+  user: { id: 1, login: 'alice', type: 'User' },
+  labels: [],
+  assignees: [],
+  comments: 0,
+  pull_request: { url: 'https://api.github.com/repos/acme/platform/pulls/42' },
+  created_at: '2024-01-10T00:00:00Z',
+  updated_at: '2024-03-01T00:00:00Z',
+  html_url: 'https://github.com/acme/platform/pull/42',
+};
+
+const WORKITEM = {
+  id: '10001',
+  key: 'PLAT-42',
+  fields: {
+    project: { key: 'PLAT' },
+    summary: 'Improve the sync',
+    description: {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Body text' }] }],
+    },
+    issuetype: { name: 'Story' },
+    status: { name: 'In Progress', statusCategory: { name: 'In Progress' } },
+    assignee: { displayName: 'Alice', accountId: 'a-1' },
+    labels: ['backend'],
+    components: [],
+    fixVersions: [],
+    created: '2024-01-01T10:00:00.000+0000',
+    updated: '2024-02-01T10:00:00.000+0000',
+    customfield_10016: 5,
+    customfield_10020: [{ id: 33, name: 'Sprint 7' }],
+    comment: {
+      total: 1,
+      comments: [
+        {
+          id: '5000',
+          author: { displayName: 'Bob', accountId: 'b-1' },
+          body: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Agreed' }] }],
+          },
+          created: '2024-01-15T10:00:00.000+0000',
+        },
+      ],
+    },
+    issuelinks: [
+      {
+        id: '7000',
+        type: { name: 'Blocks', outward: 'blocks' },
+        outwardIssue: { key: 'PLAT-43', fields: { summary: 'Docs', status: { name: 'To Do' } } },
+      },
+    ],
+    attachment: [],
+  },
+  // Deliberately incomplete so the syncer has to fetch the full changelog.
+  changelog: { total: 2, histories: [] },
+};
+
+const CHANGELOG_HISTORIES = [
+  {
+    id: '900',
+    author: { displayName: 'Alice', accountId: 'a-1' },
+    created: '2024-01-20T10:00:00.000+0000',
+    items: [{ field: 'status', fieldtype: 'jira', fromString: 'To Do', toString: 'In Progress' }],
+  },
+  {
+    id: '901',
+    author: { displayName: 'Alice', accountId: 'a-1' },
+    created: '2024-01-21T10:00:00.000+0000',
+    items: [{ field: 'labels', fieldtype: 'jira', fromString: '', toString: 'backend' }],
+  },
+];
+
+/* -------------------------------------------------------------------------- */
+/* Stubbed API                                                                 */
+/* -------------------------------------------------------------------------- */
+
+const requestedUrls: string[] = [];
+
+function json(body: unknown, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'x-ratelimit-limit': '5000',
+      'x-ratelimit-remaining': '4999',
+      ...headers,
+    },
+  });
+}
+
+function route(rawUrl: string): Response {
+  const url = new URL(rawUrl);
+  const path = url.pathname;
+
+  // ---- GitHub -------------------------------------------------------------
+  if (path === '/repos/acme/platform') {
+    return json({
+      id: 7,
+      name: 'platform',
+      full_name: 'acme/platform',
+      owner: { login: 'acme' },
+      private: false,
+      default_branch: 'main',
+      html_url: 'https://github.com/acme/platform',
+      updated_at: '2024-03-01T00:00:00Z',
+    });
+  }
+  if (path === '/repos/acme/platform/labels') {
+    return json([{ id: 1, name: 'bug', color: 'ff0000' }]);
+  }
+  if (path === '/repos/acme/platform/milestones') {
+    return json([{ id: 3, number: 1, title: 'v1.0', state: 'open' }]);
+  }
+  if (path === '/repos/acme/platform/issues') {
+    return json([ISSUE, PULL_AS_ISSUE]);
+  }
+  if (path === '/repos/acme/platform/issues/12/comments') {
+    return json([
+      {
+        id: 500,
+        user: { id: 2, login: 'bob', type: 'User' },
+        body: 'Confirmed',
+        created_at: '2024-01-05T00:00:00Z',
+      },
+    ]);
+  }
+  if (path === '/repos/acme/platform/issues/42/comments') return json([]);
+  if (path === '/repos/acme/platform/issues/12/timeline') {
+    return json([
+      {
+        id: 900,
+        event: 'labeled',
+        actor: { login: 'alice' },
+        label: { name: 'bug' },
+        created_at: '2024-01-02T00:00:00Z',
+      },
+      {
+        id: 901,
+        event: 'assigned',
+        actor: { login: 'alice' },
+        assignee: { login: 'bob' },
+        created_at: '2024-01-03T00:00:00Z',
+      },
+    ]);
+  }
+  if (path === '/repos/acme/platform/issues/42/timeline') {
+    return json([
+      { id: 902, event: 'closed', actor: { login: 'alice' }, created_at: '2024-03-01T00:00:00Z' },
+    ]);
+  }
+  if (path === '/repos/acme/platform/pulls/42') {
+    return json({
+      ...PULL_AS_ISSUE,
+      merged: true,
+      merged_at: '2024-03-01T00:00:00Z',
+      merged_by: { login: 'bob' },
+      head: { ref: 'feature/speed', sha: 'aaa111', repo: { full_name: 'acme/platform' } },
+      base: { ref: 'main', sha: 'bbb222' },
+      additions: 40,
+      deletions: 12,
+      changed_files: 3,
+      commits: 2,
+    });
+  }
+  if (path === '/repos/acme/platform/pulls/42/reviews') {
+    return json([
+      {
+        id: 600,
+        user: { id: 2, login: 'bob', type: 'User' },
+        state: 'APPROVED',
+        body: 'Looks good',
+        submitted_at: '2024-02-28T00:00:00Z',
+      },
+    ]);
+  }
+  if (path === '/repos/acme/platform/pulls/42/comments') {
+    return json([
+      {
+        id: 700,
+        pull_request_review_id: 600,
+        user: { id: 2, login: 'bob', type: 'User' },
+        body: 'Nice',
+        path: 'src/sync.ts',
+        line: 10,
+        diff_hunk: '@@ -1 +1 @@',
+        created_at: '2024-02-28T00:00:00Z',
+      },
+    ]);
+  }
+  if (path === '/repos/acme/platform/pulls/42/commits') {
+    return json([
+      {
+        sha: 'c0ffee1',
+        commit: {
+          message: 'Batch the calls',
+          author: { name: 'Alice', email: 'alice@acme.test', date: '2024-02-20T00:00:00Z' },
+          committer: { name: 'Alice', date: '2024-02-20T00:00:00Z' },
+        },
+        author: { login: 'alice' },
+        parents: [{ sha: 'beef' }],
+      },
+    ]);
+  }
+  if (path === '/repos/acme/platform/pulls/42/files') {
+    return json([
+      {
+        filename: 'src/sync.ts',
+        status: 'modified',
+        additions: 40,
+        deletions: 12,
+        changes: 52,
+        patch: '@@',
+      },
+    ]);
+  }
+  if (path === '/repos/acme/platform/actions/workflows') {
+    return json({
+      total_count: 1,
+      workflows: [{ id: 55, name: 'CI', path: '.github/workflows/ci.yml', state: 'active' }],
+    });
+  }
+  if (path === '/repos/acme/platform/actions/runs') {
+    return json({
+      total_count: 1,
+      workflow_runs: [
+        {
+          id: 1001,
+          workflow_id: 55,
+          name: 'CI',
+          run_number: 17,
+          run_attempt: 1,
+          event: 'push',
+          status: 'completed',
+          conclusion: 'failure',
+          head_branch: 'main',
+          head_sha: 'aaa111',
+          actor: { login: 'alice' },
+          created_at: '2024-03-02T00:00:00Z',
+          updated_at: '2024-03-02T00:10:00Z',
+        },
+      ],
+    });
+  }
+  if (path === '/repos/acme/platform/actions/runs/1001/jobs') {
+    return json({
+      total_count: 1,
+      jobs: [
+        {
+          id: 2001,
+          run_id: 1001,
+          name: 'build',
+          status: 'completed',
+          conclusion: 'failure',
+          started_at: '2024-03-02T00:00:00Z',
+          completed_at: '2024-03-02T00:05:00Z',
+          runner_name: 'ubuntu-latest',
+          steps: [
+            {
+              number: 1,
+              name: 'Checkout',
+              status: 'completed',
+              conclusion: 'success',
+              started_at: '2024-03-02T00:00:00Z',
+              completed_at: '2024-03-02T00:00:30Z',
+            },
+            {
+              number: 2,
+              name: 'Test',
+              status: 'completed',
+              conclusion: 'failure',
+              started_at: '2024-03-02T00:00:30Z',
+              completed_at: '2024-03-02T00:05:00Z',
+            },
+          ],
+        },
+      ],
+    });
+  }
+  if (path === '/repos/acme/platform/actions/jobs/2001/logs') {
+    return new Response('2024-03-02T00:00:01Z npm test\nfailed', { status: 200 });
+  }
+
+  // ---- Jira ---------------------------------------------------------------
+  if (path === '/rest/api/3/project/PLAT') {
+    return json({ id: '1', key: 'PLAT', name: 'Platform', projectTypeKey: 'software' });
+  }
+  if (path === '/rest/api/3/field') {
+    return json([
+      { id: 'summary', name: 'Summary', custom: false, schema: { type: 'string' } },
+      {
+        id: 'customfield_10016',
+        name: 'Story point estimate',
+        custom: true,
+        schema: { type: 'number' },
+      },
+    ]);
+  }
+  if (path === '/rest/api/3/search/approximate-count') {
+    return json({ count: 1 });
+  }
+  if (path === '/rest/api/3/search/jql') {
+    return json({ issues: [WORKITEM] });
+  }
+  if (path === '/rest/api/3/issue/PLAT-42/changelog') {
+    return json({ total: 2, values: CHANGELOG_HISTORIES });
+  }
+  if (path === '/rest/agile/1.0/board') {
+    return json({
+      isLast: true,
+      total: 1,
+      values: [{ id: 1, name: 'PLAT board', type: 'scrum', location: { projectKey: 'PLAT' } }],
+    });
+  }
+  if (path === '/rest/agile/1.0/board/1/sprint') {
+    return json({
+      isLast: true,
+      values: [
+        {
+          id: 33,
+          name: 'Sprint 7',
+          state: 'active',
+          startDate: '2024-01-15T00:00:00.000Z',
+          endDate: '2024-01-29T00:00:00.000Z',
+          originBoardId: 1,
+        },
+      ],
+    });
+  }
+  if (path === '/rest/agile/1.0/sprint/33/issue') {
+    return json({ total: 1, issues: [{ id: '10001', key: 'PLAT-42' }] });
+  }
+
+  return new Response(JSON.stringify({ message: `unexpected request ${path}` }), { status: 404 });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Test                                                                        */
+/* -------------------------------------------------------------------------- */
+
+let workspace: string;
+let config: ResolvedConfig;
+
+const CONFIG_YAML = `
+sync:
+  minDelayMs: 0
+  progress: false
+github:
+  hosts:
+    - name: github.com
+      apiUrl: https://api.github.com
+      token: test-token
+jira:
+  sites:
+    - name: acme
+      baseUrl: https://acme.atlassian.net
+      email: bot@acme.test
+      token: test-token
+      fields:
+        customfield_10016: storyPoints
+        customfield_10020: sprint
+projects:
+  - key: demo
+    name: Demo
+    github:
+      - repo: acme/platform
+        sync:
+          workflowLogs: true
+    jira:
+      - site: acme
+        project: PLAT
+        filter: labels != security
+`;
+
+beforeEach(() => {
+  workspace = mkdtempSync(join(tmpdir(), 'devcontext-test-'));
+  config = parseConfig(CONFIG_YAML, { configPath: join(workspace, 'devcontext.yaml') });
+  requestedUrls.length = 0;
+
+  vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    requestedUrls.push(url);
+    return route(url);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  rmSync(workspace, { recursive: true, force: true });
+});
+
+describe('runSync', () => {
+  it('downloads everything on the initial sync and writes the outputs', async () => {
+    const summary = await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: true,
+    });
+
+    expect(summary.results.map((result) => [result.source, result.status, result.mode])).toEqual([
+      ['github', 'completed', 'initial'],
+      ['jira', 'completed', 'initial'],
+    ]);
+    expect(summary.apiCalls).toBeGreaterThan(10);
+
+    const db = Database.open(config.databasePath, { create: false, readOnly: true });
+    try {
+      // --- GitHub ---------------------------------------------------------
+      expect(gh.listRepositories(db).map((repo) => repo.full_name)).toEqual(['acme/platform']);
+
+      const issues = gh.listIssues(db, { state: 'all' });
+      expect(issues.map((issue) => issue.number)).toEqual([12]);
+      expect(issues[0]?.labels).toBe('["bug"]');
+
+      expect(gh.listComments(db, 'acme/platform', 12)).toHaveLength(1);
+      expect(gh.listEvents(db, 'acme/platform', 12).map((event) => event.event)).toEqual([
+        'labeled',
+        'assigned',
+      ]);
+
+      const pulls = gh.listPullRequests(db, { state: 'all' });
+      expect(pulls.map((pull) => pull.number)).toEqual([42]);
+      expect(pulls[0]?.merged).toBe(1);
+      expect(pulls[0]?.additions).toBe(40);
+      expect(gh.listReviews(db, 'acme/platform', 42).map((review) => review.state)).toEqual([
+        'APPROVED',
+      ]);
+      expect(gh.listReviewComments(db, 'acme/platform', 42)).toHaveLength(1);
+      expect(gh.listCommits(db, 'acme/platform', 42).map((commit) => commit.sha)).toEqual([
+        'c0ffee1',
+      ]);
+      expect(gh.listChangedFiles(db, 'acme/platform', 42)).toHaveLength(1);
+      // The closed event of the pull request landed in the event table as well.
+      expect(gh.listEvents(db, 'acme/platform', 42).map((event) => event.event)).toEqual([
+        'closed',
+      ]);
+
+      expect(gh.listWorkflows(db)).toHaveLength(1);
+      const runs = gh.listWorkflowRuns(db);
+      expect(runs.map((run) => run.conclusion)).toEqual(['failure']);
+      const jobs = gh.listWorkflowJobs(db, { runId: runs[0]!.id });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]?.duration_ms).toBe(300_000);
+      const steps = gh.listWorkflowSteps(db, { jobId: jobs[0]!.id });
+      expect(steps.map((step) => step.name)).toEqual(['Checkout', 'Test']);
+      expect(gh.getJobLog(db, 2001)?.content).toContain('npm test');
+
+      // --- Jira -----------------------------------------------------------
+      const workitems = jira.listWorkitems(db);
+      expect(workitems.map((item) => item.key)).toEqual(['PLAT-42']);
+      expect(workitems[0]?.story_points).toBe(5);
+      expect(workitems[0]?.sprint_name).toBe('Sprint 7');
+      expect(workitems[0]?.description).toBe('Body text');
+      expect(jira.listJiraComments(db, 'PLAT-42')).toHaveLength(1);
+      // Two history entries, fetched from the changelog endpoint.
+      expect(jira.listChangelog(db, 'PLAT-42').map((entry) => entry.field)).toEqual([
+        'status',
+        'labels',
+      ]);
+      expect(jira.listLinks(db, 'PLAT-42')).toHaveLength(1);
+      expect(jira.listSprints(db).map((sprint) => sprint.name)).toEqual(['Sprint 7']);
+      expect(jira.listSprintWorkitems(db, 33).map((item) => item.key)).toEqual(['PLAT-42']);
+      expect(
+        jira.listJiraFields(db, { onlyMapped: true }).map((field) => field.mapped_name),
+      ).toEqual(['storyPoints']);
+
+      // --- Bookkeeping ----------------------------------------------------
+      const journal = new SyncJournal(db);
+      expect(journal.getCursor('github:github.com/acme/platform:issues')).toBe(
+        '2024-03-01T00:00:00Z',
+      );
+      expect(journal.getCursor('jira:acme/PLAT:workitems')).toBe('2024-02-01T10:00:00.000Z');
+      expect(journal.listRuns()).toHaveLength(2);
+      expect(journal.listRuns().every((run) => run.status === 'completed')).toBe(true);
+    } finally {
+      db.close();
+    }
+
+    // --- Outputs ----------------------------------------------------------
+    const markdown = readFileSync(
+      join(config.outputs.markdown.path, 'github/acme__platform/issues/000012.md'),
+      'utf8',
+    );
+    expect(markdown).toContain('# acme/platform#12 Sync is slow');
+    expect(markdown).toContain('Confirmed');
+
+    const yaml = readFileSync(
+      join(config.outputs.yaml.path, 'jira/acme/PLAT/workitems/PLAT-42.yaml'),
+      'utf8',
+    );
+    expect(yaml).toContain('key: PLAT-42');
+    expect(yaml).toContain('storyPoints: 5');
+
+    expect(
+      readFileSync(join(config.outputs.markdown.path, 'github/acme__platform/index.md'), 'utf8'),
+    ).toContain('Pull requests (1)');
+  });
+
+  it('continues from the stored cursor on the next run', async () => {
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    requestedUrls.length = 0;
+
+    const summary = await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    expect(summary.results.map((result) => result.mode)).toEqual(['incremental', 'incremental']);
+
+    const issueRequest = requestedUrls.find((url) => url.includes('/issues?'));
+    expect(issueRequest).toContain('since=2024-03-01T00%3A00%3A00Z');
+
+    const jqlRequest = requestedUrls.find((url) => url.includes('/search/jql'));
+    expect(jqlRequest).toBeDefined();
+  });
+
+  it('leaves the database untouched on a dry run', async () => {
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: true,
+      progress: false,
+      writeOutputs: true,
+    });
+
+    const db = Database.open(config.databasePath, { create: false, readOnly: true });
+    try {
+      expect(gh.listIssues(db, { state: 'all' })).toHaveLength(0);
+      expect(jira.listWorkitems(db)).toHaveLength(0);
+      // The run itself is still recorded so the history stays complete.
+      expect(new SyncJournal(db).listRuns()).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('only syncs the requested source', async () => {
+    const summary = await runSync({
+      config,
+      logger: nullLogger,
+      sources: ['jira'],
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    expect(summary.results.map((result) => result.source)).toEqual(['jira']);
+    expect(requestedUrls.every((url) => !url.includes('api.github.com'))).toBe(true);
+  });
+});

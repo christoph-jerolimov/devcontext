@@ -1,0 +1,148 @@
+# Sync
+
+```bash
+devcontext sync [options]
+```
+
+One `sync` run walks every configured project, and inside a project every
+GitHub repository and every Jira project. Each of those targets is one _run_ in
+the database, and every resource inside a target (issues, pull requests,
+workflow runs, work items, sprints) is one _operation_.
+
+## Initial and incremental syncs
+
+The first sync of a target is an **initial sync**: it downloads everything the
+configuration asks for, bounded by `since` if you set one.
+
+Every operation stores a cursor when it finishes — usually the newest
+`updated_at` it saw. The next run reads that cursor and asks the API only for
+changes:
+
+| Resource                          | Cursor              | How it is used                                                                                                   |
+| --------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| GitHub issues (and pull requests) | newest `updated_at` | `GET /issues?since=<cursor>&sort=updated&direction=asc`                                                          |
+| GitHub workflow runs              | newest `created_at` | `GET /actions/runs?created=>=<cursor>`, stops as soon as older runs appear                                       |
+| Jira work items                   | newest `updated`    | `... AND updated >= "<cursor>"`, rewound by five minutes because JQL resolves to minutes in the server time zone |
+
+Anything the API returns again is simply written again, so re-fetching the
+boundary item is harmless.
+
+`--full` ignores the stored cursors and downloads everything a second time.
+Use it after changing the sync flags of a repository, or when you suspect a gap.
+
+## What is stored
+
+### GitHub
+
+- the repository, its labels and milestones
+- every issue with author, assignees, labels, milestone and body
+- every comment of every issue and pull request
+- the **complete timeline** of each issue and pull request as one row per event:
+  labeled, unlabeled, assigned, unassigned, closed, reopened, renamed (with the
+  old and the new title), referenced, cross-referenced, review requested, merged,
+  head ref force-pushed, …
+- every pull request with additions, deletions, changed files, merge state and
+  merge commit
+- every review with its verdict and body, and every inline review comment with
+  its diff hunk, path and line
+- the commit list of every pull request
+- the changed files including their patch
+- workflows, workflow runs, jobs and every step of every job
+- optionally the complete log of every job (`workflowLogs: true`)
+
+### Jira
+
+- the project and the full field catalogue, including your friendly names
+- every work item matching the project and the optional JQL filter, with the
+  description converted from Atlassian Document Format to markdown
+- every comment
+- the **complete history** as one row per changed field, so "when did this move
+  to In Progress", "who removed that label" and "which sprint did it slip out
+  of" are plain SQL questions
+- issue links and attachment metadata
+- boards, sprints and the sprint membership of every work item
+- optionally work logs
+
+Every row also keeps the untouched API payload in its `raw` column.
+
+## Rate limits and pacing
+
+Every API call goes through a rate limiter that
+
+- keeps at least `sync.minDelayMs` between two calls (default 250 ms),
+- reads `x-ratelimit-remaining` / `x-ratelimit-reset` and pauses until the
+  window resets once fewer than `sync.rateLimitReserve` calls are left,
+- honours `Retry-After` on 429 and on GitHub's secondary rate limits,
+- retries 408/425/429/5xx and network errors with exponential backoff
+  (`retryBaseMs`, doubling, capped at one minute, `maxRetries` times).
+
+```bash
+devcontext sync --delay 1000     # at most one API call per second
+```
+
+Set `respectRateLimit: false` only if a proxy in front of the API strips the
+rate limit headers.
+
+## Progress
+
+```
+[##########--------------]  42% | 615/1442 calls | 388 items | 3m 12s elapsed | ~4m 20s left | acme/platform: pull requests
+```
+
+The expectation grows while the sync learns more: after listing a page of 100
+issues the syncer knows it needs two more calls per issue (comments and
+timeline) and adds 200 to the expected total; after counting the Jira work items
+it adds one call per item for the history. That is why the percentage is honest
+from the start of a phase instead of jumping when a phase ends.
+
+Outside a terminal (CI, `| tee`) the progress line is not redrawn; a summary
+line is logged every 10 % instead. `--no-progress` turns it off completely.
+
+## Where a sync is recorded
+
+Everything lands in the database:
+
+```sql
+-- one row per target and run
+SELECT id, source, target, mode, status, api_calls, items_synced, duration_ms
+  FROM sync_runs ORDER BY started_at DESC LIMIT 10;
+
+-- one row per resource inside a run
+SELECT resource, status, api_calls, items_synced, cursor_before, cursor_after
+  FROM sync_operations WHERE run_id = 42;
+
+-- where the next incremental sync continues
+SELECT scope, cursor, updated_at FROM sync_state ORDER BY scope;
+```
+
+`devcontext status` shows the same information without SQL.
+
+A run that never finished (because the process was killed) is marked
+`interrupted` at the start of the next sync. Since every operation commits its
+cursor when it completes, an interrupted sync only repeats the resource it was
+working on.
+
+## Options
+
+| Option                        | Description                                                         |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `-p, --project <key>`         | Only this project, repeatable                                       |
+| `-s, --source <github\|jira>` | Only this source, repeatable                                        |
+| `-t, --target <name>`         | Only this repository (`owner/name`) or Jira project key, repeatable |
+| `--full`                      | Ignore the stored cursors                                           |
+| `--dry-run`                   | Talk to the APIs, write nothing (the run is still recorded)         |
+| `--delay <ms>`                | Override `sync.minDelayMs`                                          |
+| `--no-progress`               | No progress indicator                                               |
+| `--no-outputs`                | Skip the yaml / markdown / json mirrors                             |
+| `-o, --output <format>`       | Format of the summary table                                         |
+
+The exit code is non-zero when at least one target failed; targets that
+succeeded keep their data and their cursor.
+
+## Scheduling
+
+devcontext has no daemon; use whatever scheduler you already have.
+
+```cron
+*/30 * * * * cd /home/me/work && /usr/local/bin/devcontext sync --quiet
+```
