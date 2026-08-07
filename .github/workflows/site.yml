@@ -43,6 +43,9 @@ jobs:
       - name: Check the rendered links
         run: npm run check:links --workspace @devcontext/site
 
+      - name: Check both syntax themes are wired up
+        run: npm run check:themes --workspace @devcontext/site
+
       - name: Upload the artifact
         uses: actions/upload-pages-artifact@v5
         with:

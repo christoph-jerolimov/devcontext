@@ -21,7 +21,21 @@ export default defineConfig({
     // keeps `unified` out of the dependency tree entirely.
     processor: satteri({ hastPlugins: [docsLinks(base), tableScroll()] }),
     shikiConfig: {
-      themes: { light: 'github-light', dark: 'github-dark' },
+      themes: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' },
+      /*
+       * Emit both themes as custom properties and bake neither in.
+       *
+       * With a default colour, Shiki writes one theme into an inline `color`
+       * and leaves the other in `--shiki-dark` — and if no CSS ever reads that
+       * variable, the page silently shows the light palette on both grounds.
+       * That is what was happening here: dark mode rendered github-light's
+       * navy strings on a near-black background at 1.4:1.
+       *
+       * With `defaultColor: false` there is no inline colour to forget about,
+       * so the stylesheet in docs.css has to choose, and dark cannot fall back
+       * to the wrong palette by omission.
+       */
+      defaultColor: false,
       wrap: false,
     },
   },
