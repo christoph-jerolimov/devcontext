@@ -7,7 +7,7 @@ import {
   secretsReport,
   storageReport,
 } from '../audit/index.js';
-import { printOutput, renderKeyValues, renderTable, truncate } from '../output/format.js';
+import { bold, printOutput, renderKeyValues, renderTable, truncate } from '../output/format.js';
 import type { OutputFormat } from '../output/format.js';
 import { CliError } from '../util/errors.js';
 import { addOutputOptions, openReadContext, parseLimit } from './shared.js';
@@ -242,16 +242,24 @@ function bytes(value: number): string {
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GiB`;
 }
 
-function headingFor(title: string, format: OutputFormat): string {
+/*
+ * The escapes go through `bold` rather than being written out here.
+ *
+ * They were written out here, and the ESC byte was missing — so every heading
+ * printed a literal "[1m── Where the data lives ──[0m". Hand written escapes
+ * also ignore whether colour is wanted at all, and this output is piped into
+ * `less` and `grep` often enough for that to matter.
+ */
+export function headingFor(title: string, format: OutputFormat): string {
   if (format === 'markdown') return `## ${title}\n`;
   if (format === 'plain') return `# ${title}`;
-  return `[1m── ${title} ──[0m`;
+  return bold(`── ${title} ──`);
 }
 
-function subheadingFor(title: string, format: OutputFormat): string {
+export function subheadingFor(title: string, format: OutputFormat): string {
   if (format === 'markdown') return `### ${title}\n`;
   if (format === 'plain') return `## ${title}`;
-  return `[1m${title}[0m`;
+  return bold(title);
 }
 
 function noteFor(text: string, format: OutputFormat): string {
