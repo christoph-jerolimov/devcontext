@@ -1,40 +1,24 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 
 import { api, formatRelative, parseList } from '../api.ts';
-import type { IssueDocument, Sprint, Workitem } from '../api.ts';
-import { Badge, Labels, Panel, StateMessage, useAsync } from '../components/common.tsx';
+import type { Sprint, Workitem } from '../api.ts';
+import {
+  Badge,
+  Labels,
+  Panel,
+  StateMessage,
+  useAsync,
+  useSelection,
+} from '../components/common.tsx';
 import { DetailPanel } from '../components/DetailPanel.tsx';
-
-function useDocument() {
-  const [selection, setSelection] = useState<(() => Promise<IssueDocument>) | null>(null);
-  const [key, setKey] = useState(0);
-  const { data, error, loading } = useAsync<IssueDocument | null>(
-    () => (selection ? selection() : Promise.resolve(null)),
-    [key],
-  );
-
-  return {
-    document: selection ? data : null,
-    error,
-    loading: Boolean(selection) && loading,
-    open: (loader: () => Promise<IssueDocument>) => {
-      setSelection(() => loader);
-      setKey((value) => value + 1);
-    },
-    close: () => {
-      setSelection(null);
-      setKey((value) => value + 1);
-    },
-  };
-}
+import { useUrlState } from '../router.ts';
 
 export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
-  const [project, setProject] = useState('');
-  const [type, setType] = useState('');
-  const [category, setCategory] = useState('');
-  const [query, setQuery] = useState('');
-  const detail = useDocument();
+  const [project, setProject] = useUrlState('project');
+  const [type, setType] = useUrlState('type');
+  const [category, setCategory] = useUrlState('category');
+  const [query, setQuery] = useUrlState('q');
+  const detail = useSelection((reference) => api.workitem(reference));
 
   const { data, error, loading } = useAsync<Workitem[]>(
     () =>
@@ -106,7 +90,7 @@ export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
             </thead>
             <tbody>
               {data.map((item) => (
-                <tr key={item.key} onClick={() => detail.open(() => api.workitem(item.key))}>
+                <tr key={item.key} onClick={() => detail.open(item.key)}>
                   <td>{item.key}</td>
                   <td className="muted">{item.type}</td>
                   <td>
@@ -139,8 +123,8 @@ export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
 }
 
 export function SprintsView(): ReactNode {
-  const [state, setState] = useState('');
-  const detail = useDocument();
+  const [state, setState] = useUrlState('state');
+  const detail = useSelection((reference) => api.sprint(Number(reference)));
 
   const { data, error, loading } = useAsync<Sprint[]>(
     () => api.sprints({ state: state || undefined, limit: '200' }),
@@ -180,7 +164,7 @@ export function SprintsView(): ReactNode {
             </thead>
             <tbody>
               {data.map((sprint) => (
-                <tr key={sprint.id} onClick={() => detail.open(() => api.sprint(sprint.id))}>
+                <tr key={sprint.id} onClick={() => detail.open(String(sprint.id))}>
                   <td className="right">{sprint.id}</td>
                   <td>{sprint.name}</td>
                   <td>

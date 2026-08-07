@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 
 import { api, formatRelative } from '../api.ts';
 import type { DigestEntry, DigestResponse } from '../api.ts';
 import { Panel, StateMessage, useAsync } from '../components/common.tsx';
+import { useUrlState } from '../router.ts';
 
 const WINDOWS: Array<{ label: string; days: number }> = [
   { label: 'yesterday', days: 1 },
@@ -52,8 +52,10 @@ function Entries({ title, entries }: { title: string; entries: DigestEntry[] }):
 }
 
 export function DigestView(): ReactNode {
-  const [days, setDays] = useState(7);
-  const [staleDays, setStaleDays] = useState(30);
+  const [windowDays, setWindowDays] = useUrlState('days', '7');
+  const [staleWindow, setStaleWindow] = useUrlState('stale', '30');
+  const days = Number(windowDays) || 7;
+  const staleDays = Number(staleWindow) || 30;
 
   // Computed inside the loader, not during render: a fresh timestamp on every
   // render would change the dependency key and reload the view forever.
@@ -68,17 +70,14 @@ export function DigestView(): ReactNode {
         title="Digest"
         actions={
           <>
-            <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+            <select value={days} onChange={(event) => setWindowDays(event.target.value)}>
               {WINDOWS.map((window) => (
                 <option key={window.days} value={window.days}>
                   last {window.label}
                 </option>
               ))}
             </select>
-            <select
-              value={staleDays}
-              onChange={(event) => setStaleDays(Number(event.target.value))}
-            >
+            <select value={staleDays} onChange={(event) => setStaleWindow(event.target.value)}>
               {[14, 30, 60, 90].map((value) => (
                 <option key={value} value={value}>
                   stale after {value}d

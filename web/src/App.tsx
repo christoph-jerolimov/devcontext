@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
 
 import { api } from './api.ts';
 import type { Repository, StatusResponse } from './api.ts';
 import { StateMessage, useAsync } from './components/common.tsx';
+import { useLocation } from './router.ts';
 import { DigestView } from './views/Digest.tsx';
 import { IssuesView, PullRequestsView, WorkflowRunsView } from './views/GithubViews.tsx';
 import { InsightsView } from './views/Insights.tsx';
@@ -23,19 +23,9 @@ const ROUTES = [
 
 type RouteId = (typeof ROUTES)[number]['id'];
 
-function currentRoute(): RouteId {
-  const hash = window.location.hash.replace(/^#\/?/, '');
-  return (ROUTES.find((route) => route.id === hash)?.id ?? 'overview') as RouteId;
-}
-
 export function App(): ReactNode {
-  const [route, setRoute] = useState<RouteId>(currentRoute());
-
-  useEffect(() => {
-    const onHashChange = () => setRoute(currentRoute());
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  const { view } = useLocation();
+  const route = (ROUTES.find((entry) => entry.id === view)?.id ?? 'overview') as RouteId;
 
   const status = useAsync<StatusResponse>(() => api.status(), []);
   const repos = useAsync<Repository[]>(() => api.repos(), []);
@@ -47,11 +37,7 @@ export function App(): ReactNode {
         <ul>
           {ROUTES.map((entry) => (
             <li key={entry.id}>
-              <a
-                href={`#/${entry.id}`}
-                className={entry.id === route ? 'active' : undefined}
-                onClick={() => setRoute(entry.id)}
-              >
+              <a href={`#/${entry.id}`} className={entry.id === route ? 'active' : undefined}>
                 {entry.label}
               </a>
             </li>
