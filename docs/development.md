@@ -79,7 +79,7 @@ the types promise but the oldest supported runtime does not have.
 | `db/queries/`       | Every read query, shared by the CLI, the exporters and the web API              |
 | `documents/`        | Database rows → one complete "document" per issue / pull request / work item    |
 | `sources/github/`   | REST client, payload → row mapping, the repository syncer                       |
-| `sources/jira/`     | REST client, ADF → markdown, payload → row mapping, the project syncer          |
+| `sources/jira/`     | REST client, ADF and wiki markup → markdown, payload → row mapping, the syncer  |
 | `sync/`             | Rate limiter, progress reporter, HTTP client, the sync runner                   |
 | `output/`           | Table and document rendering for `default`, `json`, `markdown`, `plain`         |
 | `exporters/`        | The yaml / markdown / json mirrors                                              |
@@ -100,6 +100,10 @@ npm test -- src/config            # one directory
 npm run test:e2e                  # against the real GitHub API, see below
 npm run test:watch --workspace @devcontext/cli
 ```
+
+`npm test` runs both workspaces. The web viewer's tests cover the markdown
+parser in `web/src/markdown/`, which is pure and therefore worth pinning down:
+its job is to render every body correctly _and_ to never turn one into markup.
 
 `cli/src/sync/runner.integration.test.ts` runs a complete sync against a stubbed
 `fetch`: it asserts the rows that end up in the database, the cursors, the

@@ -54,7 +54,9 @@ Use it after changing the sync flags of a repository, or when you suspect a gap.
 
 - the project and the full field catalogue, including your friendly names
 - every work item matching the project and the optional JQL filter, with the
-  description converted from Atlassian Document Format to markdown
+  description converted to markdown — from Atlassian Document Format on Jira
+  Cloud (REST API v3) and from wiki markup on Data Center and Server (v2), so
+  the database holds one format whichever site you sync
 - every comment
 - the **complete history** as one row per changed field, so "when did this move
   to In Progress", "who removed that label" and "which sprint did it slip out

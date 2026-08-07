@@ -68,6 +68,11 @@ no native dependency to compile.
 | `jira_worklogs`                                        | Work log (`worklogs: true`)                                          |
 | `jira_boards`, `jira_sprints`, `jira_sprint_workitems` | Agile data                                                           |
 
+Descriptions and comment bodies are stored as markdown whichever Jira flavour
+they came from: Atlassian Document Format (Cloud, REST API v3) and wiki markup
+(Data Center and Server, v2) are both converted during sync. The untouched
+payload is still in the `raw` column if you need the original.
+
 ## Example queries
 
 ### Issues nobody has touched for three months

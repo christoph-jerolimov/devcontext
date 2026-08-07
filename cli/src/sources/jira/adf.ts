@@ -1,14 +1,18 @@
 import { arr, isObject, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
+import { wikiToMarkdown } from './wiki.js';
 
 /**
- * Converts Atlassian Document Format (the rich text format the Jira Cloud REST
- * API v3 returns) into markdown. Jira Server / API v2 returns wiki markup
- * strings, which are passed through unchanged.
+ * Converts whatever rich text a Jira site returns into markdown: Atlassian
+ * Document Format from Jira Cloud (REST API v3), wiki markup from Jira Data
+ * Center and Server (v2).
+ *
+ * Both flavours land in the database as markdown, so the exports, the CLI and
+ * the web viewer only ever deal with one format.
  */
 export function adfToMarkdown(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') return wikiToMarkdown(value) || null;
   if (!isObject(value)) return null;
   return renderNodes(arr(value, 'content')).trim() || null;
 }

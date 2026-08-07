@@ -104,16 +104,16 @@ export function DetailPanel({
                   </header>
                   <Body text={review.body ?? null} />
                   {(review.comments ?? []).map((comment) => (
-                    <p
+                    <div
                       className="review-comment"
                       key={comment.id ?? `${comment.path}-${comment.line}`}
                     >
                       <code>
                         {comment.path}
                         {comment.line ? `:${comment.line}` : ''}
-                      </code>{' '}
-                      {comment.body}
-                    </p>
+                      </code>
+                      <Body text={comment.body ?? null} />
+                    </div>
                   ))}
                 </article>
               ))}
