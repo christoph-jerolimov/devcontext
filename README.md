@@ -42,7 +42,7 @@ starts. Some features exist in one and not the other, on purpose.
 | **Actions**           | `gh workflows`, `runs`, `jobs`, `steps`, `logs`                    | **Workflow runs**, click for every job and step (logs via the API only) |
 | **Jira work items**   | `jira workitems`, `stories`, `epics`, `bugs`, …, `jira workitem X` | **Jira work items**, click for description, comments and full history   |
 | **Sprints**           | `jira sprints`, `jira sprint 7`                                    | **Sprints**, click for the work items of one                            |
-| **Jira hierarchy**    | `jira tree PLAT-42` — parents and children as a tree               | Not in the viewer                                                       |
+| **Jira hierarchy**    | `jira tree PLAT-42` — parents and children as a tree               | The tree of the open work item, with a roll-up; every key walks         |
 | **Search**            | `search "rate limit"` — ranked, comments included                  | <kbd>⌘K</kbd> palette on the same index, plus per-view filters          |
 | **Cross links**       | `links PLAT-42` — what references what                             | Present in the JSON documents; no view renders them yet                 |
 | **Insights**          | `insights cycle-time`, `review-latency`, `wip`, `stale`, `flaky`   | **Insights**, with adjustable windows                                   |

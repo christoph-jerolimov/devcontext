@@ -10,6 +10,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
+import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
 import { searchAll } from '../search/index.js';
 import * as insights from '../insights/index.js';
@@ -334,6 +335,20 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         };
         const text = query.get('q');
         return text ? jira.searchWorkitems(db, text, filter) : jira.listWorkitems(db, filter);
+      }
+      case 'tree': {
+        const key = rest[0];
+        if (!key) return undefined;
+
+        const depth = numberParam(query, 'depth');
+        const tree = buildWorkitemTree(db, key, {
+          maxDepth: depth !== undefined && depth > 0 ? Math.floor(depth) : undefined,
+          // Ancestors are context you always want when looking at one item.
+          // Links cost a query per node, so they stay opt in, as in the CLI.
+          ancestors: query.get('ancestors') !== 'false',
+          withLinks: query.get('links') === 'true',
+        });
+        return tree ? { ...tree, summary: summariseTree(tree) } : undefined;
       }
       case 'sprints': {
         if (rest.length >= 1) {

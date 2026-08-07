@@ -283,6 +283,9 @@ item sits.
 `-o markdown` renders a task list with checkboxes reflecting the status, which
 pastes straight into a ticket or a status update; `--list` prints the keys.
 
+The viewer shows the same tree beside an open work item — see
+[the web viewer](web.md#hierarchy).
+
 ### `jira sprints [id]` (alias `sprint`)
 
 Without an argument: the sprint list with the number of work items. With an id:
