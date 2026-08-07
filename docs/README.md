@@ -20,6 +20,7 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [Insights](insights.md)               | Cycle time, review latency, WIP, stale items, flaky steps, sprints  |
 | [Digest](digest.md)                   | What happened in a window, for a standup or a weekly update         |
 | [Cross links](links.md)               | How GitHub and Jira references are connected                        |
+| [Audit](audit.md)                     | What is stored locally, whose data it is, and what a sync fetches   |
 | [Web viewer](web.md)                  | The React viewer and the JSON API behind it                         |
 | [MCP server](mcp.md)                  | Serving the same data to an AI assistant                            |
 | [Development](development.md)         | Monorepo layout, tests, how to extend devcontext                    |

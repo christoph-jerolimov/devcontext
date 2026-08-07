@@ -155,6 +155,22 @@ Press <kbd>⌘K</kbd> for a command palette that searches everything and jumps
 anywhere, and every filter lives in the URL so a link you paste opens the same
 view for whoever clicks it.
 
+## Know what is on your laptop
+
+```bash
+devcontext audit
+```
+
+devcontext copies private issue text, review discussions and CI logs onto your
+machine — which is the point, and also the thing a security team will ask
+about. `audit` answers from the data: where it is stored, whether git would
+track it, whose names are in it, and exactly what a sync fetches. Every API
+call it makes is a GET; it never writes to GitHub or Jira.
+
+`devcontext audit secrets` scans the synced text for credentials people paste
+into tickets and CI logs, and reports where they are without ever printing the
+value. See [docs/audit.md](docs/audit.md).
+
 ## Give it to your AI assistant
 
 ```bash
@@ -184,6 +200,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 - [Outputs](docs/outputs.md)
 - [Database](docs/database.md)
 - [Search](docs/search.md)
+- [Audit](docs/audit.md)
 - [Insights](docs/insights.md)
 - [Digest](docs/digest.md)
 - [Cross links](docs/links.md)

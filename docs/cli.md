@@ -316,6 +316,21 @@ See [digest.md](digest.md).
 | `--no-stale`               | Skip the stale section                                 |
 | `-n, --limit <count>`      | Rows per section (default `10`)                        |
 
+## `devcontext audit [section]`
+
+What is stored locally, whose data it is, and what a sync would fetch. Takes an
+optional section: `storage`, `content`, `people`, `secrets` or `config`. See
+[audit.md](audit.md).
+
+| Option                | Description                           |
+| --------------------- | ------------------------------------- |
+| `--all`               | Include low confidence secret matches |
+| `-n, --limit <count>` | Rows per section (default `25`)       |
+
+`devcontext audit secrets` scans issue bodies, comments, reviews, work items
+and job logs for credentials. It reports where they are and a masked
+fingerprint, never the value.
+
 ## `devcontext web`
 
 Serves the React viewer and the JSON API for the local database.

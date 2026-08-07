@@ -79,12 +79,17 @@ function renderSection(
 ): string | null {
   const format = ctx.format;
 
+  // `--list` is meant to be piped, so the prose around the table is left out
+  // in that mode: a triage script should not have to strip it.
+  const heading = (title: string): string => (ctx.list ? '' : headingFor(title, format));
+  const note = (text: string): string => (ctx.list ? '' : noteFor(text, format));
+
   switch (section) {
     case 'cycle-time': {
       const report = insights.cycleTime(ctx.db, filter);
       reports['cycleTime'] = report;
       return [
-        heading('Cycle time', format),
+        heading('Cycle time'),
         distributionLine(report.overall, format),
         renderTable(
           report.byType,
@@ -112,17 +117,18 @@ function renderSection(
         report.withoutStart > 0
           ? note(
               `${report.withoutStart} item(s) reached Done without ever passing through an in-progress status; they are not counted.`,
-              format,
             )
           : '',
-      ].join('\n');
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
     }
 
     case 'review-latency': {
       const report = insights.reviewLatency(ctx.db, filter);
       reports['reviewLatency'] = report;
       return [
-        heading('Review latency', format),
+        heading('Review latency'),
         renderKeyValues(
           [
             ['Pull requests', report.toMerge.count],
@@ -147,14 +153,16 @@ function renderSection(
           ],
           { format, title: 'Reviewers', emptyMessage: 'No reviews in this window.' },
         ),
-      ].join('\n');
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
     }
 
     case 'wip': {
       const report = insights.wip(ctx.db, filter);
       reports['wip'] = report;
       return [
-        heading('Work in progress', format),
+        heading('Work in progress'),
         renderKeyValues(
           [
             ['Work items in progress', report.workitems],
@@ -174,7 +182,9 @@ function renderSection(
           ],
           { format, emptyMessage: 'Nothing in flight.' },
         ),
-      ].join('\n');
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
     }
 
     case 'stale': {
@@ -182,7 +192,7 @@ function renderSection(
       const report = insights.staleItems(ctx.db, threshold, filter);
       reports['stale'] = report;
       return [
-        heading(`Stale (untouched since ${threshold.slice(0, 10)})`, format),
+        heading(`Stale (untouched since ${threshold.slice(0, 10)})`),
         renderTable(
           report.items,
           [
@@ -199,7 +209,9 @@ function renderSection(
             emptyMessage: 'Nothing has gone stale.',
           },
         ),
-      ].join('\n');
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
     }
 
     case 'flaky': {
@@ -211,7 +223,7 @@ function renderSection(
       });
       reports['flaky'] = report;
       return [
-        heading(`Flaky steps (at least ${report.minRuns} runs)`, format),
+        heading(`Flaky steps (at least ${report.minRuns} runs)`),
         renderTable(
           report.steps,
           [
@@ -229,7 +241,9 @@ function renderSection(
           ],
           { format, emptyMessage: 'No step failed often enough to report.' },
         ),
-      ].join('\n');
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
     }
 
     case 'sprint': {
@@ -247,7 +261,7 @@ function renderSection(
       reports['sprint'] = report;
 
       return [
-        heading(`Sprint ${report.sprint.name ?? report.sprint.id}`, format),
+        heading(`Sprint ${report.sprint.name ?? report.sprint.id}`),
         renderKeyValues(
           [
             ['State', report.sprint.state],
@@ -278,7 +292,9 @@ function renderSection(
           ],
           { format, emptyMessage: 'The sprint has no work items.' },
         ),
-      ].join('\n');
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
     }
 
     default:
@@ -297,7 +313,7 @@ function latestSprint(ctx: CommandContext): number | null {
   return row?.id ?? null;
 }
 
-function heading(title: string, format: OutputFormat): string {
+function headingFor(title: string, format: OutputFormat): string {
   if (format === 'markdown') return `## ${title}\n`;
   if (format === 'plain') return `# ${title}`;
   return `\u001b[1m── ${title} ──\u001b[0m`;
@@ -315,6 +331,6 @@ function distributionLine(distribution: Distribution, format: OutputFormat): str
   );
 }
 
-function note(text: string, format: OutputFormat): string {
+function noteFor(text: string, format: OutputFormat): string {
   return format === 'markdown' ? `\n_${text}_` : `\n${text}`;
 }
