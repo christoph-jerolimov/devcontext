@@ -44,14 +44,16 @@ jobs:
       - name: Lint (oxlint)
         run: npm run lint
 
+      # Before the type check: @devcontext/eve imports @devcontext/cli, whose
+      # type declarations only exist once the CLI is built.
+      - name: Build
+        run: npm run build
+
       - name: Type check
         run: npm run typecheck
 
       - name: Test
         run: npm test
-
-      - name: Build
-        run: npm run build
 
   # The site renders docs/, so a renamed page or a broken cross reference
   # breaks it — which is only visible once it is built.

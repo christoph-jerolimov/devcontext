@@ -9,6 +9,7 @@ devcontext is an npm workspaces monorepo:
 ├── cli/          @devcontext/cli — sync, database, read commands, web server
 ├── web/          @devcontext/web — the React viewer
 ├── site/         @devcontext/site — the public site, which renders docs/
+├── eve/          @devcontext/eve — experimental eve agent (see agent.md)
 ├── docs/         this documentation
 └── devcontext.example.yaml
 ```

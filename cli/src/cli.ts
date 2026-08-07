@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 
+import { createAgentCommand } from './commands/agent.js';
 import { createAuditCommand } from './commands/audit.js';
 import { createDigestCommand } from './commands/digest.js';
 import { createExportCommand } from './commands/export.js';
@@ -42,6 +43,7 @@ export function createProgram(): Command {
   program.addCommand(createLinksCommand());
   program.addCommand(createAuditCommand());
   program.addCommand(createMcpCommand());
+  program.addCommand(createAgentCommand());
 
   program.addHelpText(
     'after',
@@ -65,6 +67,7 @@ Examples:
   devcontext audit                            what is stored locally and what a sync fetches
   devcontext audit secrets                    credentials pasted into tickets and CI logs
   devcontext mcp --tools                      list the tools the MCP server exposes
+  devcontext agent                            start the eve based agent in dev mode (experimental)
 `,
   );
 

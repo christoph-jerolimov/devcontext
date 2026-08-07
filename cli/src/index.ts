@@ -14,3 +14,5 @@ export { exportOutputs } from './exporters/index.js';
 export { buildIssueDocument, buildPullRequestDocument } from './documents/github.js';
 export { buildWorkitemDocument, buildSprintDocument } from './documents/jira.js';
 export { startWebServer } from './web/server.js';
+export { TOOLS as mcpTools, TOOLS_BY_NAME as mcpToolsByName } from './mcp/tools.js';
+export type { Tool as McpTool, ToolContext as McpToolContext } from './mcp/tools.js';
