@@ -183,6 +183,54 @@ export interface InsightsResponse {
   };
 }
 
+export interface DigestEntry {
+  ref: string;
+  title: string | null;
+  who: string | null;
+  at: string | null;
+  url: string | null;
+  detail?: string;
+}
+
+export interface DigestResponse {
+  since: string;
+  until: string;
+  github: {
+    pullRequestsOpened: DigestEntry[];
+    pullRequestsMerged: DigestEntry[];
+    issuesOpened: DigestEntry[];
+    issuesClosed: DigestEntry[];
+    reviews: number;
+    comments: number;
+    failedRuns: DigestEntry[];
+  };
+  jira: {
+    created: DigestEntry[];
+    started: DigestEntry[];
+    finished: DigestEntry[];
+    comments: number;
+  };
+  people: Array<{
+    person: string;
+    pullRequestsOpened: number;
+    pullRequestsMerged: number;
+    reviews: number;
+    issuesClosed: number;
+    workitemsFinished: number;
+    comments: number;
+    total: number;
+  }>;
+  inFlight: { workitems: number; pullRequests: number; drafts: number };
+  stale: Array<{
+    kind: string;
+    ref: string;
+    title: string | null;
+    owner: string | null;
+    updatedAt: string | null;
+  }>;
+  quiet: boolean;
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(
@@ -224,6 +272,8 @@ export const api = {
   sprint: (id: number) => request<IssueDocument>(`/api/jira/sprints/${id}`),
   insights: (params: Record<string, string | undefined>) =>
     request<InsightsResponse>('/api/insights', params),
+  digest: (params: Record<string, string | undefined>) =>
+    request<DigestResponse>('/api/digest', params),
 };
 
 export function parseList(value: string | null): string[] {

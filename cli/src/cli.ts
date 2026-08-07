@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 
+import { createDigestCommand } from './commands/digest.js';
 import { createExportCommand } from './commands/export.js';
 import { createGithubCommand } from './commands/github.js';
 import { createInitCommand } from './commands/init.js';
@@ -34,6 +35,7 @@ export function createProgram(): Command {
   program.addCommand(createJiraCommand());
   program.addCommand(createWebCommand());
   program.addCommand(createInsightsCommand());
+  program.addCommand(createDigestCommand());
   program.addCommand(createLinksCommand());
   program.addCommand(createMcpCommand());
 
@@ -53,6 +55,7 @@ Examples:
   devcontext jira search "rate limit" -o json search work items and their comments
   devcontext web                              open the React viewer on the local data
   devcontext insights                         cycle time, review latency, WIP, stale, flaky steps
+  devcontext digest --since 1w -o markdown    a weekly summary to paste into a standup
   devcontext links PLAT-42                    pull requests and issues that reference a ticket
   devcontext mcp --tools                      list the tools the MCP server exposes
 `,

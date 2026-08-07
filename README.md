@@ -129,6 +129,7 @@ devcontext jira fields --mapped
 
 devcontext links PLAT-42                      # which pull requests reference this ticket
 devcontext insights                           # cycle time, review latency, WIP, stale, flaky steps
+devcontext digest --since 1w -o markdown      # a weekly summary to paste into a standup
 ```
 
 Or go straight to SQL — see [docs/database.md](docs/database.md) for the schema
@@ -178,6 +179,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 - [Outputs](docs/outputs.md)
 - [Database](docs/database.md)
 - [Insights](docs/insights.md)
+- [Digest](docs/digest.md)
 - [Cross links](docs/links.md)
 - [Web viewer](docs/web.md)
 - [MCP server](docs/mcp.md)

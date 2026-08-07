@@ -10,6 +10,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
+import { buildDigest } from '../insights/digest.js';
 import * as insights from '../insights/index.js';
 import {
   buildIssueDocument,
@@ -189,6 +190,18 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       default:
         return undefined;
     }
+  }
+
+  if (area === 'digest') {
+    return buildDigest(db, {
+      since: query.get('since') ?? new Date(Date.now() - 7 * 86_400_000).toISOString(),
+      until: query.get('until') ?? undefined,
+      repos: listParam(query, 'repo'),
+      projects: listParam(query, 'project'),
+      people: listParam(query, 'person'),
+      staleAfter: query.get('staleAfter') ?? new Date(Date.now() - 30 * 86_400_000).toISOString(),
+      limit,
+    });
   }
 
   if (area === 'links') {
