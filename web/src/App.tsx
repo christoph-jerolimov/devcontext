@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { api } from './api.ts';
 import type { Repository, StatusResponse } from './api.ts';
 import { StateMessage, useAsync } from './components/common.tsx';
+import { Palette } from './components/Palette.tsx';
 import { useLocation } from './router.ts';
 import { DigestView } from './views/Digest.tsx';
 import { IssuesView, PullRequestsView, WorkflowRunsView } from './views/GithubViews.tsx';
@@ -32,8 +33,14 @@ export function App(): ReactNode {
 
   return (
     <div className="app">
+      <Palette />
+
       <nav className="sidebar">
         <h1>devcontext</h1>
+        <p className="sidebar-shortcut">
+          Search <kbd>{navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}</kbd>
+          <kbd>K</kbd>
+        </p>
         <ul>
           {ROUTES.map((entry) => (
             <li key={entry.id}>

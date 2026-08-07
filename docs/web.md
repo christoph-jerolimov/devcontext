@@ -30,6 +30,29 @@ nothing the viewer does can change your data.
 
 The viewer follows the light or dark preference of your system.
 
+## Command palette
+
+<kbd>⌘K</kbd> (<kbd>Ctrl</kbd>+<kbd>K</kbd> on Linux and Windows) opens a
+palette over whatever you are looking at. Arrow keys move, <kbd>↵</kbd> opens,
+<kbd>esc</kbd> closes.
+
+It does three things:
+
+- **Search** issues, pull requests and work items as you type, through the same
+  ranked index as `devcontext search` — so a phrase that only appears in a
+  comment still finds the ticket. Opening a result jumps to the right view with
+  the item already open.
+- **Jump to a page**, including the ones with filters already applied:
+  "failing" reaches the failed workflow runs, "in progress" the work items
+  being worked on.
+- **Go to a reference** directly. Type `PLAT-42` or `acme/platform#42` and it
+  offers to open exactly that, whether or not the search index has caught up.
+
+Results are ranked by the server, so the palette does not re-filter them —
+otherwise a hit whose match is in a comment would be hidden because the title
+does not contain the words you typed. Pages are matched separately and stay
+available while you type.
+
 ## Shareable URLs
 
 Every filter, and which item is open, lives in the address bar:
