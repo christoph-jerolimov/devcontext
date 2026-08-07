@@ -1,4 +1,5 @@
-import { Command, Option } from 'commander';
+import { Option } from 'commander';
+import type { Command } from 'commander';
 
 import { loadConfig } from '../config/load.js';
 import type { ResolvedConfig } from '../config/types.js';

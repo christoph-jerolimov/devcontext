@@ -1,5 +1,7 @@
 # devcontext
 
+[![CI](https://github.com/christoph-jerolimov/devcontext/actions/workflows/ci.yml/badge.svg)](https://github.com/christoph-jerolimov/devcontext/actions/workflows/ci.yml)
+
 Sync development data locally to give people and AI complete project context.
 
 devcontext downloads what your projects actually happened in — GitHub issues,
