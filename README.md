@@ -117,6 +117,8 @@ devcontext gh repos
 devcontext gh issues --repo acme/platform --label bug --stale 90d
 devcontext gh issues 12                       # body + all comments + full timeline
 devcontext gh prs --state all --reviewer bob
+devcontext search "rate limit"                # issues, PRs, tickets and comments, ranked
+
 devcontext gh runs --conclusion failure
 devcontext gh steps --conclusion failure -n 20
 devcontext gh logs 2001 | grep -i error
@@ -178,6 +180,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 - [CLI reference](docs/cli.md)
 - [Outputs](docs/outputs.md)
 - [Database](docs/database.md)
+- [Search](docs/search.md)
 - [Insights](docs/insights.md)
 - [Digest](docs/digest.md)
 - [Cross links](docs/links.md)

@@ -277,6 +277,22 @@ Lists the Jira fields of the synced sites together with the friendly name you
 configured. `--mapped` shows only the mapped ones. This is the fastest way to
 find the `customfield_*` ids you want to map.
 
+## `devcontext search <query...>` (aliases `find`, `q`)
+
+Full text search across issues, pull requests, work items and their comments,
+ranked by relevance. Quote a phrase to match it exactly; the last word is a
+prefix by default. See [search.md](search.md).
+
+| Option                | Description                                       |
+| --------------------- | ------------------------------------------------- |
+| `-k, --kind <kind>`   | `issue`, `pull-request` or `workitem`, repeatable |
+| `-r, --repo <repo>`   | GitHub repository, repeatable                     |
+| `-p, --project <key>` | Jira project key, repeatable                      |
+| `--exact`             | Do not treat the last word as a prefix            |
+| `-n, --limit <count>` | Maximum hits (default `25`)                       |
+| `--offset <count>`    | Skip this many hits                               |
+| `--rebuild`           | Rebuild the index and exit                        |
+
 ## `devcontext insights` (aliases `report`, `stats`)
 
 Cycle time, review latency, work in progress, stale items, flaky workflow steps

@@ -11,6 +11,7 @@ import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
 import { buildDigest } from '../insights/digest.js';
+import { searchAll } from '../search/index.js';
 import * as insights from '../insights/index.js';
 import {
   buildIssueDocument,
@@ -190,6 +191,18 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       default:
         return undefined;
     }
+  }
+
+  if (area === 'search') {
+    const text = query.get('q') ?? search ?? '';
+    if (text.trim() === '') return [];
+    return searchAll(db, text, {
+      kinds: listParam(query, 'kind') as Array<'issue' | 'pull-request' | 'workitem'> | undefined,
+      containers: [...(repos ?? []), ...(listParam(query, 'project') ?? [])],
+      limit,
+      offset,
+      prefix: query.get('exact') !== 'true',
+    });
   }
 
   if (area === 'digest') {

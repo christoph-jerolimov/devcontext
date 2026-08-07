@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { CliError } from '../util/errors.js';
 import { nowIso } from '../util/time.js';
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
+import { SCHEMA_SQL, SCHEMA_VERSION, SEARCH_SCHEMA_SQL } from './schema.js';
 
 export type SqlValue = string | number | bigint | null | Uint8Array;
 export type BindValue = SqlValue | boolean | undefined | Record<string, unknown> | unknown[];
@@ -77,6 +77,15 @@ export class Database {
 
   migrate(): void {
     this.exec(SCHEMA_SQL);
+
+    // FTS5 is a compile time option. Everything else works without it, so a
+    // SQLite build that lacks it loses fast search rather than the database.
+    try {
+      this.exec(SEARCH_SCHEMA_SQL);
+    } catch {
+      // `searchIndexAvailable()` reports this; searching falls back to scanning.
+    }
+
     const current = this.getMeta('schema_version');
     if (current === null) {
       this.setMeta('schema_version', String(SCHEMA_VERSION));

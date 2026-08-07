@@ -16,6 +16,7 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [CLI reference](cli.md)               | Every command, alias, filter and output format                      |
 | [Outputs](outputs.md)                 | Layout of the yaml, markdown and json mirrors                       |
 | [Database](database.md)               | Table reference and example SQL queries                             |
+| [Search](search.md)                   | Full text search across both platforms, and how the index works     |
 | [Insights](insights.md)               | Cycle time, review latency, WIP, stale items, flaky steps, sprints  |
 | [Digest](digest.md)                   | What happened in a window, for a standup or a weekly update         |
 | [Cross links](links.md)               | How GitHub and Jira references are connected                        |

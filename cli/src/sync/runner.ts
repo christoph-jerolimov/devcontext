@@ -9,6 +9,8 @@ import { SyncJournal } from '../db/journal.js';
 import { exportOutputs } from '../exporters/index.js';
 import type { ExportSummary } from '../exporters/index.js';
 import { buildCrossLinks } from '../links/build.js';
+import { buildSearchIndex } from '../search/index.js';
+import type { SearchIndexStats } from '../search/index.js';
 import type { BuildLinksResult } from '../links/build.js';
 import { CliError } from '../util/errors.js';
 import type { Logger } from '../util/logger.js';
@@ -49,12 +51,16 @@ export interface SyncSummary {
   items: number;
   durationMs: number;
   links?: BuildLinksResult;
+  search?: SearchIndexStats;
   export?: ExportSummary;
 }
 
 export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
   const { config, logger } = options;
   const startedAt = Date.now();
+  // Every row this run writes gets a `synced_at` at or after this, which is how
+  // the search index knows what to reindex without rebuilding everything.
+  const startedAtIso = new Date(startedAt).toISOString();
 
   const projects = selectProjects(config, options.projects);
   const sources = options.sources?.length ? options.sources : (['github', 'jira'] as SyncSource[]);
@@ -85,7 +91,10 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
         items: progress.itemCount,
         durationMs: Date.now() - startedAt,
       };
-      if (!options.dryRun) summary.links = buildCrossLinks(db);
+      if (!options.dryRun) {
+        summary.links = buildCrossLinks(db);
+        summary.search = buildSearchIndex(db, { since: startedAtIso });
+      }
       return summary;
     }
 
@@ -142,6 +151,15 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       summary.links = buildCrossLinks(db);
       if (summary.links.links > 0) {
         logger.info(`Linked ${summary.links.links} GitHub and Jira reference(s).`);
+      }
+
+      // After the sync so "devcontext search" never answers from a stale index.
+      // A full sync rewrote everything, so it rebuilds; an incremental one only
+      // touches what it wrote, which keeps a three issue sync cheap on a large
+      // repository. `devcontext search --rebuild` forces the full pass.
+      summary.search = buildSearchIndex(db, options.full ? {} : { since: startedAtIso });
+      if (summary.search.rows > 0) {
+        logger.debug(`Indexed ${summary.search.rows} item(s) for search.`);
       }
     }
 

@@ -10,6 +10,8 @@ import {
   buildWorkflowRunDocument,
 } from '../documents/github.js';
 import { buildSprintDocument, buildWorkitemDocument } from '../documents/jira.js';
+import { searchAll } from '../search/index.js';
+import type { SearchHit } from '../search/index.js';
 import { resolveTimeExpression } from '../util/time.js';
 import type { ToolDefinition } from './protocol.js';
 
@@ -206,7 +208,7 @@ export const TOOLS: Tool[] = [
       name: 'search',
       title: 'Search everything',
       description:
-        'Search GitHub issues and pull requests and Jira work items (including their comments) for a phrase. Returns a compact list; follow up with get_issue, get_pull_request or get_workitem for the full history.',
+        'Search GitHub issues and pull requests and Jira work items, including their comments and reviews, ranked by relevance. Quote a phrase to match it exactly. Returns a compact list with the matching text; follow up with get_issue, get_pull_request or get_workitem for the full history.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -216,6 +218,11 @@ export const TOOLS: Tool[] = [
             items: { type: 'string', enum: ['github', 'jira'] },
             description: 'Defaults to both.',
           },
+          kinds: {
+            type: 'array',
+            items: { type: 'string', enum: ['issue', 'pull-request', 'workitem'] },
+            description: 'Defaults to all three.',
+          },
           limit: LIMIT,
         },
         required: ['query'],
@@ -224,47 +231,43 @@ export const TOOLS: Tool[] = [
     run: (args, { db }) => {
       const query = requiredStr(args, 'query');
       const sources = list(args, 'sources') ?? ['github', 'jira'];
-      const max = limit(args, 25);
-      const results: unknown[] = [];
+      const requested = list(args, 'kinds') as SearchHit['kind'][] | undefined;
 
-      if (sources.includes('github')) {
-        for (const issue of gh.listIssues(db, { state: 'all', search: query, limit: max })) {
-          results.push({
-            kind: 'github-issue',
-            repository: issue.repo_full_name,
-            number: issue.number,
-            title: issue.title,
-            state: issue.state,
-            updatedAt: issue.updated_at,
-            url: issue.html_url,
-          });
-        }
-        for (const pull of gh.listPullRequests(db, { state: 'all', search: query, limit: max })) {
-          results.push({
-            kind: 'github-pull-request',
-            repository: pull.repo_full_name,
-            number: pull.number,
-            title: pull.title,
-            state: pull.merged ? 'merged' : pull.state,
-            updatedAt: pull.updated_at,
-            url: pull.html_url,
-          });
-        }
-      }
+      // `sources` is the older, coarser filter; both narrow the same set.
+      const bySource: SearchHit['kind'][] = [
+        ...(sources.includes('github') ? (['issue', 'pull-request'] as const) : []),
+        ...(sources.includes('jira') ? (['workitem'] as const) : []),
+      ];
+      const kinds = requested?.length
+        ? bySource.filter((kind) => requested.includes(kind))
+        : bySource;
 
-      if (sources.includes('jira')) {
-        for (const workitem of jira.searchWorkitems(db, query, { limit: max })) {
-          results.push({
+      // Reshaped so the fields an assistant needs for the follow up call —
+      // repository + number, or key — are right there in the result.
+      const results = searchAll(db, query, { kinds, limit: limit(args, 25) }).map((hit) => {
+        if (hit.kind === 'workitem') {
+          return {
             kind: 'jira-workitem',
-            key: workitem.key,
-            summary: workitem.summary,
-            type: workitem.type,
-            status: workitem.status,
-            updatedAt: workitem.updated_at,
-            url: workitem.url,
-          });
+            key: hit.ref,
+            title: hit.title,
+            state: hit.state,
+            updatedAt: hit.updatedAt,
+            url: hit.url,
+            match: hit.snippet,
+          };
         }
-      }
+        const [repository, number] = hit.ref.split('#');
+        return {
+          kind: hit.kind === 'pull-request' ? 'github-pull-request' : 'github-issue',
+          repository,
+          number: Number(number),
+          title: hit.title,
+          state: hit.state,
+          updatedAt: hit.updatedAt,
+          url: hit.url,
+          match: hit.snippet,
+        };
+      });
 
       return { query, count: results.length, results };
     },

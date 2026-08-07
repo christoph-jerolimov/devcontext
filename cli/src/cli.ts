@@ -8,6 +8,7 @@ import { createInsightsCommand } from './commands/insights.js';
 import { createJiraCommand } from './commands/jira.js';
 import { createLinksCommand } from './commands/links.js';
 import { createMcpCommand } from './commands/mcp.js';
+import { createSearchCommand } from './commands/search.js';
 import { createStatusCommand } from './commands/status.js';
 import { createSyncCommand } from './commands/sync.js';
 import { createWebCommand } from './commands/web.js';
@@ -31,6 +32,7 @@ export function createProgram(): Command {
   program.addCommand(createSyncCommand());
   program.addCommand(createStatusCommand());
   program.addCommand(createExportCommand());
+  program.addCommand(createSearchCommand());
   program.addCommand(createGithubCommand());
   program.addCommand(createJiraCommand());
   program.addCommand(createWebCommand());
@@ -47,6 +49,7 @@ Examples:
   devcontext sync                             incremental sync of every project
   devcontext sync --full --source github      download everything from GitHub again
   devcontext sync --only PLAT-42              refresh one ticket now, then sync the rest
+  devcontext search "rate limit"              everything mentioning it, ranked
   devcontext gh issues --repo acme/platform   open issues of one repository
   devcontext gh issues --stale 90d --list     issue ids that have been quiet for 90 days
   devcontext gh prs 42 -o markdown            one pull request with reviews as markdown
