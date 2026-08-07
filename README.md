@@ -146,6 +146,18 @@ devcontext web
 A local React viewer with the same filters, detail views for issues, pull
 requests, workflow runs, work items and sprints, and a JSON API behind it.
 
+## Give it to your AI assistant
+
+```bash
+claude mcp add devcontext -- devcontext mcp --config $PWD/devcontext.yaml
+```
+
+`devcontext mcp` serves the same data over the Model Context Protocol, so an
+assistant can read the full history of a ticket, a review discussion or a CI
+failure straight from your machine — no API round trips, no rate limit, and it
+works offline. Read only, and it exposes the same queries the CLI uses. See
+[docs/mcp.md](docs/mcp.md).
+
 ## Repository layout
 
 | Directory       | Contents                                                            |
@@ -163,6 +175,7 @@ requests, workflow runs, work items and sprints, and a JSON API behind it.
 - [Outputs](docs/outputs.md)
 - [Database](docs/database.md)
 - [Web viewer](docs/web.md)
+- [MCP server](docs/mcp.md)
 - [Development](docs/development.md)
 - [Troubleshooting](docs/troubleshooting.md)
 

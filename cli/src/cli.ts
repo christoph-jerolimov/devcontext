@@ -4,11 +4,13 @@ import { createExportCommand } from './commands/export.js';
 import { createGithubCommand } from './commands/github.js';
 import { createInitCommand } from './commands/init.js';
 import { createJiraCommand } from './commands/jira.js';
+import { createMcpCommand } from './commands/mcp.js';
 import { createStatusCommand } from './commands/status.js';
 import { createSyncCommand } from './commands/sync.js';
 import { createWebCommand } from './commands/web.js';
+import { VERSION } from './version.js';
 
-export const VERSION = '0.1.0';
+export { VERSION };
 
 export function createProgram(): Command {
   const program = new Command('devcontext')
@@ -29,6 +31,7 @@ export function createProgram(): Command {
   program.addCommand(createGithubCommand());
   program.addCommand(createJiraCommand());
   program.addCommand(createWebCommand());
+  program.addCommand(createMcpCommand());
 
   program.addHelpText(
     'after',
@@ -44,6 +47,7 @@ Examples:
   devcontext jira stories --sprint "Sprint 7" stories of a sprint
   devcontext jira search "rate limit" -o json search work items and their comments
   devcontext web                              open the React viewer on the local data
+  devcontext mcp --tools                      list the tools the MCP server exposes
 `,
   );
 
