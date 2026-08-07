@@ -642,6 +642,26 @@ a {
   color: var(--accent);
 }
 
+/* --- Cross links --------------------------------------------------------- */
+
+.links tbody tr {
+  cursor: pointer;
+}
+
+/*
+ * `via` is the evidence for a link. A key in a branch name or a title was put
+ * there on purpose; one in a comment may be a passing mention, so the weaker
+ * ones are stated but not emphasised.
+ */
+.link-via {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.link-via.high {
+  color: var(--text);
+}
+
 /* --- Jira hierarchy ------------------------------------------------------ */
 
 .tree-summary {
