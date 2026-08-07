@@ -119,6 +119,8 @@ The same endpoints power the viewer and are useful on their own:
 | `GET /api/insights/sprint/:id`                                      | One sprint report                                |
 | `GET /api/digest?since=&until=&repo=&project=&person=&staleAfter=`  | Activity digest for a window                     |
 | `GET /api/search?q=&kind=&repo=&project=&exact=&limit=`             | Ranked full text search across both platforms    |
+| `GET /api/links?limit=&offset=`                                     | Cross references between GitHub and Jira         |
+| `GET /api/links/:ref`                                               | What references one item, and what it references |
 
 ```bash
 curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '.[].key'

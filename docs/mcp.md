@@ -52,6 +52,7 @@ that has a `devcontext.yaml`; `--db` points at a database directly.
 | `get_pull_request`                        | One pull request: commits, changed files, every review with its inline comments, the conversation, the timeline                |
 | `list_workitems`                          | Jira work items by project, type, status, category, assignee, sprint, epic, text, age                                          |
 | `get_workitem`                            | One work item: description, custom fields, links, comments, the complete field history                                         |
+| `get_links`                               | What references a ticket or pull request, and what it references                                                               |
 | `list_sprints` / `get_sprint`             | Sprints, and one sprint with its work items and story points                                                                   |
 | `list_workflow_runs` / `get_workflow_run` | Actions runs, and one run with every job and step                                                                              |
 
@@ -77,8 +78,8 @@ sees and what you see can never drift apart.
 The server implements MCP over stdio directly — JSON-RPC 2.0, one message per
 line — rather than depending on the official SDK, which pulls in express, hono,
 cors, jose and a dozen more packages for transports this command does not use.
-devcontext keeps three runtime dependencies in total, and the stdio wire format
-is small and stable.
+The CLI keeps three runtime dependencies in total (`commander`, `yaml`, `zod`),
+and the stdio wire format is small and stable.
 
 `initialize`, `ping`, `tools/list`, `tools/call` and the `notifications/*`
 messages are handled; `resources/list` and `prompts/list` answer with empty

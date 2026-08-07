@@ -23,7 +23,9 @@ devcontext gh issues -o json > issues.json
 
 ## Output formats
 
-Every command accepts `-o, --output`:
+Every command that produces output accepts `-o, --output` — that is all of them
+except `init` and `serve`, which produce a file and a server rather than a
+report:
 
 | Format     | Description                                                                  |
 | ---------- | ---------------------------------------------------------------------------- |
@@ -32,12 +34,24 @@ Every command accepts `-o, --output`:
 | `markdown` | A markdown table, or a markdown document for detail views                    |
 | `plain`    | Tab separated, no header, no colour — for `awk`, `cut` and friends           |
 
-Every list command additionally accepts `--list`, which prints one bare
-identifier per line (`owner/repo#12`, `PLAT-42`, a run id) — the format to loop
-over in a shell script.
+The same commands accept `--list`, which prints one bare identifier per line
+(`owner/repo#12`, `PLAT-42`, a run id) — the format to loop over in a shell
+script. In list mode the headings and explanatory notes are left out, so the
+output can be piped straight into another command.
 
-Common list options: `-n, --limit <count>` (default 50, `0` for no limit),
-`--offset <count>`, `--search <text>`.
+## List options
+
+The list commands under `gh` and `jira` share:
+
+| Option                | Default | Description                    |
+| --------------------- | ------- | ------------------------------ |
+| `-n, --limit <count>` | `50`    | Maximum rows; `0` for no limit |
+| `--offset <count>`    | —       | Skip this many rows            |
+| `--search <text>`     | —       | Match text in the title / body |
+
+The report commands cap rows too, but with their own defaults and without
+`--offset` or `--search`: `search` 25, `insights` 15, `digest` 10, `audit` 25,
+`status` 10.
 
 ## Time filters
 
@@ -50,12 +64,17 @@ has not been touched for three months.
 
 ## `devcontext init`
 
-Writes a commented `devcontext.yaml`.
+Writes a `devcontext.yaml`, filled in from the GitHub repository of the current
+directory when there is one.
 
-| Option          | Description                                   |
-| --------------- | --------------------------------------------- |
-| `-f, --force`   | Overwrite an existing file                    |
-| `--path <file>` | Write somewhere else than `./devcontext.yaml` |
+| Option           | Default           | Description                                                    |
+| ---------------- | ----------------- | -------------------------------------------------------------- |
+| `-f, --force`    | —                 | Overwrite an existing file                                     |
+| `--path <file>`  | `devcontext.yaml` | Write somewhere else                                           |
+| `--example`      | —                 | Write the fully commented example instead of a detected config |
+| `--detect`       | —                 | Detect only: print what was found and write nothing            |
+| `--all-remotes`  | —                 | Include every git remote, not just `origin`                    |
+| `--since <when>` | `12mo`            | How far back the initial sync should reach                     |
 
 ## `devcontext sync`
 
@@ -71,6 +90,10 @@ devcontext sync --only acme/platform#42 --only-targeted
 
 Shows the configuration in use, what is in the database, the last sync runs and
 the cursors the next incremental sync will continue from.
+
+| Option                | Default | Description                 |
+| --------------------- | ------- | --------------------------- |
+| `-n, --limit <count>` | `10`    | Number of sync runs to show |
 
 ## `devcontext export`
 

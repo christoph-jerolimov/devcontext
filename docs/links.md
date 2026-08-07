@@ -20,6 +20,23 @@ acme/platform#43  pull_request  PLAT-43           body    medium      PLAT-43
 PLAT-45           workitem      acme/platform#42  title   high        acme/platform#42
 ```
 
+## Options
+
+| Option                | Description                                                                      |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `--high`              | Only high confidence links — branch names, titles, Jira fields                   |
+| `--via <source>`      | Only links found in `branch`, `title`, `body`, `commit` or `comment`, repeatable |
+| `--from <source>`     | Only links originating in `github` or `jira`                                     |
+| `--to <source>`       | Only links pointing at `github` or `jira`                                        |
+| `--rebuild`           | Recompute from the synced text before listing                                    |
+| `-n, --limit <count>` | Maximum rows (default 50)                                                        |
+| `--offset <count>`    | Skip this many rows                                                              |
+
+```bash
+devcontext links --via branch --high      # only what a branch name proves
+devcontext links --from jira --to github  # tickets that name a pull request
+```
+
 ## Where references are found
 
 | Direction     | Scanned                                                                                           |
