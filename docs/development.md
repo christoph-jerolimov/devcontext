@@ -10,6 +10,7 @@ devcontext is an npm workspaces monorepo:
 ├── web/          @devcontext/web — the React viewer
 ├── site/         @devcontext/site — the public site, which renders docs/
 ├── eve/          @devcontext/eve — experimental eve agent (see agent.md)
+├── e2e/          @devcontext/e2e — sync, serve and drive the viewer in a browser
 ├── docs/         this documentation
 └── devcontext.example.yaml
 ```
@@ -184,6 +185,56 @@ Without either variable every test skips itself. A token is strongly
 recommended: the unauthenticated budget is 60 requests per hour and one run
 needs about 30, so a second run in the same hour fails on the rate limit.
 `DEVCONTEXT_E2E_REPO` and `DEVCONTEXT_E2E_SINCE` override what is synced.
+
+### The viewer, end to end
+
+```bash
+npm run test:e2e:viewer   # sync, serve, drive a browser, compare screenshots
+npm run test:e2e:update   # the same, but write the screenshots instead
+```
+
+`e2e/` runs the whole thing the way somebody would: it starts a fixture API on
+localhost, runs the built CLI as a child process to **sync** into a throwaway
+database, starts the real `devcontext serve` on top of it, and drives that in
+Chromium. Nothing in the application is stubbed — the HTTP client, the rate
+limiter, SQLite, the JSON API and the React viewer are all the real ones.
+
+Only the API at the far end is a fixture, and it has to be. Screenshots of live
+data would differ every day and could never be compared; against fixed payloads
+a change in the output means somebody changed the output.
+
+Each page in the main navigation is captured in **both themes**, as two
+Playwright projects, so a change that only breaks one of them cannot slip past.
+The clock is frozen with `page.clock.setFixedTime` because the viewer prints
+relative times and computes the insight and digest windows in the browser —
+without that, every screenshot would drift a day at a time.
+
+Alongside the pictures are assertions that the data got there at all: a
+screenshot of an empty page would still match an empty baseline, so the tests
+also open a pull request and check its reviews, cross links and the work item
+hierarchy.
+
+When a screenshot check fails, the diff images are in `e2e/playwright-report`.
+Look before running `test:e2e:update` — that command accepts whatever the
+viewer currently renders.
+
+A few values cannot be the same twice and are masked rather than compared: the
+database path on the Overview page, the timestamps and cursors of the sync run
+that produced the data, and the "oldest" age in Work in progress, which the
+_server_ derives from its own clock rather than the frozen browser one.
+Everything else on every page is compared.
+
+**CI runs this suite with `--ignore-snapshots`**, so the behavioural half gates
+and the screenshots do not. Pixel output depends on the exact Chromium build
+and the fonts installed, so a baseline recorded on one machine fails on another
+for reasons that have nothing to do with the change. Comparing them is worth
+doing where the environment is fixed — locally, or in a pinned container — and
+misleading anywhere else. If you want CI to gate them too, run the job in the
+matching `mcr.microsoft.com/playwright` image and record the baselines there.
+
+If your machine already has a Chromium that is not the build this Playwright
+expects, point at it with `DEVCONTEXT_E2E_CHROMIUM=/path/to/chromium` instead
+of downloading another.
 
 ## Adding a synced resource
 

@@ -12,7 +12,8 @@
     "cli",
     "web",
     "site",
-    "eve"
+    "eve",
+    "e2e"
   ],
   "scripts": {
     "build": "npm run build --workspace @devcontext/web && npm run build --workspace @devcontext/cli",
@@ -22,6 +23,8 @@
     "docs": "npm run docs --workspace @devcontext/cli",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace @devcontext/cli",
+    "test:e2e:viewer": "npm run build && npm run e2e --workspace @devcontext/e2e",
+    "test:e2e:update": "npm run build && npm run e2e:update --workspace @devcontext/e2e",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
