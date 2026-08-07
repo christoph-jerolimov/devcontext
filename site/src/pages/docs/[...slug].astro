@@ -1,0 +1,31 @@
+---
+import { getCollection, render } from 'astro:content';
+
+import Docs from '../../layouts/Docs.astro';
+import { labelFor } from '../../nav.ts';
+
+/**
+ * Every file in `docs/` becomes a page. `README.md` is the index and lives at
+ * `/docs`; everything else at `/docs/<name>`.
+ */
+export async function getStaticPaths() {
+  const pages = await getCollection('docs');
+  const ids = pages.map((page) => page.id);
+
+  return pages.map((page) => ({
+    params: { slug: page.id === 'readme' ? undefined : page.id },
+    props: { page, ids },
+  }));
+}
+
+const { page, ids } = Astro.props;
+const { Content, headings } = await render(page);
+
+// The pages carry no frontmatter, so the title is the first level 1 heading —
+// which is how they are written, and keeps docs/ free of site-only metadata.
+const title = page.data.title ?? headings.find((heading) => heading.depth === 1)?.text;
+---
+
+<Docs id={page.id} title={labelFor(page.id, title)} ids={ids}>
+  <Content />
+</Docs>

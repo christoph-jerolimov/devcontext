@@ -222,6 +222,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 | [`cli/`](cli)   | The `devcontext` command: sync, database, read commands, web server |
 | [`web/`](web)   | The React viewer, served by `devcontext serve`                      |
 | [`docs/`](docs) | End user documentation                                              |
+| [`site/`](site) | The public site, which renders `docs/` — nothing is duplicated      |
 
 ## Documentation
 

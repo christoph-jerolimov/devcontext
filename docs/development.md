@@ -8,20 +8,54 @@ devcontext is an npm workspaces monorepo:
 .
 ├── cli/          @devcontext/cli — sync, database, read commands, web server
 ├── web/          @devcontext/web — the React viewer
+├── site/         @devcontext/site — the public site, which renders docs/
 ├── docs/         this documentation
 └── devcontext.example.yaml
 ```
 
 ```bash
-npm install          # installs both workspaces
+npm install          # installs every workspace
 npm run build        # web/dist, then cli/dist
-npm test             # vitest in cli/
-npm run typecheck    # tsc --noEmit in both workspaces
+npm run build:site   # site/dist
+npm run dev:site     # the site with hot reload
+npm run docs         # regenerate docs/commands.md from the command definitions
+npm test             # vitest in cli/ and web/
+npm run typecheck    # tsc --noEmit in every workspace
 npm run lint         # oxlint
 npm run lint:fix     # oxlint --fix
 npm run format       # oxfmt
 npm run check        # format:check + lint + typecheck + test, what CI runs
 ```
+
+## The site
+
+`site/` is an Astro build of `docs/`. The markdown is **not** copied — the
+content collection reads `../docs`, so a page added there is published with no
+list to update, and the files stay correct on GitHub and on disk at the same
+time.
+
+Two Sätteri hast plugins do the work that a site needs and a repository does
+not:
+
+- `docs-links` rewrites the cross references. `sync.md` becomes `/docs/sync`,
+  and anything climbing out of `docs/` becomes a GitHub URL — otherwise every
+  page would be full of links that 404.
+- `table-scroll` wraps each table in its own scroll container, because the
+  reference pages are mostly wide tables and they would otherwise push the
+  whole page sideways on a phone.
+
+They are Sätteri plugins rather than rehype ones so the site does not pull the
+whole `unified` pipeline in as a dependency; Astro's default processor already
+takes hast plugins.
+
+`site/scripts/check-links.mjs` walks the built output and fails on an internal
+link that does not resolve. CI runs it after the build, which is what catches a
+renamed page.
+
+`astro check` is deliberately not used: it needs `@astrojs/check`, which calls
+a TypeScript compiler API that TypeScript 7 no longer exposes. The site's real
+logic — the navigation and the two plugins — is type checked with `tsc` through
+`tsconfig.check.json` instead, and `astro build` proves the templates compile.
 
 ## Continuous integration
 
@@ -31,6 +65,11 @@ npm run check        # format:check + lint + typecheck + test, what CI runs
 ```
 npm ci → format:check → lint → typecheck → test → build
 ```
+
+Two more jobs run alongside it: **Site** builds `site/` and checks the rendered
+links, and **End to end sync** syncs this repository from the real GitHub API.
+Both are separate so a GitHub outage or a rate limit cannot make the offline
+checks look broken.
 
 Run `npm run check` before pushing and CI will agree with you. The three tools
 have clearly separated jobs, which keeps the rule sets small:

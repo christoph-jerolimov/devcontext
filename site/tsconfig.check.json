@@ -1,0 +1,15 @@
+{
+  // `astro check` is not usable here: it pulls @astrojs/check, which reaches
+  // into a TypeScript compiler API that TypeScript 7 no longer exposes.
+  //
+  // So the plain TypeScript — the navigation and the two markdown plugins,
+  // which is where the actual logic lives — is checked with tsc instead.
+  // The .astro files are templates; `astro build` is what proves those work,
+  // and it runs in CI right after this.
+  "extends": "astro/tsconfigs/strict",
+  "include": ["src/nav.ts", "src/plugins/**/*.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "types": []
+  }
+}

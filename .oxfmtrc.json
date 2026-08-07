@@ -11,6 +11,7 @@
     "dist/",
     ".devcontext/",
     "package-lock.json",
-    "docs/commands.md"
+    "docs/commands.md",
+    "**/.astro/"
   ]
 }
