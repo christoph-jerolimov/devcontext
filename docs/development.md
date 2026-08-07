@@ -43,6 +43,22 @@ have clearly separated jobs, which keeps the rule sets small:
 - **tsc** owns types, so no type-aware ESLint rules are enabled and linting
   stays fast.
 
+## Dependencies
+
+Everything is kept on its latest release, with one deliberate exception:
+
+**TypeScript stays on 6.x.** TypeScript 7 is out, but `typescript-eslint`
+(the only dependency that reads the compiler API) still declares
+`typescript >=4.8.4 <6.1.0` as its peer range, so installing TypeScript 7
+makes `npm ci` fail with `ERESOLVE`. Forcing it would mean `--legacy-peer-deps`
+or an override, which weakens the dependency check for the whole repository to
+work around one unsupported combination. Move to 7 once `typescript-eslint`
+declares support — nothing else here blocks it.
+
+`@types/node` follows the latest Node release, while the package supports Node
+22.5+. CI runs the tests on both 22 and 24, which is what catches an API that
+the types promise but the oldest supported runtime does not have.
+
 ## Inside `cli/src`
 
 | Path                | Responsibility                                                                  |
