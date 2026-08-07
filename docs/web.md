@@ -23,7 +23,7 @@ The command used to be called `web`, which still works as an alias.
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Overview        | Configured projects, row counts per table group, the last sync runs and the current cursors                                                                         |
 | GitHub issues   | Filter by repository, state and text; click a row for body, comments and timeline                                                                                   |
-| Pull requests   | Same, plus reviews with their inline comments and the changed files                                                                                                 |
+| Pull requests   | Same, plus reviews with their inline comments and the changed files. Shows every state by default, since a merged pull request is the normal end of one             |
 | Workflow runs   | Filter by repository and conclusion; click a run for its jobs and every step                                                                                        |
 | Jira work items | Filter by project, type, status category and full text (summary, description and comments); click for description, comments, the complete history and the hierarchy |
 | Insights        | Cycle time, review latency, WIP, reviewers, flaky steps and stale work, with adjustable windows                                                                     |
@@ -135,7 +135,7 @@ The same endpoints power the viewer and are useful on their own:
 | `GET /api/github/repos`                                             | Synced repositories                                                                                                      |
 | `GET /api/github/issues?repo=&state=&label=&author=&search=&limit=` | Issue list                                                                                                               |
 | `GET /api/github/issues/:owner/:repo/:number`                       | One issue with comments and events                                                                                       |
-| `GET /api/github/pulls?...`                                         | Pull request list                                                                                                        |
+| `GET /api/github/pulls?...`                                         | Pull request list. `state` defaults to `all` here, and to `open` for issues                                              |
 | `GET /api/github/pulls/:owner/:repo/:number`                        | One pull request with reviews, commits and files                                                                         |
 | `GET /api/github/workflows?repo=`                                   | Workflows                                                                                                                |
 | `GET /api/github/runs?repo=&conclusion=&branch=&workflow=`          | Workflow runs                                                                                                            |

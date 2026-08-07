@@ -155,7 +155,10 @@ function pullRequestsCommand(): Command {
     .description('list pull requests, or show one with reviews, commits and files')
     .argument('[number]', 'pull request number to show in detail')
     .option('-r, --repo <repo>', 'repository (owner/name), repeatable', collect, [])
-    .option('-s, --state <state>', 'open, closed or all', 'open')
+    // Unlike issues, which default to open: a merged pull request is the
+    // normal end of one, and hiding them makes the list read as if nothing
+    // ever shipped. `--state open` narrows it back down.
+    .option('-s, --state <state>', 'open, closed or all', 'all')
     .option('-l, --label <label>', 'label filter, repeatable', collect, [])
     .option('-a, --author <login>', 'pull request author')
     .option('--assignee <login>', 'assigned to this user')

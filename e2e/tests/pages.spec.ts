@@ -92,8 +92,10 @@ test.describe('the data actually arrived', () => {
     await openViewer(page, 'issues');
     await expect(page.locator('.table tbody tr')).toHaveCount(2); // open only, by default
 
-    // The merged one is not in the default "open" list.
-    await openViewer(page, 'pulls?state=all');
+    // No state filter: pull requests default to every state, so the merged
+    // one is here without asking.
+    await openViewer(page, 'pulls');
+    await expect(page.locator('.table tbody tr')).toHaveCount(2);
     await expect(page.getByText('PLAT-3: respect the secondary rate limit')).toBeVisible();
 
     await openViewer(page, 'runs');
@@ -101,7 +103,7 @@ test.describe('the data actually arrived', () => {
   });
 
   test('a pull request opens with its reviews and files', async ({ page }) => {
-    await openViewer(page, 'pulls?state=all');
+    await openViewer(page, 'pulls');
     await page.getByText('PLAT-3: respect the secondary rate limit').click();
 
     const detail = page.locator('.detail');

@@ -27,9 +27,15 @@ export default defineConfig({
 
   expect: {
     toHaveScreenshot: {
-      // Font rasterisation differs a little between machines; this is small
-      // enough to catch a moved element and large enough to survive that.
-      maxDiffPixelRatio: 0.02,
+      /*
+       * Tight on purpose. Most of a table row is background, so an entire
+       * extra row only changes the pixels its glyphs cover — at 2% this check
+       * happily accepted a pull request list that had gained a row, which is
+       * exactly the kind of change it exists to catch. 0.1% of a 1280x720 page
+       * is about 900 pixels: enough to absorb antialiasing along a few glyph
+       * edges, not enough to hide a line of text.
+       */
+      maxDiffPixelRatio: 0.001,
       animations: 'disabled',
     },
   },
