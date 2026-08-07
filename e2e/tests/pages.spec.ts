@@ -99,7 +99,41 @@ test.describe('the data actually arrived', () => {
     await expect(page.getByText('PLAT-3: respect the secondary rate limit')).toBeVisible();
 
     await openViewer(page, 'runs');
-    await expect(page.locator('.table tbody tr')).toHaveCount(3);
+    await expect(page.locator('.table tbody tr')).toHaveCount(4);
+  });
+
+  test('state and size are colour coded, and cancelled is not a failure', async ({ page }) => {
+    /*
+     * A pixel comparison cannot police this: recolouring "+41" moves a couple
+     * of hundred pixels, well under any threshold that survives antialiasing.
+     * The meaning is in the class, so that is what gets asserted.
+     */
+    await openViewer(page, 'pulls');
+    const rows = page.locator('.table tbody tr');
+
+    await expect(rows.filter({ hasText: 'PLAT-3' }).locator('.badge')).toHaveClass(/badge-merged/);
+    await expect(rows.filter({ hasText: 'remaining budget' }).locator('.badge')).toHaveClass(
+      /badge-open/,
+    );
+    // Added and removed lines read as opposite colours, not one grey number.
+    const added = rows.first().locator('.changes-added');
+    const removed = rows.first().locator('.changes-removed');
+    await expect(added).toBeVisible();
+    expect(await added.evaluate((el) => getComputedStyle(el).color)).not.toBe(
+      await removed.evaluate((el) => getComputedStyle(el).color),
+    );
+
+    await openViewer(page, 'runs');
+    const cancelled = page.locator('.table tbody tr').filter({ hasText: 'cancelled' });
+    await expect(cancelled.locator('.badge')).toHaveClass(/badge-cancelled/);
+    // Whatever the theme, it must not be the colour a failure gets.
+    const failureColour = await page
+      .locator('.badge-failure')
+      .first()
+      .evaluate((el) => getComputedStyle(el).color);
+    expect(await cancelled.locator('.badge').evaluate((el) => getComputedStyle(el).color)).not.toBe(
+      failureColour,
+    );
   });
 
   test('a pull request opens with its reviews and files', async ({ page }) => {

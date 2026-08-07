@@ -361,9 +361,37 @@ input[type='search'] {
   color: var(--closed);
 }
 
-.badge-failure,
-.badge-cancelled {
+/*
+ * A pull request closed without merging, which GitHub records with the same
+ * `closed` state as a merged one. The work was dropped rather than shipped, so
+ * it reads as red — the same distinction the CLI makes. A closed *issue* keeps
+ * the neutral treatment above, because that is ordinary completion.
+ */
+.badge-unmerged {
   border-color: var(--failure);
+  color: var(--failure);
+}
+
+.badge-failure,
+.badge-timed_out {
+  border-color: var(--failure);
+  color: var(--failure);
+}
+
+/* Somebody stopped this run; it is not a failure and should not look like one. */
+.badge-cancelled,
+.badge-skipped,
+.badge-neutral {
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+/* Added and removed lines, so the size and shape of a change is scannable. */
+.changes-added {
+  color: var(--open);
+}
+
+.changes-removed {
   color: var(--failure);
 }
 

@@ -8,8 +8,8 @@ import {
   buildWorkflowRunDocument,
 } from '../documents/github.js';
 import { renderDocument } from '../output/document.js';
-import { printOutput, renderTable, truncate } from '../output/format.js';
-import type { Column } from '../output/format.js';
+import { colour, printOutput, renderTable, truncate } from '../output/format.js';
+import type { Colour, Column } from '../output/format.js';
 import { CliError } from '../util/errors.js';
 import { formatDuration, formatRelative } from '../util/time.js';
 import {
@@ -213,18 +213,26 @@ function pullRequestsCommand(): Command {
           ...readTimeFilters(options),
         });
 
+        // Title first, because it is what identifies the row; then how it
+        // ended, how big it was, who wrote it and when it last moved.
         const columns: Column<gh.PullRequestRow>[] = [
           { header: 'REPOSITORY', value: (row) => row.repo_full_name, optional: true },
           { header: 'NUMBER', value: (row) => `#${row.number}`, align: 'right' },
-          { header: 'STATE', value: (row) => (row.merged ? 'merged' : row.state) },
           { header: 'TITLE', value: (row) => truncate(row.title, 60) },
-          { header: 'AUTHOR', value: (row) => row.author, optional: true },
+          {
+            header: 'STATE',
+            value: (row) => pullRequestState(row),
+            style: (row) => colour(pullRequestState(row), pullRequestStateColour(row)),
+          },
           {
             header: 'CHANGES',
-            value: (row) => `+${row.additions ?? 0}/-${row.deletions ?? 0}`,
+            value: (row) => changes(row),
+            style: (row) =>
+              `${colour(`+${String(row.additions ?? 0)}`, 'green')}/${colour(`-${String(row.deletions ?? 0)}`, 'red')}`,
             align: 'right',
             optional: true,
           },
+          { header: 'AUTHOR', value: (row) => row.author, optional: true },
           { header: 'UPDATED', value: (row) => formatRelative(row.updated_at) },
         ];
 
@@ -344,7 +352,11 @@ function runsCommand(): Command {
           { header: 'EVENT', value: (row) => row.event, optional: true },
           { header: 'BRANCH', value: (row) => truncate(row.head_branch, 24), optional: true },
           { header: 'STATUS', value: (row) => row.status },
-          { header: 'CONCLUSION', value: (row) => row.conclusion },
+          {
+            header: 'CONCLUSION',
+            value: (row) => row.conclusion,
+            style: (row) => colour(row.conclusion ?? '', conclusionColour(row.conclusion)),
+          },
           { header: 'CREATED', value: (row) => formatRelative(row.created_at) },
         ];
 
@@ -550,4 +562,44 @@ function findPullRequest(
     );
   }
   return pr;
+}
+
+/* -------------------------------------------------------------------------- */
+/* How a row reads                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * "merged" is not a state GitHub stores — a merged pull request is `closed`
+ * with a merge commit — but it is the distinction that matters when reading a
+ * list, so it is surfaced as one.
+ */
+export function pullRequestState(row: gh.PullRequestRow): string {
+  return row.merged ? 'merged' : (row.state ?? '');
+}
+
+export function pullRequestStateColour(row: gh.PullRequestRow): Colour {
+  if (row.merged) return 'purple';
+  // Closed without merging: the work was dropped, which is worth spotting.
+  return row.state === 'closed' ? 'red' : 'green';
+}
+
+function changes(row: gh.PullRequestRow): string {
+  return `+${String(row.additions ?? 0)}/-${String(row.deletions ?? 0)}`;
+}
+
+/** Cancelled is not a failure: a run somebody stopped should not read as one. */
+export function conclusionColour(conclusion: string | null): Colour {
+  switch (conclusion) {
+    case 'success':
+      return 'green';
+    case 'failure':
+    case 'timed_out':
+      return 'red';
+    case 'cancelled':
+    case 'skipped':
+    case 'neutral':
+      return 'gray';
+    default:
+      return 'yellow';
+  }
 }

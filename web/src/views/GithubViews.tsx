@@ -199,10 +199,20 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
                     {pull.title} <Labels values={parseList(pull.labels)} />
                   </td>
                   <td>
-                    <Badge value={pull.merged ? 'merged' : pull.state} />
+                    {/*
+                     * A pull request closed without merging shares GitHub's
+                     * `closed` state with a merged one, so it needs its own
+                     * kind to read differently.
+                     */}
+                    <Badge
+                      value={pull.merged ? 'merged' : pull.state}
+                      kind={!pull.merged && pull.state === 'closed' ? 'unmerged' : undefined}
+                    />
                   </td>
                   <td className="right">
-                    +{pull.additions ?? 0}/-{pull.deletions ?? 0}
+                    <span className="changes-added">+{pull.additions ?? 0}</span>
+                    <span className="muted">/</span>
+                    <span className="changes-removed">-{pull.deletions ?? 0}</span>
                   </td>
                   <td className="muted">{formatRelative(pull.updated_at)}</td>
                 </tr>
