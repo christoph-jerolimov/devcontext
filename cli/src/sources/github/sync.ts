@@ -1,5 +1,5 @@
 import type { GithubRepoTarget } from '../../config/types.js';
-import type { SyncContext, TargetSyncResult } from '../../sync/types.js';
+import type { SyncContext, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import type { SyncMode } from '../../db/journal.js';
 import { errorMessage } from '../../util/errors.js';
 import { num, str } from '../../util/json.js';
@@ -14,11 +14,13 @@ interface OperationStats {
   cursor: string | null;
 }
 
-/** Syncs one GitHub repository into the database. */
-export async function syncGithubRepository(
-  target: GithubRepoTarget,
-  ctx: SyncContext,
-): Promise<TargetSyncResult> {
+/**
+ * Prepares one repository so it can be sized before anything is synced.
+ *
+ * The run is not opened in the journal until `run()`, so a survey that fails
+ * leaves nothing half started behind it.
+ */
+export function planGithubRepository(target: GithubRepoTarget, ctx: SyncContext): TargetPlan {
   const client = new GithubClient({
     host: target.host,
     settings: ctx.config.sync,
@@ -29,18 +31,41 @@ export async function syncGithubRepository(
   const scopePrefix = `github:${target.host.name}/${target.fullName}`;
   const hasCursor = ctx.journal.getState(`${scopePrefix}:issues`) !== undefined;
   const mode: SyncMode = ctx.full || !hasCursor ? 'initial' : 'incremental';
+  const syncer = new GithubRepoSyncer(client, target, ctx, mode, scopePrefix);
 
+  return {
+    label: target.fullName,
+    survey: () => syncer.survey(),
+    run: () => runGithubRepository(target, ctx, syncer, mode),
+  };
+}
+
+/** Syncs one GitHub repository into the database, sizing it first. */
+export async function syncGithubRepository(
+  target: GithubRepoTarget,
+  ctx: SyncContext,
+): Promise<TargetSyncResult> {
+  const plan = planGithubRepository(target, ctx);
+  await plan.survey();
+  return plan.run();
+}
+
+async function runGithubRepository(
+  target: GithubRepoTarget,
+  ctx: SyncContext,
+  syncer: GithubRepoSyncer,
+  mode: SyncMode,
+): Promise<TargetSyncResult> {
   const runId = ctx.journal.startRun({
     projectKey: ctx.projectKey,
     source: 'github',
     target: target.fullName,
     mode,
   });
+  syncer.attachRun(runId);
 
   const callsAtStart = ctx.progress.apiCallCount;
   const itemsAtStart = ctx.progress.itemCount;
-
-  const syncer = new GithubRepoSyncer(client, target, ctx, runId, mode, scopePrefix);
 
   try {
     await syncer.run();
@@ -116,10 +141,10 @@ export async function syncGithubItem(
     client,
     target,
     ctx,
-    runId,
     'targeted',
     `github:${target.host.name}/${target.fullName}`,
   );
+  syncer.attachRun(runId);
 
   const base = {
     runId,
@@ -168,23 +193,153 @@ class GithubRepoSyncer {
   readonly summary: Record<string, number> = {};
   /** Pull requests discovered while walking the issue list. */
   private readonly pendingPullRequests = new Map<number, JsonObject>();
+  /** What the survey predicted per slice, so a partial walk cannot undercut it. */
+  private readonly surveyed = new Map<string, number>();
+
+  /** Set once the journal run exists, which is after the survey. */
+  private runId = 0;
 
   constructor(
     private readonly client: GithubClient,
     private readonly target: GithubRepoTarget,
     private readonly ctx: SyncContext,
-    private readonly runId: number,
     private readonly mode: SyncMode,
     private readonly scopePrefix: string,
   ) {
     this.ref = { host: target.host.name, repoId: 0, fullName: target.fullName };
   }
 
+  attachRun(runId: number): void {
+    this.runId = runId;
+  }
+
+  /**
+   * Sizes the job before doing it, so the total is right from the first
+   * percent rather than climbing as each resource is reached.
+   *
+   * One request per collection buys an exact item count (see
+   * `client.countItems`), and every follow up call an item implies is known
+   * from the configuration — so the arithmetic below is the whole sync, priced
+   * up front. The survey's own requests are part of the sync's cost and are
+   * counted like any other.
+   *
+   * Everything here is an estimate that the syncers revise through the same
+   * keys as they learn the truth. Where a count cannot be had at all, the
+   * expectation stays where the walk puts it.
+   */
+  async survey(): Promise<void> {
+    const { sync } = this.target;
+    const pageSize = 100;
+    const key = (resource: string): string => `${this.scopePrefix}:${resource}`;
+    let probes = 0;
+    const probe = async (
+      path: string,
+      query: Record<string, string | number | boolean | undefined>,
+    ): Promise<number | null> => {
+      probes += 1;
+      // The probes are requests like any other, so they belong in the total
+      // they are being used to produce.
+      this.seed(key('survey'), probes);
+      return this.client.countItems(path, query);
+    };
+
+    // The repository itself, plus the small single page lists. Probing these
+    // would cost as much as fetching them.
+    this.seed(key('repository'), 1);
+    if (sync.labels) this.seed(key('labels'), 1);
+    if (sync.milestones) this.seed(key('milestones'), 1);
+    if (sync.releases) this.seed(key('releases'), 1);
+    if (sync.workflows) this.seed(key('workflows'), 1);
+
+    if (sync.issues) {
+      const since = this.resolveSince(key('issues'));
+      const total = await probe(`/repos/${this.target.owner}/${this.target.repo}/issues`, {
+        state: 'all',
+        ...(since ? { since } : {}),
+      });
+      if (total !== null) {
+        this.seed(key('issues'), this.issueCalls(total, pageSize));
+
+        if (sync.pullRequests) {
+          /*
+           * Pull requests are a subset of that issue list, and which ones
+           * cannot be known without walking it. The repository's pull request
+           * count bounds the answer: on a first sync it *is* the answer, and
+           * on an incremental one it is usually far larger than the handful of
+           * items that changed, so the smaller of the two is the better guess.
+           * The walk replaces this with the real number either way.
+           */
+          const pulls = await probe(`/repos/${this.target.owner}/${this.target.repo}/pulls`, {
+            state: 'all',
+          });
+          if (pulls !== null) {
+            this.seed(key('pull_requests'), this.pullRequestCalls(Math.min(total, pulls)));
+          }
+        }
+      }
+    }
+
+    if (sync.workflowRuns) {
+      const total = await probe(`/repos/${this.target.owner}/${this.target.repo}/actions/runs`, {});
+      if (total !== null) {
+        const runs = Math.min(total, this.target.maxWorkflowRuns);
+        // One list page per `pageSize` runs, plus one job call per run. The
+        // logs are per job, which only the run itself reveals.
+        /*
+         * List pages, one job call per run, and — when logs are on — one log
+         * per job. How many jobs a run has is only known once it is fetched,
+         * so one per run is the assumption; the walk corrects it.
+         */
+        this.seed(
+          key('workflow_runs'),
+          Math.max(1, Math.ceil(runs / pageSize)) +
+            (sync.workflowJobs ? runs : 0) +
+            (sync.workflowJobs && sync.workflowLogs ? runs : 0),
+        );
+      }
+    }
+  }
+
+  /** Seeds a slice from the survey, remembering the figure for later. */
+  private seed(key: string, calls: number): void {
+    this.surveyed.set(key, calls);
+    this.ctx.progress.expectFor(key, calls);
+  }
+
+  /**
+   * Revises a slice from what the walk has actually seen, but never below what
+   * the survey predicted.
+   *
+   * Half way through the pages the walk has only counted half the work, while
+   * the survey already knew the total — dropping to the walk's figure there
+   * would make the bar jump forward and then stall.
+   */
+  private reviseAtLeast(key: string, calls: number): void {
+    this.ctx.progress.expectFor(key, Math.max(calls, this.surveyed.get(key) ?? 0));
+  }
+
+  /** List pages plus the comments and timeline of every issue. */
+  private issueCalls(total: number, pageSize: number): number {
+    const { sync } = this.target;
+    const perItem = (sync.issueComments ? 1 : 0) + (sync.issueTimeline ? 1 : 0);
+    return Math.max(1, Math.ceil(total / pageSize)) + total * perItem;
+  }
+
+  private pullRequestCalls(total: number): number {
+    const { sync } = this.target;
+    const perItem =
+      1 +
+      (sync.pullRequestReviews ? 1 : 0) +
+      (sync.pullRequestComments ? 1 : 0) +
+      (sync.pullRequestCommits ? 1 : 0) +
+      (sync.pullRequestFiles ? 1 : 0);
+    return total * perItem;
+  }
+
   async run(): Promise<void> {
     const { sync } = this.target;
 
     this.ctx.progress.setPhase(`${this.target.fullName}: repository`);
-    this.ctx.progress.expect(1);
     await this.syncRepository();
 
     if (sync.labels) await this.operation('labels', () => this.syncLabels());
@@ -305,14 +460,20 @@ class GithubRepoSyncer {
 
     let items = 0;
     let newestUpdate = since;
+    let seen = 0;
+    let pages = 0;
 
     for await (const page of this.client.issues(this.target.owner, this.target.repo, {
       since,
       state: 'all',
     })) {
+      pages += 1;
       if (page.length === 0) continue;
-      // Every issue on this page needs its own follow up calls.
-      this.ctx.progress.expect(page.length * perItemCalls);
+      seen += page.length;
+
+      // Replaces the survey's figure rather than adding to it: the same slice
+      // of work, now counted exactly as far as the walk has got.
+      this.reviseAtLeast(scope, pages + seen * perItemCalls);
 
       for (const raw of page) {
         const updatedAt = await this.writeIssuePayload(raw);
@@ -395,16 +556,14 @@ class GithubRepoSyncer {
    * the commit list and the changed files.
    */
   private async syncPullRequests(): Promise<OperationStats> {
-    const { sync } = this.target;
     const numbers = [...this.pendingPullRequests.keys()].toSorted((a, b) => a - b);
 
-    const perItemCalls =
-      1 +
-      (sync.pullRequestReviews ? 1 : 0) +
-      (sync.pullRequestComments ? 1 : 0) +
-      (sync.pullRequestCommits ? 1 : 0) +
-      (sync.pullRequestFiles ? 1 : 0);
-    this.ctx.progress.expect(numbers.length * perItemCalls);
+    // The survey could only bound this; the issue walk has since produced the
+    // exact set, so the estimate is replaced with the real figure.
+    this.ctx.progress.expectFor(
+      `${this.scopePrefix}:pull_requests`,
+      this.pullRequestCalls(numbers.length),
+    );
 
     let items = 0;
     let newestUpdate: string | null = null;
@@ -504,7 +663,6 @@ class GithubRepoSyncer {
   }
 
   private async syncWorkflows(): Promise<OperationStats> {
-    this.ctx.progress.expect(1);
     const workflows = await this.client.workflows(this.target.owner, this.target.repo);
     const syncedAt = nowIso();
     for (const workflow of workflows) {
@@ -526,11 +684,18 @@ class GithubRepoSyncer {
     let items = 0;
     let newest: string | null = null;
     let processed = 0;
+    let pages = 0;
 
     outer: for await (const page of this.client.workflowRuns(this.target.owner, this.target.repo, {
       created: since,
     })) {
-      if (sync.workflowJobs) this.ctx.progress.expect(page.length);
+      pages += 1;
+      // The list calls made so far, plus one job call for each run they
+      // yielded. The walk stops at maxWorkflowRuns or at the cursor, neither
+      // of which a count of runs can know, so this replaces the survey's
+      // figure once it grows past it.
+      const seenRuns = processed + page.length;
+      this.reviseAtLeast(scope, pages + (sync.workflowJobs ? seenRuns : 0));
 
       for (const raw of page) {
         const createdAt = str(raw, 'created_at');

@@ -1,6 +1,6 @@
 import type { JiraProjectTarget } from '../../config/types.js';
 import type { SyncMode } from '../../db/journal.js';
-import type { SyncContext, TargetSyncResult } from '../../sync/types.js';
+import type { SyncContext, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import { CliError, errorMessage } from '../../util/errors.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
@@ -14,11 +14,13 @@ interface OperationStats {
   cursor: string | null;
 }
 
-/** Syncs one Jira project into the database. */
-export async function syncJiraProject(
-  target: JiraProjectTarget,
-  ctx: SyncContext,
-): Promise<TargetSyncResult> {
+/**
+ * Prepares one Jira project so it can be sized before anything is synced.
+ *
+ * The run is not opened in the journal until `run()`, so a survey that fails
+ * leaves nothing half started behind it.
+ */
+export function planJiraProject(target: JiraProjectTarget, ctx: SyncContext): TargetPlan {
   const client = new JiraClient({
     site: target.site,
     settings: ctx.config.sync,
@@ -30,17 +32,41 @@ export async function syncJiraProject(
   const scopePrefix = `jira:${targetName}`;
   const hasCursor = ctx.journal.getState(`${scopePrefix}:workitems`) !== undefined;
   const mode: SyncMode = ctx.full || !hasCursor ? 'initial' : 'incremental';
+  const syncer = new JiraProjectSyncer(client, target, ctx, mode, scopePrefix, targetName);
 
+  return {
+    label: targetName,
+    survey: () => syncer.survey(),
+    run: () => runJiraProject(ctx, syncer, mode, targetName),
+  };
+}
+
+/** Syncs one Jira project into the database, sizing it first. */
+export async function syncJiraProject(
+  target: JiraProjectTarget,
+  ctx: SyncContext,
+): Promise<TargetSyncResult> {
+  const plan = planJiraProject(target, ctx);
+  await plan.survey();
+  return plan.run();
+}
+
+async function runJiraProject(
+  ctx: SyncContext,
+  syncer: JiraProjectSyncer,
+  mode: SyncMode,
+  targetName: string,
+): Promise<TargetSyncResult> {
   const runId = ctx.journal.startRun({
     projectKey: ctx.projectKey,
     source: 'jira',
     target: targetName,
     mode,
   });
+  syncer.attachRun(runId);
 
   const callsAtStart = ctx.progress.apiCallCount;
   const itemsAtStart = ctx.progress.itemCount;
-  const syncer = new JiraProjectSyncer(client, target, ctx, runId, mode, scopePrefix, targetName);
 
   try {
     await syncer.run();
@@ -111,11 +137,11 @@ export async function syncJiraWorkitem(
     client,
     target,
     ctx,
-    runId,
     'targeted',
     `jira:${targetName}`,
     targetName,
   );
+  syncer.attachRun(runId);
 
   const base = {
     runId,
@@ -162,12 +188,20 @@ export async function syncJiraWorkitem(
 class JiraProjectSyncer {
   readonly summary: Record<string, number> = {};
   private readonly jiraCtx: JiraContext;
+  /** What the survey counted, and for which query, so the walk can reuse it. */
+  private surveyed: { jql: string; total: number | null } | null = null;
+
+  /** Set once the journal run exists, which is after the survey. */
+  private runId = 0;
+
+  attachRun(runId: number): void {
+    this.runId = runId;
+  }
 
   constructor(
     private readonly client: JiraClient,
     private readonly target: JiraProjectTarget,
     private readonly ctx: SyncContext,
-    private readonly runId: number,
     private readonly mode: SyncMode,
     private readonly scopePrefix: string,
     private readonly targetName: string,
@@ -180,11 +214,57 @@ class JiraProjectSyncer {
     };
   }
 
+  /**
+   * Sizes the job before doing it. Jira makes this cheap: a search reports how
+   * many work items match, so one call prices the pages and every follow up
+   * call each item implies.
+   *
+   * Boards and sprints are not counted here. Their cost depends on how many
+   * boards the project has and how many sprints each board holds, which is
+   * only known once the boards have been listed.
+   */
+  async survey(): Promise<void> {
+    const { sync } = this.target;
+
+    // The project and the field catalogue, one call each, always.
+    this.ctx.progress.expectFor(`${this.scopePrefix}:project`, 2);
+    // Listing the boards is one call. How many sprints hang off each, and how
+    // many work items off each sprint, only the listing reveals.
+    if (sync.boards || sync.sprints) this.ctx.progress.expectFor(`${this.scopePrefix}:boards`, 1);
+
+    if (!sync.workitems) return;
+
+    const scope = `${this.scopePrefix}:workitems`;
+    const jql = this.buildJql(this.resolveSince(scope));
+    const total = await this.client.count(jql);
+    if (total === null) return;
+
+    // Kept so the walk does not pay for the same count a second time.
+    this.surveyed = { jql, total };
+    this.ctx.progress.expectFor(scope, this.workitemCalls(total));
+  }
+
+  /** The count, for a run that skipped the survey (a targeted sync). */
+  private async countForSync(jql: string, scope: string): Promise<number | null> {
+    this.ctx.progress.expect(1);
+    const total = await this.client.count(jql);
+    if (total !== null) this.ctx.progress.expectFor(scope, this.workitemCalls(total));
+    return total;
+  }
+
+  /** The count call, the pages it implies, and the follow ups per work item. */
+  private workitemCalls(total: number): number {
+    const { sync } = this.target;
+    const perItem = (sync.comments ? 1 : 0) + (sync.changelog ? 1 : 0) + (sync.worklogs ? 1 : 0);
+    return 1 + Math.max(1, Math.ceil(total / this.ctx.config.sync.pageSize)) + total * perItem;
+  }
+
   async run(): Promise<void> {
     const { sync } = this.target;
 
     this.ctx.progress.setPhase(`${this.targetName}: project`);
-    this.ctx.progress.expect(2);
+    // Sized by the survey; a targeted run has no survey, so it seeds it here.
+    this.ctx.progress.expectFor(`${this.scopePrefix}:project`, 2);
     await this.syncProject();
     await this.syncFields();
 
@@ -270,16 +350,15 @@ class JiraProjectSyncer {
     const scope = `${this.scopePrefix}:workitems`;
     const since = this.resolveSince(scope);
     const jql = this.buildJql(since);
-    const { sync } = this.target;
 
     this.ctx.progress.log(`JQL: ${jql}`);
-    this.ctx.progress.expect(1);
-    const total = await this.client.count(jql);
+
+    // The survey already asked, for this very JQL; asking again would cost a
+    // call and could only return the same answer.
+    const total =
+      this.surveyed?.jql === jql ? this.surveyed.total : await this.countForSync(jql, scope);
     const pageSize = this.ctx.config.sync.pageSize;
     if (total !== null) {
-      // Pages plus the follow up calls that are needed per work item.
-      const perItem = (sync.comments ? 1 : 0) + (sync.changelog ? 1 : 0) + (sync.worklogs ? 1 : 0);
-      this.ctx.progress.expect(Math.ceil(total / pageSize) + total * perItem);
       this.ctx.progress.log(`${total} work item(s) match in ${this.target.projectKey}.`);
     }
 
@@ -432,11 +511,15 @@ class JiraProjectSyncer {
     const syncedAt = nowIso();
     let items = 0;
 
+    const scope = `${this.scopePrefix}:boards`;
     let boards: JsonObject[];
     if (this.target.boardIds.length > 0) {
       boards = this.target.boardIds.map((id) => ({ id, name: `board-${id}` }));
+      this.ctx.progress.expectFor(scope, 0);
     } else {
-      this.ctx.progress.expect(1);
+      // The survey already counted this one call; the sprint listing per board
+      // is what it could not know.
+      this.ctx.progress.expectFor(scope, 1);
       boards = await this.client.boards(this.target.projectKey);
     }
 

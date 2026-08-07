@@ -12,13 +12,13 @@ import { buildCrossLinks } from '../links/build.js';
 import { buildSearchIndex } from '../search/index.js';
 import type { SearchIndexStats } from '../search/index.js';
 import type { BuildLinksResult } from '../links/build.js';
-import { CliError } from '../util/errors.js';
+import { CliError, errorMessage } from '../util/errors.js';
 import type { Logger } from '../util/logger.js';
 import { nowIso } from '../util/time.js';
-import { syncGithubItem, syncGithubRepository } from '../sources/github/sync.js';
-import { syncJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
+import { planGithubRepository, syncGithubItem } from '../sources/github/sync.js';
+import { planJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
 import { ProgressReporter } from './progress.js';
-import type { SyncContext, TargetSyncResult } from './types.js';
+import type { SyncContext, TargetPlan, TargetSyncResult } from './types.js';
 
 export type SyncSource = 'github' | 'jira';
 
@@ -98,6 +98,8 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       return summary;
     }
 
+    const plans: Array<{ plan: TargetPlan; announce: string }> = [];
+
     for (const project of projects) {
       if (!options.dryRun) storeProject(db, project);
 
@@ -115,8 +117,10 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       if (sources.includes('github')) {
         for (const target of project.github) {
           if (!matchesTarget(options.targets, [target.fullName, target.repo])) continue;
-          logger.info(`Syncing GitHub repository ${target.fullName} (project ${project.key}).`);
-          results.push(await syncGithubRepository(target, ctx));
+          plans.push({
+            plan: planGithubRepository(target, ctx),
+            announce: `Syncing GitHub repository ${target.fullName} (project ${project.key}).`,
+          });
         }
       }
 
@@ -130,10 +134,43 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
           ) {
             continue;
           }
-          logger.info(`Syncing Jira project ${target.projectKey} (project ${project.key}).`);
-          results.push(await syncJiraProject(target, ctx));
+          plans.push({
+            plan: planJiraProject(target, ctx),
+            announce: `Syncing Jira project ${target.projectKey} (project ${project.key}).`,
+          });
         }
       }
+    }
+
+    /*
+     * Size every target before syncing any of them.
+     *
+     * Each survey costs a handful of requests and buys an exact count of what
+     * is there, so the expected total and the time remaining are meaningful
+     * from the first percent. Without it the expectation climbed each time
+     * another repository, or another resource within one, was reached, and an
+     * estimate that keeps growing is worse than none.
+     *
+     * A survey that fails is not fatal: it only means that target's share of
+     * the work gets discovered while it is done, exactly as it used to be.
+     */
+    if (plans.length > 0) {
+      progress.setPhase('planning');
+      for (const { plan } of plans) {
+        try {
+          await plan.survey();
+        } catch (error) {
+          logger.debug(`Could not size ${plan.label} up front: ${errorMessage(error)}`);
+        }
+      }
+      logger.info(
+        `Planned ${plans.length} target(s): about ${progress.expectedApiCallCount} API call(s).`,
+      );
+    }
+
+    for (const { plan, announce } of plans) {
+      logger.info(announce);
+      results.push(await plan.run());
     }
 
     progress.finish();

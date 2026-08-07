@@ -130,6 +130,29 @@ function json(body: unknown, headers: Record<string, string> = {}): Response {
 }
 
 /**
+ * A paginated list response, the way GitHub sends one.
+ *
+ * The size probe the sync uses asks for one item per page and reads the item
+ * count off `rel="last"`, so a stub that ignored `per_page` would return the
+ * whole list and make the probe look right for the wrong reason.
+ */
+function page(url: URL, all: unknown[]): Response {
+  const perPage = Number(url.searchParams.get('per_page') ?? '100');
+  const current = Number(url.searchParams.get('page') ?? '1');
+  const pages = Math.max(1, Math.ceil(all.length / perPage));
+  const slice = all.slice((current - 1) * perPage, current * perPage);
+
+  if (pages <= 1) return json(slice);
+
+  const link = (rel: string, target: number): string =>
+    `<${url.origin}${url.pathname}?per_page=${String(perPage)}&page=${String(target)}>; rel="${rel}"`;
+  const parts = [link('last', pages)];
+  if (current < pages) parts.unshift(link('next', current + 1));
+
+  return json(slice, { link: parts.join(', ') });
+}
+
+/**
  * A pull request that only exists once this is set, so a test can simulate the
  * repository changing between two syncs — which is what actually happens when
  * CI runs on a merge.
@@ -217,9 +240,15 @@ function route(rawUrl: string): Response {
     return json([{ id: 3, number: 1, title: 'v1.0', state: 'open' }]);
   }
   if (path === '/repos/acme/platform/issues') {
-    return json(
-      mergedDuringTheRun ? [ISSUE, PULL_AS_ISSUE, LATE_PULL_AS_ISSUE] : [ISSUE, PULL_AS_ISSUE],
-    );
+    const all = mergedDuringTheRun
+      ? [ISSUE, PULL_AS_ISSUE, LATE_PULL_AS_ISSUE]
+      : [ISSUE, PULL_AS_ISSUE];
+    return page(url, all);
+  }
+  // Only ever asked for as a count probe: the sync itself derives its pull
+  // requests from the issue list.
+  if (path === '/repos/acme/platform/pulls') {
+    return page(url, mergedDuringTheRun ? [PULL_AS_ISSUE, LATE_PULL_AS_ISSUE] : [PULL_AS_ISSUE]);
   }
   if (path === '/repos/acme/platform/issues/12') return json(ISSUE);
   if (path === '/repos/acme/platform/issues/42') return json(PULL_AS_ISSUE);
@@ -850,6 +879,63 @@ describe('runSync', () => {
         targetedOnly: true,
       }),
     ).rejects.toThrow(/No Jira project "NOPE"/);
+  });
+
+  it('sizes every target before fetching anything, and gets it right', async () => {
+    /*
+     * The complaint this answers: the expected call count used to climb every
+     * time another resource group was reached, so the percentage and the time
+     * remaining meant nothing until the sync was nearly over.
+     *
+     * Two things have to hold. The counting requests must all come before the
+     * work, and the number they produce must match what the sync then spends.
+     */
+    const lines: string[] = [];
+    const summary = await runSync({
+      config,
+      logger: { ...nullLogger, info: (message: string) => lines.push(message) },
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    // --- the counting happens first ---------------------------------------
+    const probes = requestedUrls
+      .map((url, index) => ({ url, index }))
+      // `per_page=1` exactly — `per_page=100` contains it as a prefix.
+      .filter(({ url }) => /[?&]per_page=1(&|$)/.test(url) || url.includes('approximate-count'));
+    const work = requestedUrls
+      .map((url, index) => ({ url, index }))
+      .filter(({ url }) => /\/(comments|timeline|reviews|commits|files)(\?|$)/.test(url));
+
+    expect(probes.length).toBeGreaterThan(0);
+    expect(work.length).toBeGreaterThan(0);
+    const lastProbe = Math.max(...probes.map((entry) => entry.index));
+    const firstWork = Math.min(...work.map((entry) => entry.index));
+    expect(lastProbe).toBeLessThan(firstWork);
+
+    // --- and the number it announced was already the right one ------------
+    const planned = lines.find((line) => line.startsWith('Planned '));
+    expect(planned).toBeDefined();
+
+    const predicted = Number(/about (\d+) API call/.exec(planned ?? '')?.[1]);
+    expect(predicted).toBeGreaterThan(0);
+
+    /*
+     * The figure printed before the first item is fetched, against what the
+     * run actually cost. Being close is the whole point — a plan that is only
+     * accurate once the work is done is the behaviour this replaced.
+     */
+    /*
+     * Within a tenth of what the run went on to cost, stated before a single
+     * item was fetched. It is not exact, and cannot be: how many sprints hang
+     * off a board, and how many jobs off a workflow run, is only known once
+     * the board and the run have been fetched. Those are the only parts still
+     * discovered as the sync goes.
+     */
+    expect(predicted).toBeGreaterThanOrEqual(Math.round(summary.apiCalls * 0.85));
+    expect(predicted).toBeLessThanOrEqual(Math.round(summary.apiCalls * 1.15));
   });
 
   it('only syncs the requested source', async () => {

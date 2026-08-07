@@ -4,6 +4,19 @@ import type { SyncJournal, SyncMode, SyncStatus } from '../db/journal.js';
 import type { Logger } from '../util/logger.js';
 import type { ProgressReporter } from './progress.js';
 
+/**
+ * One target, prepared but not started.
+ *
+ * Splitting the survey from the run is what lets every target be priced before
+ * any of them is synced, so the expected total is right from the first percent
+ * instead of climbing each time another repository or resource is reached.
+ */
+export interface TargetPlan {
+  label: string;
+  survey: () => Promise<void>;
+  run: () => Promise<TargetSyncResult>;
+}
+
 export interface SyncContext {
   db: Database;
   journal: SyncJournal;

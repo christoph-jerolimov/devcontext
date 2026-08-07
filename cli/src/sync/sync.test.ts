@@ -254,4 +254,34 @@ describe('ProgressReporter', () => {
     progress.recordApiCall(5);
     expect(progress.expectedApiCallCount).toBe(5);
   });
+
+  it('replaces a named slice instead of adding to it', () => {
+    /*
+     * The whole point of the named form. The survey sizes a slice before the
+     * sync starts and the syncer revises it once it knows the real number; if
+     * that were additive, every revision would count the same work again and
+     * the total would run away.
+     */
+    const progress = new ProgressReporter({ enabled: false, logger: nullLogger });
+
+    progress.expectFor('repo:issues', 200);
+    expect(progress.expectedApiCallCount).toBe(200);
+
+    progress.expectFor('repo:issues', 180);
+    expect(progress.expectedApiCallCount).toBe(180);
+
+    progress.expectFor('repo:issues', 180);
+    expect(progress.expectedApiCallCount).toBe(180);
+  });
+
+  it('adds up separate slices, and the unnamed expectation on top', () => {
+    const progress = new ProgressReporter({ enabled: false, logger: nullLogger });
+
+    progress.expectFor('repo:issues', 200);
+    progress.expectFor('repo:pull_requests', 50);
+    // Work whose size only the walk can reveal stays additive.
+    progress.expect(7);
+
+    expect(progress.expectedApiCallCount).toBe(257);
+  });
 });
