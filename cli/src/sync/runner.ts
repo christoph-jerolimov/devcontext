@@ -1,4 +1,9 @@
-import type { ProjectConfig, ResolvedConfig } from '../config/types.js';
+import type {
+  GithubRepoTarget,
+  JiraProjectTarget,
+  ProjectConfig,
+  ResolvedConfig,
+} from '../config/types.js';
 import { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import { exportOutputs } from '../exporters/index.js';
@@ -8,8 +13,8 @@ import type { BuildLinksResult } from '../links/build.js';
 import { CliError } from '../util/errors.js';
 import type { Logger } from '../util/logger.js';
 import { nowIso } from '../util/time.js';
-import { syncGithubRepository } from '../sources/github/sync.js';
-import { syncJiraProject } from '../sources/jira/sync.js';
+import { syncGithubItem, syncGithubRepository } from '../sources/github/sync.js';
+import { syncJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
 import { ProgressReporter } from './progress.js';
 import type { SyncContext, TargetSyncResult } from './types.js';
 
@@ -28,6 +33,14 @@ export interface RunSyncOptions {
   progress: boolean;
   /** Write the yaml / markdown / json outputs after syncing. */
   writeOutputs: boolean;
+  /**
+   * Sync these items first, before the regular sync. Each is either a GitHub
+   * reference (`owner/repo#42`, or `42` when a single repository is configured)
+   * or a Jira key (`PLAT-42`).
+   */
+  only?: string[];
+  /** Skip the regular sync after the targeted one. */
+  targetedOnly?: boolean;
 }
 
 export interface SyncSummary {
@@ -59,6 +72,23 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
   const results: TargetSyncResult[] = [];
 
   try {
+    // --- targeted items first -------------------------------------------
+    for (const reference of options.only ?? []) {
+      results.push(...(await syncTargeted(reference, projects, db, journal, progress, options)));
+    }
+
+    if (options.targetedOnly === true) {
+      progress.finish();
+      const summary: SyncSummary = {
+        results,
+        apiCalls: progress.apiCallCount,
+        items: progress.itemCount,
+        durationMs: Date.now() - startedAt,
+      };
+      if (!options.dryRun) summary.links = buildCrossLinks(db);
+      return summary;
+    }
+
     for (const project of projects) {
       if (!options.dryRun) storeProject(db, project);
 
@@ -125,6 +155,98 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
     progress.finish();
     db.close();
   }
+}
+
+/**
+ * Resolves a reference to the project and target it belongs to and syncs just
+ * that item. Cursors are untouched, so the regular sync afterwards still covers
+ * the whole window and nothing can be skipped.
+ */
+async function syncTargeted(
+  reference: string,
+  projects: ProjectConfig[],
+  db: Database,
+  journal: SyncJournal,
+  progress: ProgressReporter,
+  options: RunSyncOptions,
+): Promise<TargetSyncResult[]> {
+  const parsed = parseReference(reference, projects);
+
+  const ctx: SyncContext = {
+    db,
+    journal,
+    progress,
+    logger: options.logger,
+    config: options.config,
+    full: options.full,
+    dryRun: options.dryRun,
+    projectKey: parsed.project.key,
+  };
+
+  if (parsed.kind === 'github') {
+    options.logger.info(`Syncing ${parsed.target.fullName}#${parsed.number} directly.`);
+    return [await syncGithubItem(parsed.target, ctx, parsed.number)];
+  }
+
+  options.logger.info(`Syncing ${parsed.key} directly.`);
+  return [await syncJiraWorkitem(parsed.target, ctx, parsed.key)];
+}
+
+type ParsedReference =
+  | { kind: 'github'; project: ProjectConfig; target: GithubRepoTarget; number: number }
+  | { kind: 'jira'; project: ProjectConfig; target: JiraProjectTarget; key: string };
+
+/** `owner/repo#42`, `42` (single repository) or `PLAT-42`. */
+export function parseReference(reference: string, projects: ProjectConfig[]): ParsedReference {
+  const trimmed = reference.trim();
+
+  const jiraKey = /^([A-Za-z][A-Za-z0-9]*)-(\d+)$/.exec(trimmed);
+  if (jiraKey) {
+    const projectKey = (jiraKey[1] ?? '').toUpperCase();
+    for (const project of projects) {
+      const target = project.jira.find((entry) => entry.projectKey === projectKey);
+      if (target) {
+        return { kind: 'jira', project, target, key: `${projectKey}-${jiraKey[2]}` };
+      }
+    }
+    throw new CliError(`No Jira project "${projectKey}" is configured.`, {
+      hint: `Configured Jira projects: ${projects.flatMap((p) => p.jira.map((j) => j.projectKey)).join(', ') || '(none)'}`,
+    });
+  }
+
+  const qualified = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(trimmed);
+  if (qualified) {
+    const fullName = qualified[1] ?? '';
+    for (const project of projects) {
+      const target = project.github.find((entry) => entry.fullName === fullName);
+      if (target) {
+        return { kind: 'github', project, target, number: Number(qualified[2]) };
+      }
+    }
+    throw new CliError(`No GitHub repository "${fullName}" is configured.`, {
+      hint: `Configured repositories: ${projects.flatMap((p) => p.github.map((g) => g.fullName)).join(', ') || '(none)'}`,
+    });
+  }
+
+  const bare = /^#?(\d+)$/.exec(trimmed);
+  if (bare) {
+    const repositories = projects.flatMap((project) =>
+      project.github.map((target) => ({ project, target })),
+    );
+    const [only, ...rest] = repositories;
+    if (!only) throw new CliError('No GitHub repository is configured.');
+    if (rest.length > 0) {
+      throw new CliError(
+        `"${trimmed}" is ambiguous: ${repositories.length} repositories are configured.`,
+        { hint: 'Use owner/name#number.' },
+      );
+    }
+    return { kind: 'github', project: only.project, target: only.target, number: Number(bare[1]) };
+  }
+
+  throw new CliError(`Cannot understand "${reference}".`, {
+    hint: 'Expected owner/name#42, 42 (with a single repository) or PLAT-42.',
+  });
 }
 
 export function selectProjects(config: ResolvedConfig, keys?: string[]): ProjectConfig[] {

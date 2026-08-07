@@ -84,6 +84,85 @@ export async function syncGithubRepository(
   }
 }
 
+/**
+ * Syncs one issue or pull request immediately.
+ *
+ * No cursor is touched, so nothing the regular sync still has to fetch can be
+ * skipped, and every write is an upsert, so the follow up run seeing the same
+ * item again changes nothing.
+ */
+export async function syncGithubItem(
+  target: GithubRepoTarget,
+  ctx: SyncContext,
+  number: number,
+): Promise<TargetSyncResult> {
+  const client = new GithubClient({
+    host: target.host,
+    settings: ctx.config.sync,
+    progress: ctx.progress,
+    logger: ctx.logger,
+  });
+
+  const runId = ctx.journal.startRun({
+    projectKey: ctx.projectKey,
+    source: 'github',
+    target: target.fullName,
+    mode: 'targeted',
+  });
+
+  const callsAtStart = ctx.progress.apiCallCount;
+  const itemsAtStart = ctx.progress.itemCount;
+  const syncer = new GithubRepoSyncer(
+    client,
+    target,
+    ctx,
+    runId,
+    'targeted',
+    `github:${target.host.name}/${target.fullName}`,
+  );
+
+  const base = {
+    runId,
+    source: 'github' as const,
+    target: `${target.fullName}#${number}`,
+    mode: 'targeted' as const,
+  };
+
+  try {
+    const { kind } = await syncer.syncSingleItem(number);
+    const result: TargetSyncResult = {
+      ...base,
+      status: 'completed',
+      apiCalls: ctx.progress.apiCallCount - callsAtStart,
+      items: ctx.progress.itemCount - itemsAtStart,
+    };
+    ctx.journal.finishRun(runId, {
+      status: 'completed',
+      apiCalls: result.apiCalls,
+      apiCallsExpected: ctx.progress.expectedApiCallCount,
+      itemsSynced: result.items,
+      details: { number, kind },
+    });
+    return result;
+  } catch (error) {
+    const message = errorMessage(error);
+    ctx.journal.finishRun(runId, {
+      status: 'failed',
+      apiCalls: ctx.progress.apiCallCount - callsAtStart,
+      apiCallsExpected: ctx.progress.expectedApiCallCount,
+      itemsSynced: 0,
+      error: message,
+    });
+    return {
+      ...base,
+      status: 'failed',
+      apiCalls: ctx.progress.apiCallCount - callsAtStart,
+      items: 0,
+      error: message,
+    };
+  }
+}
+
 class GithubRepoSyncer {
   private ref: RepoRef;
   readonly summary: Record<string, number> = {};
@@ -236,66 +315,7 @@ class GithubRepoSyncer {
       this.ctx.progress.expect(page.length * perItemCalls);
 
       for (const raw of page) {
-        const issueId = num(raw, 'id') ?? 0;
-        const issueNumber = num(raw, 'number') ?? 0;
-        const updatedAt = str(raw, 'updated_at');
-        const syncedAt = nowIso();
-
-        this.write('gh_issues', map.mapIssue(raw, this.ref, syncedAt));
-        for (const row of map.issueLabelRows(raw, this.ref.host)) {
-          this.write('gh_issue_labels', row);
-        }
-        for (const row of map.issueAssigneeRows(raw, this.ref.host)) {
-          this.write('gh_issue_assignees', row);
-        }
-        this.writeUser(raw['user'], syncedAt);
-
-        if (map.isPullRequest(raw)) {
-          this.pendingPullRequests.set(issueNumber, raw);
-        }
-
-        if (sync.issueComments) {
-          const comments = await this.client.issueComments(
-            this.target.owner,
-            this.target.repo,
-            issueNumber,
-          );
-          const commentsSyncedAt = nowIso();
-          for (const comment of comments) {
-            this.write(
-              'gh_comments',
-              map.mapComment(
-                comment,
-                this.ref,
-                { id: issueId, number: issueNumber },
-                commentsSyncedAt,
-              ),
-            );
-            this.writeUser(comment['user'], commentsSyncedAt);
-          }
-        }
-
-        if (sync.issueTimeline) {
-          const timeline = await this.client.issueTimeline(
-            this.target.owner,
-            this.target.repo,
-            issueNumber,
-          );
-          const timelineSyncedAt = nowIso();
-          timeline.forEach((event, index) => {
-            this.write(
-              'gh_events',
-              map.mapTimelineEvent(
-                event,
-                this.ref,
-                { id: issueId, number: issueNumber },
-                index,
-                timelineSyncedAt,
-              ),
-            );
-          });
-        }
-
+        const updatedAt = await this.writeIssuePayload(raw);
         if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
         items += 1;
         this.countItem();
@@ -303,6 +323,70 @@ class GithubRepoSyncer {
     }
 
     return { items, cursor: newestUpdate ?? nowIso() };
+  }
+
+  /**
+   * Writes one issue (or the issue side of a pull request) with its comments
+   * and its timeline. Shared by the list walk and by a targeted sync of a
+   * single item, so both store exactly the same rows.
+   */
+  private async writeIssuePayload(raw: JsonObject): Promise<string | null> {
+    const { sync } = this.target;
+    const issueId = num(raw, 'id') ?? 0;
+    const issueNumber = num(raw, 'number') ?? 0;
+    const syncedAt = nowIso();
+
+    this.write('gh_issues', map.mapIssue(raw, this.ref, syncedAt));
+    for (const row of map.issueLabelRows(raw, this.ref.host)) {
+      this.write('gh_issue_labels', row);
+    }
+    for (const row of map.issueAssigneeRows(raw, this.ref.host)) {
+      this.write('gh_issue_assignees', row);
+    }
+    this.writeUser(raw['user'], syncedAt);
+
+    if (map.isPullRequest(raw)) {
+      this.pendingPullRequests.set(issueNumber, raw);
+    }
+
+    if (sync.issueComments) {
+      const comments = await this.client.issueComments(
+        this.target.owner,
+        this.target.repo,
+        issueNumber,
+      );
+      const commentsSyncedAt = nowIso();
+      for (const comment of comments) {
+        this.write(
+          'gh_comments',
+          map.mapComment(comment, this.ref, { id: issueId, number: issueNumber }, commentsSyncedAt),
+        );
+        this.writeUser(comment['user'], commentsSyncedAt);
+      }
+    }
+
+    if (sync.issueTimeline) {
+      const timeline = await this.client.issueTimeline(
+        this.target.owner,
+        this.target.repo,
+        issueNumber,
+      );
+      const timelineSyncedAt = nowIso();
+      timeline.forEach((event, index) => {
+        this.write(
+          'gh_events',
+          map.mapTimelineEvent(
+            event,
+            this.ref,
+            { id: issueId, number: issueNumber },
+            index,
+            timelineSyncedAt,
+          ),
+        );
+      });
+    }
+
+    return str(raw, 'updated_at');
   }
 
   /**
@@ -326,67 +410,97 @@ class GithubRepoSyncer {
     let newestUpdate: string | null = null;
 
     for (const number of numbers) {
-      const raw = await this.client.pullRequest(this.target.owner, this.target.repo, number);
-      const syncedAt = nowIso();
-      const prId = num(raw, 'id') ?? 0;
-      const pr = { id: prId, number };
-
-      this.write('gh_pull_requests', map.mapPullRequest(raw, this.ref, syncedAt));
-      this.writeUser(raw['user'], syncedAt);
-
-      if (sync.pullRequestReviews) {
-        const reviews = await this.client.pullRequestReviews(
-          this.target.owner,
-          this.target.repo,
-          number,
-        );
-        for (const review of reviews) {
-          this.write('gh_reviews', map.mapReview(review, this.ref, pr, nowIso()));
-          this.writeUser(review['user'], syncedAt);
-        }
-      }
-
-      if (sync.pullRequestComments) {
-        const comments = await this.client.pullRequestReviewComments(
-          this.target.owner,
-          this.target.repo,
-          number,
-        );
-        for (const comment of comments) {
-          this.write('gh_review_comments', map.mapReviewComment(comment, this.ref, pr, nowIso()));
-          this.writeUser(comment['user'], syncedAt);
-        }
-      }
-
-      if (sync.pullRequestCommits) {
-        const commits = await this.client.pullRequestCommits(
-          this.target.owner,
-          this.target.repo,
-          number,
-        );
-        for (const commit of commits) {
-          this.write('gh_commits', map.mapCommit(commit, this.ref, pr, nowIso()));
-        }
-      }
-
-      if (sync.pullRequestFiles) {
-        const files = await this.client.pullRequestFiles(
-          this.target.owner,
-          this.target.repo,
-          number,
-        );
-        for (const file of files) {
-          this.write('gh_pull_request_files', map.mapPullRequestFile(file, this.ref, pr, nowIso()));
-        }
-      }
-
-      const updatedAt = str(raw, 'updated_at');
+      const updatedAt = await this.writePullRequestPayload(number);
       if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
       items += 1;
       this.countItem();
     }
 
     return { items, cursor: newestUpdate ?? nowIso() };
+  }
+
+  /**
+   * Fetches and writes one pull request in full. Shared by the list walk and by
+   * a targeted sync, so a single pull request lands with exactly the same rows.
+   */
+  private async writePullRequestPayload(number: number): Promise<string | null> {
+    const { sync } = this.target;
+    const raw = await this.client.pullRequest(this.target.owner, this.target.repo, number);
+    const syncedAt = nowIso();
+    const pr = { id: num(raw, 'id') ?? 0, number };
+
+    this.write('gh_pull_requests', map.mapPullRequest(raw, this.ref, syncedAt));
+    this.writeUser(raw['user'], syncedAt);
+
+    if (sync.pullRequestReviews) {
+      const reviews = await this.client.pullRequestReviews(
+        this.target.owner,
+        this.target.repo,
+        number,
+      );
+      for (const review of reviews) {
+        this.write('gh_reviews', map.mapReview(review, this.ref, pr, nowIso()));
+        this.writeUser(review['user'], syncedAt);
+      }
+    }
+
+    if (sync.pullRequestComments) {
+      const comments = await this.client.pullRequestReviewComments(
+        this.target.owner,
+        this.target.repo,
+        number,
+      );
+      for (const comment of comments) {
+        this.write('gh_review_comments', map.mapReviewComment(comment, this.ref, pr, nowIso()));
+        this.writeUser(comment['user'], syncedAt);
+      }
+    }
+
+    if (sync.pullRequestCommits) {
+      const commits = await this.client.pullRequestCommits(
+        this.target.owner,
+        this.target.repo,
+        number,
+      );
+      for (const commit of commits) {
+        this.write('gh_commits', map.mapCommit(commit, this.ref, pr, nowIso()));
+      }
+    }
+
+    if (sync.pullRequestFiles) {
+      const files = await this.client.pullRequestFiles(this.target.owner, this.target.repo, number);
+      for (const file of files) {
+        this.write('gh_pull_request_files', map.mapPullRequestFile(file, this.ref, pr, nowIso()));
+      }
+    }
+
+    return str(raw, 'updated_at');
+  }
+
+  /**
+   * Syncs a single issue or pull request, without touching any cursor.
+   *
+   * Leaving the cursors alone is the whole point: the item may have been
+   * updated after things the regular sync has not fetched yet, and advancing a
+   * cursor to its timestamp would skip everything in between, permanently. The
+   * follow up sync therefore still starts from the old cursor and simply writes
+   * this item again, which is a no-op because every write is an upsert.
+   */
+  async syncSingleItem(number: number): Promise<{ kind: 'issue' | 'pull_request' }> {
+    this.ctx.progress.setPhase(`${this.target.fullName}#${number}`);
+    this.ctx.progress.expect(4);
+
+    await this.syncRepository();
+
+    const raw = await this.client.issue(this.target.owner, this.target.repo, number);
+    await this.writeIssuePayload(raw);
+    this.countItem();
+
+    if (map.isPullRequest(raw) && this.target.sync.pullRequests) {
+      await this.writePullRequestPayload(number);
+      return { kind: 'pull_request' };
+    }
+    return { kind: 'issue' };
   }
 
   private async syncWorkflows(): Promise<OperationStats> {

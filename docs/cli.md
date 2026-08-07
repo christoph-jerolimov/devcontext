@@ -62,6 +62,11 @@ Writes a commented `devcontext.yaml`.
 Fetches from GitHub and Jira into the database and the outputs. See
 [Sync](sync.md) for all options.
 
+```bash
+devcontext sync --only PLAT-42       # refresh one ticket now, then sync the rest
+devcontext sync --only acme/platform#42 --only-targeted
+```
+
 ## `devcontext status`
 
 Shows the configuration in use, what is in the database, the last sync runs and

@@ -21,6 +21,13 @@ export function createSyncCommand(): Command {
       collect,
       [],
     )
+    .option(
+      '--only <ref>',
+      'sync just this item first: owner/name#42, 42 or PLAT-42, repeatable',
+      collect,
+      [],
+    )
+    .option('--only-targeted', 'stop after the --only items instead of continuing with the rest')
     .option('--full', 'ignore stored cursors and download everything again')
     .option('--dry-run', 'fetch from the APIs without writing anything')
     .option('--no-progress', 'do not render the progress indicator')

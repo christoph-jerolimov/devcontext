@@ -154,6 +154,8 @@ function route(rawUrl: string): Response {
   if (path === '/repos/acme/platform/issues') {
     return json([ISSUE, PULL_AS_ISSUE]);
   }
+  if (path === '/repos/acme/platform/issues/12') return json(ISSUE);
+  if (path === '/repos/acme/platform/issues/42') return json(PULL_AS_ISSUE);
   if (path === '/repos/acme/platform/issues/12/comments') {
     return json([
       {
@@ -428,6 +430,17 @@ afterEach(() => {
   rmSync(workspace, { recursive: true, force: true });
 });
 
+function readCursors(): Record<string, string | null> {
+  const db = Database.open(config.databasePath, { create: false, readOnly: true });
+  try {
+    return Object.fromEntries(
+      new SyncJournal(db).listState().map((row) => [row.scope, row.cursor]),
+    );
+  } finally {
+    db.close();
+  }
+}
+
 describe('runSync', () => {
   it('downloads everything on the initial sync and writes the outputs', async () => {
     const summary = await runSync({
@@ -587,6 +600,115 @@ describe('runSync', () => {
     } finally {
       db.close();
     }
+  });
+
+  it('syncs one item directly without moving any cursor, then the rest', async () => {
+    // A first full sync establishes the cursors.
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    const before = readCursors();
+    expect(before['github:github.com/acme/platform:issues']).toBe('2024-03-01T00:00:00Z');
+
+    // Now a targeted sync of the pull request only.
+    requestedUrls.length = 0;
+    const targeted = await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+      only: ['acme/platform#42'],
+      targetedOnly: true,
+    });
+
+    expect(targeted.results).toEqual([
+      expect.objectContaining({ source: 'github', mode: 'targeted', status: 'completed' }),
+    ]);
+    // It went straight at the item instead of walking the list.
+    expect(requestedUrls.some((url) => url.includes('/issues/42'))).toBe(true);
+    expect(requestedUrls.some((url) => url.includes('/issues?'))).toBe(false);
+
+    // The cursors must be exactly as they were: a targeted item can be newer
+    // than things the regular sync has not fetched yet, and advancing the
+    // cursor to it would skip that window for good.
+    expect(readCursors()).toEqual(before);
+
+    // And nothing was duplicated.
+    const db = Database.open(config.databasePath, { create: false, readOnly: true });
+    try {
+      expect(gh.listPullRequests(db, { state: 'all' })).toHaveLength(1);
+      expect(gh.listReviews(db, 'acme/platform', 42)).toHaveLength(1);
+      expect(gh.listCommits(db, 'acme/platform', 42)).toHaveLength(1);
+      expect(gh.listEvents(db, 'acme/platform', 42)).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('follows a targeted item up with the regular sync by default', async () => {
+    const summary = await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+      only: ['PLAT-42'],
+    });
+
+    expect(summary.results.map((result) => result.mode)).toEqual([
+      'targeted',
+      'initial',
+      'initial',
+    ]);
+    expect(summary.results.every((result) => result.status === 'completed')).toBe(true);
+
+    const db = Database.open(config.databasePath, { create: false, readOnly: true });
+    try {
+      // The work item was written once by the targeted run and once by the
+      // regular one; upserts mean there is still exactly one row.
+      expect(jira.listWorkitems(db)).toHaveLength(1);
+      expect(jira.listJiraComments(db, 'PLAT-42')).toHaveLength(1);
+      expect(jira.listChangelog(db, 'PLAT-42')).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('rejects a reference that does not belong to the configuration', async () => {
+    await expect(
+      runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        only: ['other/repo#1'],
+        targetedOnly: true,
+      }),
+    ).rejects.toThrow(/No GitHub repository "other\/repo"/);
+
+    await expect(
+      runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        only: ['NOPE-1'],
+        targetedOnly: true,
+      }),
+    ).rejects.toThrow(/No Jira project "NOPE"/);
   });
 
   it('only syncs the requested source', async () => {
