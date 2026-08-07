@@ -43,11 +43,19 @@ export function DetailPanel({
   loading,
   error,
   onClose,
+  extra,
 }: {
   document: IssueDocument | null;
   loading: boolean;
   error: string | null;
   onClose: () => void;
+  /**
+   * Rendered under the body. Anything a single view wants to show that does
+   * not come out of the document itself — the Jira hierarchy, for instance —
+   * goes here, so this component stays indifferent to which source it is
+   * showing.
+   */
+  extra?: ReactNode;
 }): ReactNode {
   if (!loading && !error && !document) return null;
 
@@ -103,6 +111,8 @@ export function DetailPanel({
           ) : null}
 
           <Body text={(document.body ?? document.description) as string | null} />
+
+          {extra}
 
           {reviews.length > 0 ? (
             <section>

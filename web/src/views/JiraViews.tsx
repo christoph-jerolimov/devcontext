@@ -11,6 +11,7 @@ import {
   useSelection,
 } from '../components/common.tsx';
 import { DetailPanel } from '../components/DetailPanel.tsx';
+import { Hierarchy } from '../components/Hierarchy.tsx';
 import { useUrlState } from '../router.ts';
 
 export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
@@ -117,6 +118,11 @@ export function WorkitemsView({ projects }: { projects: string[] }): ReactNode {
         loading={detail.loading}
         error={detail.error}
         onClose={detail.close}
+        extra={
+          typeof detail.document?.key === 'string' ? (
+            <Hierarchy workitemKey={detail.document.key} onOpen={detail.open} />
+          ) : null
+        }
       />
     </div>
   );

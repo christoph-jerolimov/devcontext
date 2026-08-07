@@ -110,6 +110,42 @@ export interface Sprint {
   workitem_count?: number;
 }
 
+/** One work item in the hierarchy that `/api/jira/tree/<key>` returns. */
+export interface TreeNode {
+  key: string;
+  summary: string | null;
+  type: string | null;
+  status: string | null;
+  statusCategory: string | null;
+  assignee: string | null;
+  storyPoints: number | null;
+  resolvedAt: string | null;
+  url: string | null;
+  /** How this node hangs off its parent. */
+  relation: 'parent' | 'self' | 'child' | 'epic-child';
+  /** Depth relative to the requested item; ancestors are negative. */
+  depth: number;
+  children: TreeNode[];
+}
+
+export interface TreeSummary {
+  total: number;
+  done: number;
+  storyPoints: number;
+  storyPointsDone: number;
+  byType: Record<string, number>;
+  byStatusCategory: Record<string, number>;
+}
+
+export interface WorkitemTree {
+  root: TreeNode;
+  /** Parents above the requested item, closest first. */
+  ancestors: TreeNode[];
+  all: TreeNode[];
+  /** Roll-up over the root and everything below it. */
+  summary: TreeSummary;
+}
+
 export interface IssueDocument {
   kind: string;
   repository?: string;
@@ -280,6 +316,8 @@ export const api = {
   workitems: (params: Record<string, string | undefined>) =>
     request<Workitem[]>('/api/jira/workitems', params),
   workitem: (key: string) => request<IssueDocument>(`/api/jira/workitems/${key}`),
+  tree: (key: string, params: Record<string, string | undefined> = {}) =>
+    request<WorkitemTree>(`/api/jira/tree/${encodeURIComponent(key)}`, params),
   sprints: (params: Record<string, string | undefined>) =>
     request<Sprint[]>('/api/jira/sprints', params),
   sprint: (id: number) => request<IssueDocument>(`/api/jira/sprints/${id}`),

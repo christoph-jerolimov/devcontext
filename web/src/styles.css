@@ -642,6 +642,74 @@ a {
   color: var(--accent);
 }
 
+/* --- Jira hierarchy ------------------------------------------------------ */
+
+.tree-summary {
+  margin: 0 0 6px;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.tree-node {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.9;
+}
+
+.tree-node-self {
+  font-weight: 600;
+}
+
+/*
+ * Only the summary shrinks. The panel is narrow and a tree can be deep, so
+ * something has to give at the right edge — a clipped status badge or key
+ * would lose more than a clipped sentence, which keeps its tooltip.
+ */
+.tree-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-key,
+.tree-tag,
+.tree-node .badge {
+  flex: 0 0 auto;
+}
+
+.tree-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: inherit;
+  font-weight: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.tree-key:hover {
+  text-decoration: underline;
+}
+
+.tree-node-self .tree-key {
+  color: var(--text);
+}
+
+.tree-tag {
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
