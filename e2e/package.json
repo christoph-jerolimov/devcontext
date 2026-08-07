@@ -1,0 +1,18 @@
+{
+  "name": "@devcontext/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End to end test: a real sync, the real server, driven in a real browser.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "//": "Deliberately not called `test`: the root `npm test` runs every workspace's test script, and this one needs a build and a browser.",
+    "e2e": "playwright test",
+    "e2e:update": "playwright test --update-snapshots",
+    "e2e:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}
