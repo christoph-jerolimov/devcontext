@@ -49,10 +49,32 @@ limited to 60 requests per hour, which is not enough for a real repository.
 ## Configure
 
 ```bash
+cd ~/work/my-repo
 devcontext init
 ```
 
-This writes a commented `devcontext.yaml` into the current directory. The
+`init` looks at the git remotes of the current directory and writes a
+`devcontext.yaml` for the repository it finds, so the usual case needs no
+editing at all:
+
+```
+info:  Wrote /home/me/work/my-repo/devcontext.yaml
+info:  Detected acme/platform (remote origin)
+info:  Using the token in $GITHUB_TOKEN.
+info:  Next: run "devcontext sync".
+```
+
+Useful variants:
+
+```bash
+devcontext init --detect        # print what would be detected, write nothing
+devcontext init --repo acme/platform   # override the detection
+devcontext init --all-remotes   # include upstream and other remotes too
+devcontext init --example       # the fully commented example instead
+```
+
+Outside a git checkout (or when no remote points at GitHub) `init` falls back
+to the commented example. The
 minimum useful configuration is:
 
 ```yaml
