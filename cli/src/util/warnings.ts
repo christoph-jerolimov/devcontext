@@ -6,7 +6,7 @@
 export function silenceSqliteExperimentalWarning(): void {
   const originalEmit = process.emit.bind(process);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // oxlint-disable-next-line typescript/no-explicit-any
   (process as any).emit = function patchedEmit(name: string, data: unknown, ...rest: unknown[]) {
     if (
       name === 'warning' &&
@@ -16,7 +16,7 @@ export function silenceSqliteExperimentalWarning(): void {
     ) {
       return false;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any
     return (originalEmit as any)(name, data, ...rest);
   };
 }

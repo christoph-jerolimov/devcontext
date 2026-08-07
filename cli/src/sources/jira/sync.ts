@@ -382,11 +382,12 @@ export function withOverlap(iso: string, minutes = 5): string {
   return new Date(date.getTime() - minutes * 60_000).toISOString();
 }
 
+const pad = (value: number): string => String(value).padStart(2, '0');
+
 /** JQL wants `yyyy/MM/dd HH:mm` (or `yyyy-MM-dd HH:mm`) instead of ISO 8601. */
 export function toJqlTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  const pad = (value: number) => String(value).padStart(2, '0');
   return (
     `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
     `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`

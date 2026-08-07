@@ -226,7 +226,7 @@ export function resolveConfig(
         filter: entry.filter ?? null,
         since: resolveSince(entry.since, now),
         boardIds: entry.boards ?? [],
-        fields: { ...site.fields, ...(entry.fields ?? {}) },
+        fields: { ...site.fields, ...entry.fields },
         sync: mergeFlags<JiraProjectSyncOptions>(
           DEFAULT_JIRA_SYNC,
           raw.jira?.sync as RawJiraSyncOptions | undefined,

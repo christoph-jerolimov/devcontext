@@ -166,14 +166,14 @@ export function terminalWidth(): number {
   return typeof columns === 'number' && columns > 20 ? columns : 120;
 }
 
-const useColor = (): boolean => Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+const colorEnabled = (): boolean => Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 
 export function dim(value: string): string {
-  return useColor() ? `\u001b[2m${value}\u001b[0m` : value;
+  return colorEnabled() ? `\u001b[2m${value}\u001b[0m` : value;
 }
 
 export function bold(value: string): string {
-  return useColor() ? `\u001b[1m${value}\u001b[0m` : value;
+  return colorEnabled() ? `\u001b[1m${value}\u001b[0m` : value;
 }
 
 /** Writes a rendered block to stdout, adding exactly one trailing newline. */

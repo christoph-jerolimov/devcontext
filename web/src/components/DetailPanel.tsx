@@ -5,12 +5,14 @@ import type { IssueDocument } from '../api.ts';
 import { formatRelative } from '../api.ts';
 
 interface Comment {
+  id?: string | number | null;
   author?: string | null;
   createdAt?: string | null;
   body?: string | null;
 }
 
 interface HistoryEntry {
+  id?: string | number | null;
   author?: string | null;
   createdAt?: string | null;
   field?: string | null;
@@ -22,11 +24,17 @@ interface HistoryEntry {
 }
 
 interface Review {
+  id?: string | number | null;
   author?: string | null;
   state?: string | null;
   submittedAt?: string | null;
   body?: string | null;
-  comments?: Array<{ path?: string | null; line?: number | null; body?: string | null }>;
+  comments?: Array<{
+    id?: string | number | null;
+    path?: string | null;
+    line?: number | null;
+    body?: string | null;
+  }>;
 }
 
 /** Shows one issue, pull request, work item, sprint or workflow run. */
@@ -89,14 +97,17 @@ export function DetailPanel({
             <section>
               <h3>Reviews ({reviews.length})</h3>
               {reviews.map((review, index) => (
-                <article className="entry" key={index}>
+                <article className="entry" key={review.id ?? `${review.author}-${index}`}>
                   <header>
                     <strong>{review.author ?? 'unknown'}</strong> {review.state}{' '}
                     <span className="muted">{formatRelative(review.submittedAt)}</span>
                   </header>
                   <Body text={review.body ?? null} />
-                  {(review.comments ?? []).map((comment, commentIndex) => (
-                    <p className="review-comment" key={commentIndex}>
+                  {(review.comments ?? []).map((comment) => (
+                    <p
+                      className="review-comment"
+                      key={comment.id ?? `${comment.path}-${comment.line}`}
+                    >
                       <code>
                         {comment.path}
                         {comment.line ? `:${comment.line}` : ''}
@@ -113,7 +124,7 @@ export function DetailPanel({
             <section>
               <h3>Comments ({comments.length})</h3>
               {comments.map((comment, index) => (
-                <article className="entry" key={index}>
+                <article className="entry" key={comment.id ?? `${comment.createdAt}-${index}`}>
                   <header>
                     <strong>{comment.author ?? 'unknown'}</strong>{' '}
                     <span className="muted">{formatRelative(comment.createdAt)}</span>
@@ -128,7 +139,7 @@ export function DetailPanel({
             <section>
               <h3>Jobs ({jobs.length})</h3>
               {jobs.map((job, index) => (
-                <article className="entry" key={index}>
+                <article className="entry" key={String(job.id ?? index)}>
                   <header>
                     <strong>{String(job.name ?? '')}</strong>{' '}
                     <span className="muted">{String(job.conclusion ?? job.status ?? '')}</span>
@@ -137,7 +148,7 @@ export function DetailPanel({
                     <tbody>
                       {((job.steps as Array<Record<string, unknown>> | undefined) ?? []).map(
                         (step, stepIndex) => (
-                          <tr key={stepIndex}>
+                          <tr key={String(step.number ?? stepIndex)}>
                             <td>{String(step.number ?? '')}</td>
                             <td>{String(step.name ?? '')}</td>
                             <td>{String(step.conclusion ?? step.status ?? '')}</td>
@@ -162,7 +173,7 @@ export function DetailPanel({
               <table className="table compact">
                 <tbody>
                   {workitems.map((item, index) => (
-                    <tr key={index}>
+                    <tr key={String(item.key ?? index)}>
                       <td>{String(item.key ?? '')}</td>
                       <td>{String(item.status ?? '')}</td>
                       <td>{String(item.summary ?? '')}</td>
@@ -178,8 +189,8 @@ export function DetailPanel({
               <h3>History ({history.length})</h3>
               <table className="table compact">
                 <tbody>
-                  {history.map((entry, index) => (
-                    <tr key={index}>
+                  {history.map((entry) => (
+                    <tr key={entry.id ?? `${entry.createdAt}-${entry.field ?? entry.event}`}>
                       <td className="muted">{formatRelative(entry.createdAt)}</td>
                       <td>{entry.author ?? entry.actor ?? ''}</td>
                       <td>{entry.field ?? entry.event ?? ''}</td>

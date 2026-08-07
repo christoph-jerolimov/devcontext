@@ -35,6 +35,7 @@ export function buildIssueDocument(db: Database, issue: gh.IssueRow): Document {
       body: comment.body,
     })),
     events: events.map((event) => ({
+      id: event.uid,
       event: event.event,
       actor: event.actor,
       createdAt: event.created_at,
@@ -135,6 +136,7 @@ export function buildPullRequestDocument(db: Database, pr: gh.PullRequestRow): D
       comments: reviewComments
         .filter((comment) => comment.review_id === review.id)
         .map((comment) => ({
+          id: comment.id,
           author: comment.author,
           path: comment.path,
           line: comment.line,
@@ -144,11 +146,13 @@ export function buildPullRequestDocument(db: Database, pr: gh.PullRequestRow): D
         })),
     })),
     comments: comments.map((comment) => ({
+      id: comment.id,
       author: comment.author,
       createdAt: comment.created_at,
       body: comment.body,
     })),
     events: events.map((event) => ({
+      id: event.uid,
       event: event.event,
       actor: event.actor,
       createdAt: event.created_at,

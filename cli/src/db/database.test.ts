@@ -45,7 +45,7 @@ afterEach(() => {
 
 describe('schema', () => {
   it('creates every table the sync writes to', () => {
-    for (const table of [
+    const expected = [
       'gh_repositories',
       'gh_issues',
       'gh_comments',
@@ -65,9 +65,10 @@ describe('schema', () => {
       'sync_runs',
       'sync_operations',
       'sync_state',
-    ]) {
-      expect(db.tableExists(table), table).toBe(true);
-    }
+    ];
+
+    // Asserting on the list of missing tables names all of them at once.
+    expect(expected.filter((table) => !db.tableExists(table))).toEqual([]);
   });
 
   it('records the schema version', () => {

@@ -287,15 +287,16 @@ function fieldsCommand(): Command {
   });
 }
 
+/** Repeatable options collect into an array; an empty one means "no filter". */
+function optional(values: unknown): string[] | undefined {
+  const list = (values as string[] | undefined) ?? [];
+  return list.length > 0 ? list : undefined;
+}
+
 function readWorkitemFilter(
   options: Record<string, unknown>,
   presetTypes: string[] | undefined,
 ): jira.WorkitemFilter {
-  const optional = (values: unknown): string[] | undefined => {
-    const list = (values as string[] | undefined) ?? [];
-    return list.length > 0 ? list : undefined;
-  };
-
   const resolved =
     options['resolved'] === true ? true : options['open'] === true ? false : undefined;
 

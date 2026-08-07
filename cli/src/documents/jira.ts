@@ -49,6 +49,7 @@ export function buildWorkitemDocument(db: Database, workitem: jira.WorkitemRow):
       body: comment.body,
     })),
     history: changelog.map((entry) => ({
+      id: entry.uid,
       author: entry.author,
       createdAt: entry.created_at,
       field: entry.field,
