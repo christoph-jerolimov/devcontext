@@ -21,6 +21,7 @@
     "clean": "rm -rf dist",
     "start": "tsx src/main.ts",
     "dev": "tsx watch src/main.ts",
+    "docs": "tsx src/docs/generate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",

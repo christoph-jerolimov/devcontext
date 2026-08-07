@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe as suite, expect, it } from 'vitest';
 
 import { createProgram } from './cli.js';
+import { renderCliReference, REFERENCE_PATH } from './docs/index.js';
 import { TOOLS } from './mcp/tools.js';
 
 /*
@@ -49,6 +50,47 @@ function leafCommands(): Leaf[] {
   for (const command of createProgram().commands) walk(command, []);
   return leaves;
 }
+
+suite('the generated command reference', () => {
+  it('matches the program', () => {
+    // Run `npm run docs` when this fails; the page is generated, not written.
+    expect(readFileSync(REFERENCE_PATH, 'utf8')).toBe(renderCliReference(createProgram()));
+  });
+
+  it('lists every command, including the subcommands', () => {
+    const page = readFileSync(REFERENCE_PATH, 'utf8');
+    const missing: string[] = [];
+
+    for (const command of createProgram().commands) {
+      if (!page.includes(`\`devcontext ${command.name()}\``)) missing.push(command.name());
+      for (const sub of command.commands) {
+        const full = `${command.name()} ${sub.name()}`;
+        if (!page.includes(`\`devcontext ${full}\``)) missing.push(full);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  it('lists every option and every alias', () => {
+    const page = readFileSync(REFERENCE_PATH, 'utf8');
+    const missing: string[] = [];
+
+    const walk = (command: ReturnType<typeof createProgram>, path: string): void => {
+      const name = `${path} ${command.name()}`.trim();
+      for (const option of command.options) {
+        if (!page.includes(`\`${option.flags}\``)) missing.push(`${name} ${option.flags}`);
+      }
+      for (const alias of command.aliases()) {
+        if (!page.includes(`\`${alias}\``)) missing.push(`${name} alias ${alias}`);
+      }
+      for (const sub of command.commands) walk(sub, name);
+    };
+    for (const command of createProgram().commands) walk(command, '');
+
+    expect(missing).toEqual([]);
+  });
+});
 
 suite('documentation', () => {
   it('documents every option of every command somewhere', () => {

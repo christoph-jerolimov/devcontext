@@ -196,7 +196,8 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 - [Getting started](docs/getting-started.md)
 - [Configuration](docs/configuration.md)
 - [Sync](docs/sync.md)
-- [CLI reference](docs/cli.md)
+- [CLI guide](docs/cli.md)
+- [Command reference](docs/commands.md) — every command and option
 - [Outputs](docs/outputs.md)
 - [Database](docs/database.md)
 - [Search](docs/search.md)

@@ -1,8 +1,12 @@
-# CLI reference
+# CLI guide
 
 ```
 devcontext [global options] <command> [command options]
 ```
+
+This page covers the commands in the shape people use them, with filters and
+worked examples. For the exhaustive list — every command, every argument, every
+option — see the generated [command reference](commands.md).
 
 ## Global options
 
