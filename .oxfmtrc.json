@@ -6,5 +6,11 @@
   "trailingComma": "all",
   "arrowParens": "always",
   "sortPackageJson": false,
-  "ignorePatterns": ["node_modules/", "dist/", ".devcontext/", "package-lock.json"]
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    ".devcontext/",
+    "package-lock.json",
+    "docs/commands.md"
+  ]
 }

@@ -17,6 +17,7 @@
     "build:cli": "npm run build --workspace @devcontext/cli",
     "build:web": "npm run build --workspace @devcontext/web",
     "dev:web": "npm run dev --workspace @devcontext/web",
+    "docs": "npm run docs --workspace @devcontext/cli",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace @devcontext/cli",
     "typecheck": "npm run typecheck --workspaces --if-present",

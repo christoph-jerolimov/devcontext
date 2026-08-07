@@ -13,7 +13,8 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [Getting started](getting-started.md) | Install, configure, first sync, first query                         |
 | [Configuration](configuration.md)     | Every key of `devcontext.yaml`                                      |
 | [Sync](sync.md)                       | Initial vs. incremental sync, rate limits, progress, what is stored |
-| [CLI reference](cli.md)               | Every command, alias, filter and output format                      |
+| [CLI guide](cli.md)                   | The commands with their filters, output formats and examples        |
+| [Command reference](commands.md)      | Generated: every command, argument and option, exhaustively         |
 | [Outputs](outputs.md)                 | Layout of the yaml, markdown and json mirrors                       |
 | [Database](database.md)               | Table reference and example SQL queries                             |
 | [Search](search.md)                   | Full text search across both platforms, and how the index works     |
