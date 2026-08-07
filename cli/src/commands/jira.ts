@@ -1,6 +1,5 @@
 import { Command } from 'commander';
 
-import { parseJsonColumn } from '../db/database.js';
 import * as jira from '../db/queries/jira.js';
 import { buildSprintDocument, buildWorkitemDocument } from '../documents/jira.js';
 import { renderDocument } from '../output/document.js';
@@ -17,8 +16,6 @@ import {
   readOffset,
   readTimeFilters,
 } from './shared.js';
-
-const labels = (value: string | null): string => parseJsonColumn<string[]>(value, []).join(', ');
 
 export function createJiraCommand(): Command {
   const command = new Command('jira').description('read Jira data from the local database');

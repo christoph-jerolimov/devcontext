@@ -1,38 +1,53 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
-/** Loads data whenever the dependencies change and keeps the last error. */
-export function useAsync<T>(
-  loader: () => Promise<T>,
-  deps: unknown[],
-): { data: T | null; error: string | null; loading: boolean } {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+interface AsyncResult<T> {
+  data: T | null;
+  error: string | null;
+  loading: boolean;
+}
+
+/**
+ * Loads data whenever the dependencies change.
+ *
+ * The result is stored together with the dependency key it belongs to, so
+ * "loading" is derived during render instead of being set from the effect, and
+ * a response that arrives after the filters changed cannot overwrite the newer
+ * one.
+ */
+export function useAsync<T>(loader: () => Promise<T>, deps: unknown[]): AsyncResult<T> {
+  const key = JSON.stringify(deps);
+  const [settled, setSettled] = useState<{ key: string | null } & Omit<AsyncResult<T>, 'loading'>>({
+    key: null,
+    data: null,
+    error: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     loader()
       .then((result) => {
-        if (!cancelled) setData(result);
+        if (!cancelled) setSettled({ key, data: result, error: null });
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setSettled({
+          key,
+          data: null,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
       });
 
     return () => {
       cancelled = true;
     };
+    // `loader` is recreated on every render; the dependency key is what matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [key]);
 
-  return { data, error, loading };
+  if (settled.key !== key) return { data: null, error: null, loading: true };
+  return { data: settled.data, error: settled.error, loading: false };
 }
 
 export function Panel({

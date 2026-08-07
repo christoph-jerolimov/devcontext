@@ -17,8 +17,31 @@ npm install          # installs both workspaces
 npm run build        # web/dist, then cli/dist
 npm test             # vitest in cli/
 npm run typecheck    # tsc --noEmit in both workspaces
-npm run format       # prettier
+npm run lint         # eslint
+npm run lint:fix     # eslint --fix
+npm run format       # prettier --write
+npm run check        # format:check + lint + typecheck + test, what CI runs
 ```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and on every push to
+`main`, for Node 22 and Node 24:
+
+```
+npm ci → format:check → lint → typecheck → test → build
+```
+
+Run `npm run check` before pushing and CI will agree with you. The three tools
+have clearly separated jobs, which keeps the rule sets small:
+
+- **prettier** owns formatting; `eslint-config-prettier` switches off every
+  ESLint rule that would have an opinion about it.
+- **eslint** (`eslint.config.js`, flat config) owns the things formatting and
+  types cannot see: unused code, `no-console` outside the output layer,
+  consistent type imports, and the rules of hooks in `web/`.
+- **tsc** owns types, so no type-aware ESLint rules are enabled and linting
+  stays fast.
 
 ## Inside `cli/src`
 
