@@ -158,6 +158,9 @@ filters.
 
 - TypeScript with `strict` plus `noUncheckedIndexedAccess`, ESM everywhere
   (relative imports carry the `.js` extension).
-- No runtime dependency beyond `commander`, `yaml` and `zod`; the database is
-  the built-in `node:sqlite`, HTTP is the built-in `fetch`.
+- The **CLI** has no runtime dependency beyond `commander`, `yaml` and `zod`;
+  the database is the built-in `node:sqlite`, HTTP is the built-in `fetch`. MCP
+  and the markdown conversion are hand written for that reason.
+- The **web viewer** adds `react`, `react-dom` and `cmdk` (the command
+  palette). Nothing it depends on reaches the CLI, which is what people install.
 - oxfmt with the settings in `.oxfmtrc.json` (100 columns, single quotes).

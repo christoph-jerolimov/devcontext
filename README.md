@@ -151,6 +151,9 @@ devcontext web
 
 A local React viewer with the same filters, detail views for issues, pull
 requests, workflow runs, work items and sprints, and a JSON API behind it.
+Press <kbd>⌘K</kbd> for a command palette that searches everything and jumps
+anywhere, and every filter lives in the URL so a link you paste opens the same
+view for whoever clicks it.
 
 ## Give it to your AI assistant
 

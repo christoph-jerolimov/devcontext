@@ -11,7 +11,8 @@ devcontext search "rate limit" --list   # just the references, for a script
 One search covers GitHub issues, pull requests and Jira work items **together
 with their comments and reviews**, ranked by relevance. It reads the local
 database, so it works offline and costs no API calls, and it is the same query
-behind the web viewer, `GET /api/search` and the MCP `search` tool.
+behind the web viewer's <kbd>⌘K</kbd> palette, `GET /api/search` and the MCP
+`search` tool.
 
 ## What a result is
 

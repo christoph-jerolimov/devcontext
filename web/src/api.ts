@@ -231,6 +231,19 @@ export interface DigestResponse {
   quiet: boolean;
 }
 
+export interface SearchHit {
+  ref: string;
+  kind: 'issue' | 'pull-request' | 'workitem';
+  source: 'github' | 'jira';
+  container: string;
+  state: string | null;
+  title: string | null;
+  updatedAt: string | null;
+  url: string | null;
+  snippet: string | null;
+  score: number | null;
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(
@@ -274,6 +287,8 @@ export const api = {
     request<InsightsResponse>('/api/insights', params),
   digest: (params: Record<string, string | undefined>) =>
     request<DigestResponse>('/api/digest', params),
+  search: (params: Record<string, string | undefined>) =>
+    request<SearchHit[]>('/api/search', params),
 };
 
 export function parseList(value: string | null): string[] {
