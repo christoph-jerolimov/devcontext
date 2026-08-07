@@ -1,0 +1,30 @@
+{
+  "name": "devcontext-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sync development data locally to give people and AI complete project context.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "workspaces": [
+    "cli",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @devcontext/web && npm run build --workspace @devcontext/cli",
+    "build:cli": "npm run build --workspace @devcontext/cli",
+    "build:web": "npm run build --workspace @devcontext/web",
+    "dev:web": "npm run dev --workspace @devcontext/web",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "devcontext": "npm run --silent start --workspace @devcontext/cli --"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.3"
+  }
+}

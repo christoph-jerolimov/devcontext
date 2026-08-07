@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local devcontext workspace (database + generated yaml/markdown/json outputs)
+.devcontext/
+
+# Local configuration may contain company internal URLs / project keys
+devcontext.local.yaml
+
+# Environment
+.env
+.env.local
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log

@@ -1,0 +1,50 @@
+# devcontext documentation
+
+devcontext syncs the development data of your projects — GitHub issues, pull
+requests and Actions runs, Jira work items, comments, history and sprints —
+into a local SQLite database, and mirrors it into yaml and markdown files. The
+database is the primary target; the files exist so you (and any tool or AI
+assistant on your machine) can grep, diff and read the same data offline.
+
+## Contents
+
+| Document                              | What it covers                                                      |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| [Getting started](getting-started.md) | Install, configure, first sync, first query                         |
+| [Configuration](configuration.md)     | Every key of `devcontext.yaml`                                      |
+| [Sync](sync.md)                       | Initial vs. incremental sync, rate limits, progress, what is stored |
+| [CLI reference](cli.md)               | Every command, alias, filter and output format                      |
+| [Outputs](outputs.md)                 | Layout of the yaml, markdown and json mirrors                       |
+| [Database](database.md)               | Table reference and example SQL queries                             |
+| [Web viewer](web.md)                  | The React viewer and the JSON API behind it                         |
+| [Development](development.md)         | Monorepo layout, tests, how to extend devcontext                    |
+| [Troubleshooting](troubleshooting.md) | Tokens, rate limits, permissions, common errors                     |
+
+## The short version
+
+```bash
+npm install                 # once, in the repository root
+npm run build
+
+export GITHUB_TOKEN=ghp_...
+export JIRA_EMAIL=you@example.com
+export JIRA_API_TOKEN=...
+
+node cli/bin/devcontext.js init     # writes a commented devcontext.yaml
+node cli/bin/devcontext.js sync     # fills .devcontext/devcontext.db + yaml + markdown
+node cli/bin/devcontext.js gh issues --stale 90d
+node cli/bin/devcontext.js jira stories --sprint "Sprint 7"
+node cli/bin/devcontext.js web      # http://127.0.0.1:4173
+```
+
+## Design in one picture
+
+```
+GitHub REST API  ─┐
+                  ├─►  sync  ─►  SQLite (primary)  ─►  cli read commands
+Jira REST API    ─┘      │                          ─►  web viewer (React)
+                         └─────►  yaml / markdown / json mirrors (debugging, grep, AI context)
+```
+
+Everything the APIs return is preserved: each row keeps the untouched payload
+in a `raw` column, and the columns next to it exist so queries stay short.
