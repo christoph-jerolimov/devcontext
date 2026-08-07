@@ -3,6 +3,8 @@ import { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import { exportOutputs } from '../exporters/index.js';
 import type { ExportSummary } from '../exporters/index.js';
+import { buildCrossLinks } from '../links/build.js';
+import type { BuildLinksResult } from '../links/build.js';
 import { CliError } from '../util/errors.js';
 import type { Logger } from '../util/logger.js';
 import { nowIso } from '../util/time.js';
@@ -33,6 +35,7 @@ export interface SyncSummary {
   apiCalls: number;
   items: number;
   durationMs: number;
+  links?: BuildLinksResult;
   export?: ExportSummary;
 }
 
@@ -102,6 +105,15 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       items: progress.itemCount,
       durationMs: Date.now() - startedAt,
     };
+
+    if (!options.dryRun) {
+      // Cheap (one pass over text already in the database) and it has to happen
+      // before the export so the documents carry the links.
+      summary.links = buildCrossLinks(db);
+      if (summary.links.links > 0) {
+        logger.info(`Linked ${summary.links.links} GitHub and Jira reference(s).`);
+      }
+    }
 
     if (options.writeOutputs && !options.dryRun) {
       logger.info('Writing yaml / markdown / json outputs.');

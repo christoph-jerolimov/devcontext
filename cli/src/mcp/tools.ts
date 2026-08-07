@@ -3,6 +3,7 @@ import type { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
+import * as crossLinks from '../db/queries/links.js';
 import {
   buildIssueDocument,
   buildPullRequestDocument,
@@ -472,6 +473,29 @@ export const TOOLS: Tool[] = [
       const sprint = db.get<jira.SprintRow>('SELECT * FROM jira_sprints WHERE id = ?', [id]);
       if (!sprint) throw new ArgumentError(`No sprint ${id} in the local database.`);
       return buildSprintDocument(db, sprint).data;
+    },
+  },
+
+  {
+    definition: {
+      name: 'get_links',
+      title: 'Cross references between GitHub and Jira',
+      description:
+        'Everything linked to a reference: the Jira work items a pull request mentions (in its branch, title, body or commits) and the pull requests and issues that mention a work item. Give it "acme/platform#42" or "PLAT-7".',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ref: {
+            type: 'string',
+            description: 'A GitHub reference (owner/repo#42) or a Jira key (PLAT-7).',
+          },
+        },
+        required: ['ref'],
+      },
+    },
+    run: (args, { db }) => {
+      const ref = requiredStr(args, 'ref');
+      return { ref: crossLinks.normaliseRef(ref), links: crossLinks.linksFor(db, ref) };
     },
   },
 

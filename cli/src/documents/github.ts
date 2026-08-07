@@ -1,6 +1,7 @@
 import type { Database } from '../db/database.js';
 import { parseJsonColumn } from '../db/database.js';
 import * as gh from '../db/queries/github.js';
+import { jiraKeysFor } from '../db/queries/links.js';
 import type { Document } from '../output/document.js';
 import { formatRelative } from '../util/time.js';
 
@@ -10,9 +11,11 @@ const list = (value: string | null): string[] => parseJsonColumn<string[]>(value
 export function buildIssueDocument(db: Database, issue: gh.IssueRow): Document {
   const comments = gh.listComments(db, issue.repo_full_name, issue.number);
   const events = gh.listEvents(db, issue.repo_full_name, issue.number);
+  const jiraKeys = jiraKeysFor(db, issue.repo_full_name, issue.number);
 
   const data = {
     kind: 'github-issue',
+    jiraKeys,
     repository: issue.repo_full_name,
     number: issue.number,
     title: issue.title,
@@ -61,6 +64,7 @@ export function buildIssueDocument(db: Database, issue: gh.IssueRow): Document {
       ['Updated', formatTimestamp(issue.updated_at)],
       ['Closed', formatTimestamp(issue.closed_at)],
       ['Comments', comments.length],
+      ['Jira', jiraKeys.join(', ')],
     ],
     body: issue.body,
     sections: [
@@ -97,9 +101,11 @@ export function buildPullRequestDocument(db: Database, pr: gh.PullRequestRow): D
   const reviewComments = gh.listReviewComments(db, pr.repo_full_name, pr.number);
   const commits = gh.listCommits(db, pr.repo_full_name, pr.number);
   const files = gh.listChangedFiles(db, pr.repo_full_name, pr.number);
+  const jiraKeys = jiraKeysFor(db, pr.repo_full_name, pr.number);
 
   const data = {
     kind: 'github-pull-request',
+    jiraKeys,
     repository: pr.repo_full_name,
     number: pr.number,
     title: pr.title,
@@ -178,6 +184,7 @@ export function buildPullRequestDocument(db: Database, pr: gh.PullRequestRow): D
       ['Created', formatTimestamp(pr.created_at)],
       ['Updated', formatTimestamp(pr.updated_at)],
       ['Merged', formatTimestamp(pr.merged_at)],
+      ['Jira', jiraKeys.join(', ')],
     ],
     body: pr.body,
     sections: [

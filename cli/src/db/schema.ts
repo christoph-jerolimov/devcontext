@@ -532,6 +532,31 @@ CREATE TABLE IF NOT EXISTS gh_releases (
 );
 
 -- ---------------------------------------------------------------------------
+-- Cross references between GitHub and Jira
+-- ---------------------------------------------------------------------------
+
+-- One row per detected reference, e.g. the pull request acme/platform#42
+-- mentioning PLAT-7 in its branch name. Rebuilt from the synced text, so it can
+-- always be recomputed and never needs to be migrated.
+CREATE TABLE IF NOT EXISTS cross_links (
+  uid         TEXT PRIMARY KEY,   -- from_ref|to_ref|via
+  from_source TEXT NOT NULL,      -- github | jira
+  from_kind   TEXT NOT NULL,      -- issue | pull_request | workitem
+  from_ref    TEXT NOT NULL,      -- acme/platform#42 | PLAT-7
+  to_source   TEXT NOT NULL,
+  to_kind     TEXT NOT NULL,
+  to_ref      TEXT NOT NULL,
+  via         TEXT NOT NULL,      -- branch | title | body | commit | comment | jira-field
+  detail      TEXT,               -- the text that produced the match
+  confidence  TEXT NOT NULL,      -- high | medium
+  synced_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cross_links_from ON cross_links (from_ref);
+CREATE INDEX IF NOT EXISTS idx_cross_links_to ON cross_links (to_ref);
+CREATE INDEX IF NOT EXISTS idx_cross_links_sources ON cross_links (from_source, to_source);
+
+-- ---------------------------------------------------------------------------
 -- Jira
 -- ---------------------------------------------------------------------------
 

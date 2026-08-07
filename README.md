@@ -126,6 +126,8 @@ devcontext jira epics --list
 devcontext jira workitem PLAT-42 -o markdown  # description + comments + full history
 devcontext jira sprints --state active
 devcontext jira fields --mapped
+
+devcontext links PLAT-42                      # which pull requests reference this ticket
 ```
 
 Or go straight to SQL — see [docs/database.md](docs/database.md) for the schema
@@ -174,6 +176,7 @@ works offline. Read only, and it exposes the same queries the CLI uses. See
 - [CLI reference](docs/cli.md)
 - [Outputs](docs/outputs.md)
 - [Database](docs/database.md)
+- [Cross links](docs/links.md)
 - [Web viewer](docs/web.md)
 - [MCP server](docs/mcp.md)
 - [Development](docs/development.md)
