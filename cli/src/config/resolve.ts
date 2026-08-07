@@ -22,6 +22,7 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   retryBaseMs: 1000,
   respectRateLimit: true,
   rateLimitReserve: 50,
+  maxRateLimitWaitMs: 900_000,
   requestTimeoutMs: 60_000,
   pageSize: 100,
   progress: true,

@@ -18,6 +18,7 @@
     "build:web": "npm run build --workspace @devcontext/web",
     "dev:web": "npm run dev --workspace @devcontext/web",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace @devcontext/cli",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

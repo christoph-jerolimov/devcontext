@@ -47,6 +47,7 @@ export class JiraClient {
       minDelayMs: options.settings.minDelayMs,
       respectRateLimit: options.settings.respectRateLimit,
       reserve: options.settings.rateLimitReserve,
+      maxWaitMs: options.settings.maxRateLimitWaitMs,
       logger: options.logger,
     });
 

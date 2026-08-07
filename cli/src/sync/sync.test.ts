@@ -87,6 +87,54 @@ describe('RateLimiter', () => {
     expect(clock.waits).toEqual([]);
   });
 
+  it('fails instead of waiting out a window that is longer than the ceiling', async () => {
+    const clock = createClock();
+    const limiter = new RateLimiter({
+      minDelayMs: 0,
+      respectRateLimit: true,
+      reserve: 10,
+      maxWaitMs: 60_000,
+      logger: nullLogger,
+      sleepFn: clock.sleepFn,
+      nowFn: clock.nowFn,
+    });
+
+    limiter.observeHeaders(
+      new Headers({
+        'x-ratelimit-limit': '60',
+        'x-ratelimit-remaining': '0',
+        // Unauthenticated GitHub: the window is a full hour away.
+        'x-ratelimit-reset': String(Math.floor(clock.nowFn() / 1000) + 3600),
+      }),
+    );
+
+    await expect(limiter.acquire()).rejects.toThrow(/Rate limit reached/);
+    expect(clock.waits).toEqual([]);
+  });
+
+  it('still waits when the window is within the ceiling', async () => {
+    const clock = createClock();
+    const limiter = new RateLimiter({
+      minDelayMs: 0,
+      respectRateLimit: true,
+      reserve: 10,
+      maxWaitMs: 600_000,
+      logger: nullLogger,
+      sleepFn: clock.sleepFn,
+      nowFn: clock.nowFn,
+    });
+
+    limiter.observeHeaders(
+      new Headers({
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-reset': String(Math.floor(clock.nowFn() / 1000) + 60),
+      }),
+    );
+
+    await limiter.acquire();
+    expect(clock.waits[0]).toBeGreaterThan(59_000);
+  });
+
   it('honours Retry-After', () => {
     const clock = createClock();
     const limiter = new RateLimiter({

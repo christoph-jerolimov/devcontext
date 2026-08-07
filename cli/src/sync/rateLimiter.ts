@@ -1,3 +1,4 @@
+import { CliError } from '../util/errors.js';
 import type { Logger } from '../util/logger.js';
 import { formatDuration, sleep } from '../util/time.js';
 
@@ -15,6 +16,12 @@ export interface RateLimiterOptions {
   respectRateLimit: boolean;
   /** Start waiting for the window reset once fewer than this many calls are left. */
   reserve: number;
+  /**
+   * Give up instead of waiting longer than this for a rate limit window.
+   * Without a ceiling an exhausted budget looks like a hang: the GitHub
+   * window is a full hour, and unauthenticated requests exhaust it in 60 calls.
+   */
+  maxWaitMs?: number;
   logger: Logger;
   /** Injection point for tests. */
   sleepFn?: (ms: number) => Promise<void>;
@@ -48,6 +55,21 @@ export class RateLimiter {
 
       if (this.pausedUntil > now) {
         const waitMs = this.pausedUntil - now;
+        const maxWaitMs = this.options.maxWaitMs ?? Number.POSITIVE_INFINITY;
+
+        if (waitMs > maxWaitMs) {
+          throw new CliError(
+            `Rate limit reached and the window does not reset for ${formatDuration(waitMs)}, ` +
+              `which is longer than the configured maximum of ${formatDuration(maxWaitMs)}.`,
+            {
+              hint:
+                this.snapshot.limit !== null && this.snapshot.limit <= 60
+                  ? 'This looks like an unauthenticated request budget. Set a token and try again.'
+                  : 'Raise sync.maxRateLimitWaitMs, or continue the sync later; the cursors are stored.',
+            },
+          );
+        }
+
         this.options.logger.info(
           `Rate limit reached, waiting ${formatDuration(waitMs)} for the window to reset.`,
         );
