@@ -1,7 +1,11 @@
 import type { Database } from './database.js';
 import { nowIso } from '../util/time.js';
 
-export type SyncMode = 'initial' | 'incremental';
+/**
+ * `targeted` is a sync of one named item. It writes rows but deliberately does
+ * not advance any cursor, so a later incremental run still covers the window.
+ */
+export type SyncMode = 'initial' | 'incremental' | 'targeted';
 export type SyncStatus = 'running' | 'completed' | 'failed' | 'interrupted' | 'skipped';
 
 export interface SyncRunRow {

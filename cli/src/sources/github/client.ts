@@ -126,6 +126,21 @@ export class GithubClient {
     });
   }
 
+  /** One issue (or the issue side of a pull request) by number. */
+  async issue(owner: string, repo: string, number: number): Promise<JsonObject> {
+    try {
+      const response = await this.http.request<JsonObject>(
+        `/repos/${owner}/${repo}/issues/${number}`,
+      );
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        throw new CliError(`${owner}/${repo}#${number} was not found on ${this.host.name}.`);
+      }
+      throw error;
+    }
+  }
+
   issueComments(owner: string, repo: string, issueNumber: number): Promise<JsonObject[]> {
     return this.collect(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`);
   }

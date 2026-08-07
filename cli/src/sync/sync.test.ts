@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { parseConfig } from '../config/load.js';
 import { nullLogger } from '../util/logger.js';
+import { parseReference } from './runner.js';
 import { ProgressReporter } from './progress.js';
 import { RateLimiter } from './rateLimiter.js';
 
@@ -169,6 +171,63 @@ describe('RateLimiter', () => {
     );
     await limiter.acquire();
     expect(clock.waits).toEqual([]);
+  });
+});
+
+describe('parseReference', () => {
+  const projects = parseConfig(
+    `
+jira:
+  sites:
+    - name: acme
+      baseUrl: https://acme.atlassian.net
+      token: x
+projects:
+  - key: demo
+    github:
+      - repo: acme/platform
+    jira:
+      - project: PLAT
+`,
+    { configPath: '/workspace/devcontext.yaml' },
+  ).projects;
+
+  const twoRepos = parseConfig(
+    `
+projects:
+  - key: demo
+    github:
+      - repo: acme/platform
+      - repo: acme/docs
+`,
+    { configPath: '/workspace/devcontext.yaml' },
+  ).projects;
+
+  it('understands a qualified GitHub reference', () => {
+    const parsed = parseReference('acme/platform#42', projects);
+    expect(parsed.kind).toBe('github');
+    expect(parsed.kind === 'github' && parsed.number).toBe(42);
+  });
+
+  it('understands a bare number when a single repository is configured', () => {
+    expect(parseReference('42', projects).kind).toBe('github');
+    expect(parseReference('#42', projects).kind).toBe('github');
+  });
+
+  it('refuses a bare number when it would be ambiguous', () => {
+    expect(() => parseReference('42', twoRepos)).toThrow(/ambiguous/);
+  });
+
+  it('understands a Jira key, case insensitively', () => {
+    const parsed = parseReference('plat-42', projects);
+    expect(parsed.kind).toBe('jira');
+    expect(parsed.kind === 'jira' && parsed.key).toBe('PLAT-42');
+  });
+
+  it('rejects references outside the configuration', () => {
+    expect(() => parseReference('other/repo#1', projects)).toThrow(/No GitHub repository/);
+    expect(() => parseReference('NOPE-1', projects)).toThrow(/No Jira project/);
+    expect(() => parseReference('nonsense', projects)).toThrow(/Cannot understand/);
   });
 });
 

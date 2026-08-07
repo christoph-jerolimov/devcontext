@@ -1,7 +1,7 @@
 import type { JiraProjectTarget } from '../../config/types.js';
 import type { SyncMode } from '../../db/journal.js';
 import type { SyncContext, TargetSyncResult } from '../../sync/types.js';
-import { errorMessage } from '../../util/errors.js';
+import { CliError, errorMessage } from '../../util/errors.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
 import { nowIso } from '../../util/time.js';
@@ -79,6 +79,81 @@ export async function syncJiraProject(
       status: 'failed',
       apiCalls: ctx.progress.apiCallCount - callsAtStart,
       items: ctx.progress.itemCount - itemsAtStart,
+      error: message,
+    };
+  }
+}
+
+/** Syncs one work item immediately, without moving any cursor. */
+export async function syncJiraWorkitem(
+  target: JiraProjectTarget,
+  ctx: SyncContext,
+  key: string,
+): Promise<TargetSyncResult> {
+  const client = new JiraClient({
+    site: target.site,
+    settings: ctx.config.sync,
+    progress: ctx.progress,
+    logger: ctx.logger,
+  });
+
+  const targetName = `${target.site.name}/${target.projectKey}`;
+  const runId = ctx.journal.startRun({
+    projectKey: ctx.projectKey,
+    source: 'jira',
+    target: targetName,
+    mode: 'targeted',
+  });
+
+  const callsAtStart = ctx.progress.apiCallCount;
+  const itemsAtStart = ctx.progress.itemCount;
+  const syncer = new JiraProjectSyncer(
+    client,
+    target,
+    ctx,
+    runId,
+    'targeted',
+    `jira:${targetName}`,
+    targetName,
+  );
+
+  const base = {
+    runId,
+    source: 'jira' as const,
+    target: key.toUpperCase(),
+    mode: 'targeted' as const,
+  };
+
+  try {
+    await syncer.syncSingleWorkitem(key.toUpperCase());
+    const result: TargetSyncResult = {
+      ...base,
+      status: 'completed',
+      apiCalls: ctx.progress.apiCallCount - callsAtStart,
+      items: ctx.progress.itemCount - itemsAtStart,
+    };
+    ctx.journal.finishRun(runId, {
+      status: 'completed',
+      apiCalls: result.apiCalls,
+      apiCallsExpected: ctx.progress.expectedApiCallCount,
+      itemsSynced: result.items,
+      details: { key: key.toUpperCase() },
+    });
+    return result;
+  } catch (error) {
+    const message = errorMessage(error);
+    ctx.journal.finishRun(runId, {
+      status: 'failed',
+      apiCalls: ctx.progress.apiCallCount - callsAtStart,
+      apiCallsExpected: ctx.progress.expectedApiCallCount,
+      itemsSynced: 0,
+      error: message,
+    });
+    return {
+      ...base,
+      status: 'failed',
+      apiCalls: ctx.progress.apiCallCount - callsAtStart,
+      items: 0,
       error: message,
     };
   }
@@ -224,34 +299,8 @@ class JiraProjectSyncer {
       });
 
       for (const raw of page.issues) {
-        const id = str(raw, 'id') ?? '';
-        const key = str(raw, 'key') ?? '';
-        const workitem = { id, key };
-        const syncedAt = nowIso();
-
-        this.write('jira_workitems', map.mapWorkitem(raw, this.jiraCtx, syncedAt));
-        for (const row of map.workitemLabelRows(raw, this.jiraCtx)) {
-          this.write('jira_workitem_labels', row);
-        }
-        if (sync.links) {
-          for (const row of map.mapLinks(raw, this.jiraCtx, workitem, syncedAt)) {
-            this.write('jira_links', row);
-          }
-        }
-        if (sync.attachments) {
-          for (const row of map.mapAttachments(raw, this.jiraCtx, workitem, syncedAt)) {
-            this.write('jira_attachments', row);
-          }
-        }
-        if (sync.comments) await this.syncComments(raw, workitem);
-        if (sync.changelog) await this.syncChangelog(raw, workitem);
-        if (sync.worklogs) await this.syncWorklogs(workitem);
-
-        const updatedAt = str(raw, 'fields', 'updated');
-        if (updatedAt) {
-          const iso = new Date(updatedAt).toISOString();
-          if (!newestUpdate || iso > newestUpdate) newestUpdate = iso;
-        }
+        const updatedAt = await this.writeWorkitemPayload(raw);
+        if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
         items += 1;
         this.ctx.progress.recordItems();
       }
@@ -263,6 +312,69 @@ class JiraProjectSyncer {
     }
 
     return { items, cursor: newestUpdate ?? nowIso() };
+  }
+
+  /**
+   * Writes one work item with its labels, links, attachments, comments and the
+   * complete history. Shared by the search walk and by a targeted sync, so both
+   * store exactly the same rows.
+   */
+  private async writeWorkitemPayload(raw: JsonObject): Promise<string | null> {
+    const { sync } = this.target;
+    const workitem = { id: str(raw, 'id') ?? '', key: str(raw, 'key') ?? '' };
+    const syncedAt = nowIso();
+
+    this.write('jira_workitems', map.mapWorkitem(raw, this.jiraCtx, syncedAt));
+    for (const row of map.workitemLabelRows(raw, this.jiraCtx)) {
+      this.write('jira_workitem_labels', row);
+    }
+    if (sync.links) {
+      for (const row of map.mapLinks(raw, this.jiraCtx, workitem, syncedAt)) {
+        this.write('jira_links', row);
+      }
+    }
+    if (sync.attachments) {
+      for (const row of map.mapAttachments(raw, this.jiraCtx, workitem, syncedAt)) {
+        this.write('jira_attachments', row);
+      }
+    }
+    if (sync.comments) await this.syncComments(raw, workitem);
+    if (sync.changelog) await this.syncChangelog(raw, workitem);
+    if (sync.worklogs) await this.syncWorklogs(workitem);
+
+    const updatedAt = str(raw, 'fields', 'updated');
+    return updatedAt ? new Date(updatedAt).toISOString() : null;
+  }
+
+  /**
+   * Syncs a single work item, without touching any cursor.
+   *
+   * The cursor is deliberately left alone: this item may have been updated
+   * after work items the regular sync has not seen yet, and moving the cursor
+   * to its timestamp would skip everything in between for good. The follow up
+   * sync still starts from the old cursor and writes this item again, which
+   * changes nothing because every write is an upsert.
+   */
+  async syncSingleWorkitem(key: string): Promise<void> {
+    this.ctx.progress.setPhase(key);
+    this.ctx.progress.expect(2);
+
+    const page = await this.client.search({
+      jql: `key = "${key}"`,
+      maxResults: 1,
+      fields: ['*all'],
+      expand: ['changelog', 'renderedFields'],
+    });
+
+    const [raw] = page.issues;
+    if (!raw) {
+      throw new CliError(`Work item ${key} was not found on ${this.target.site.baseUrl}.`, {
+        hint: 'Check the key, and that the configured filter does not exclude it.',
+      });
+    }
+
+    await this.writeWorkitemPayload(raw);
+    this.ctx.progress.recordItems();
   }
 
   /** Uses the comments embedded in the search response when they are complete. */

@@ -42,6 +42,7 @@ Examples:
   devcontext init                             write a commented devcontext.yaml
   devcontext sync                             incremental sync of every project
   devcontext sync --full --source github      download everything from GitHub again
+  devcontext sync --only PLAT-42              refresh one ticket now, then sync the rest
   devcontext gh issues --repo acme/platform   open issues of one repository
   devcontext gh issues --stale 90d --list     issue ids that have been quiet for 90 days
   devcontext gh prs 42 -o markdown            one pull request with reviews as markdown
