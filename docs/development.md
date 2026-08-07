@@ -17,9 +17,9 @@ npm install          # installs both workspaces
 npm run build        # web/dist, then cli/dist
 npm test             # vitest in cli/
 npm run typecheck    # tsc --noEmit in both workspaces
-npm run lint         # eslint
-npm run lint:fix     # eslint --fix
-npm run format       # prettier --write
+npm run lint         # oxlint
+npm run lint:fix     # oxlint --fix
+npm run format       # oxfmt
 npm run check        # format:check + lint + typecheck + test, what CI runs
 ```
 
@@ -35,25 +35,34 @@ npm ci → format:check → lint → typecheck → test → build
 Run `npm run check` before pushing and CI will agree with you. The three tools
 have clearly separated jobs, which keeps the rule sets small:
 
-- **prettier** owns formatting; `eslint-config-prettier` switches off every
-  ESLint rule that would have an opinion about it.
-- **eslint** (`eslint.config.js`, flat config) owns the things formatting and
-  types cannot see: unused code, `no-console` outside the output layer,
-  consistent type imports, and the rules of hooks in `web/`.
-- **tsc** owns types, so no type-aware ESLint rules are enabled and linting
-  stays fast.
+- **oxfmt** (`.oxfmtrc.json`) owns formatting — TypeScript, JavaScript, JSON,
+  YAML and markdown.
+- **oxlint** (`.oxlintrc.json`) owns what formatting and types cannot see:
+  unused code, `no-console` outside the output layer, consistent type imports,
+  and the rules of hooks in `web/`.
+- **tsc** owns types, so no type-aware lint rules are enabled and linting stays
+  in the millisecond range.
+
+Both are the Rust based [oxc](https://oxc.rs) tools, which is why the whole
+check is fast enough to run on every save.
+
+### Notable lint settings
+
+- The `react` and `react-hooks` plugins are enabled in a `web/**` override
+  only. The CLI is not a React project, and running those rules over it just
+  produces false positives.
+- `no-await-in-loop` is off. Sequential `await` inside a loop is the design of
+  the syncers: calls are paced by the rate limiter, pagination is inherently
+  ordered, and running them concurrently would defeat both.
+- `react/react-in-jsx-scope` is off because `web/` uses the automatic JSX
+  runtime (`"jsx": "react-jsx"`), where `React` does not need to be in scope.
 
 ## Dependencies
 
-Everything is kept on its latest release, with one deliberate exception:
-
-**TypeScript stays on 6.x.** TypeScript 7 is out, but `typescript-eslint`
-(the only dependency that reads the compiler API) still declares
-`typescript >=4.8.4 <6.1.0` as its peer range, so installing TypeScript 7
-makes `npm ci` fail with `ERESOLVE`. Forcing it would mean `--legacy-peer-deps`
-or an override, which weakens the dependency check for the whole repository to
-work around one unsupported combination. Move to 7 once `typescript-eslint`
-declares support — nothing else here blocks it.
+Everything is kept on its latest release, including TypeScript 7. Keeping the
+toolchain on oxlint and oxfmt is part of what makes that possible: the previous
+ESLint setup pinned TypeScript below 6.1 through `typescript-eslint`'s peer
+range, and oxc has no such constraint.
 
 `@types/node` follows the latest Node release, while the package supports Node
 22.5+. CI runs the tests on both 22 and 24, which is what catches an API that
@@ -125,4 +134,4 @@ filters.
   (relative imports carry the `.js` extension).
 - No runtime dependency beyond `commander`, `yaml` and `zod`; the database is
   the built-in `node:sqlite`, HTTP is the built-in `fetch`.
-- Prettier with the settings in `.prettierrc.json` (100 columns, single quotes).
+- oxfmt with the settings in `.oxfmtrc.json` (100 columns, single quotes).

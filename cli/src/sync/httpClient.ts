@@ -148,8 +148,8 @@ export class HttpClient {
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
     try {
       const headers: Record<string, string> = {
-        ...(this.options.headers ?? {}),
-        ...(requestOptions.headers ?? {}),
+        ...this.options.headers,
+        ...requestOptions.headers,
       };
       let body: string | undefined;
       if (requestOptions.body !== undefined) {

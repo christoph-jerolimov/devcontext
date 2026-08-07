@@ -43,7 +43,7 @@ export function useAsync<T>(loader: () => Promise<T>, deps: unknown[]): AsyncRes
       cancelled = true;
     };
     // `loader` is recreated on every render; the dependency key is what matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   if (settled.key !== key) return { data: null, error: null, loading: true };

@@ -312,7 +312,7 @@ class GithubRepoSyncer {
    */
   private async syncPullRequests(): Promise<OperationStats> {
     const { sync } = this.target;
-    const numbers = [...this.pendingPullRequests.keys()].sort((a, b) => a - b);
+    const numbers = [...this.pendingPullRequests.keys()].toSorted((a, b) => a - b);
 
     const perItemCalls =
       1 +
