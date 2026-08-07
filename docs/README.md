@@ -35,6 +35,7 @@ node cli/bin/devcontext.js sync     # fills .devcontext/devcontext.db + yaml + m
 node cli/bin/devcontext.js gh issues --stale 90d
 node cli/bin/devcontext.js jira stories --sprint "Sprint 7"
 node cli/bin/devcontext.js web      # http://127.0.0.1:4173
+node cli/bin/devcontext.js mcp      # serve it to an AI assistant over MCP
 ```
 
 ## Design in one picture
