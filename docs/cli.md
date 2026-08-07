@@ -277,6 +277,29 @@ Lists the Jira fields of the synced sites together with the friendly name you
 configured. `--mapped` shows only the mapped ones. This is the fastest way to
 find the `customfield_*` ids you want to map.
 
+## `devcontext insights` (aliases `report`, `stats`)
+
+Cycle time, review latency, work in progress, stale items, flaky workflow steps
+and sprint reports, all computed from the local database. Takes an optional
+section name to print just one of them. See [insights.md](insights.md).
+
+## `devcontext digest` (aliases `standup`, `summary`)
+
+What happened in a window — merged, finished, started, opened, plus who did it
+and what is still stuck. `-o markdown` is shaped to be pasted into a standup.
+See [digest.md](digest.md).
+
+| Option                     | Description                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `--since <when>`           | Start of the window (default `1w`)                     |
+| `--until <when>`           | End of the window; defaults to now                     |
+| `-r, --repo <repo>`        | GitHub repository, repeatable                          |
+| `-p, --project <key>`      | Jira project key, repeatable                           |
+| `--person <name>`          | Only activity by this person, repeatable               |
+| `--stale-after <duration>` | Age at which open work counts as stale (default `30d`) |
+| `--no-stale`               | Skip the stale section                                 |
+| `-n, --limit <count>`      | Rows per section (default `10`)                        |
+
 ## `devcontext web`
 
 Serves the React viewer and the JSON API for the local database.

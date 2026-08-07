@@ -16,7 +16,11 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [CLI reference](cli.md)               | Every command, alias, filter and output format                      |
 | [Outputs](outputs.md)                 | Layout of the yaml, markdown and json mirrors                       |
 | [Database](database.md)               | Table reference and example SQL queries                             |
+| [Insights](insights.md)               | Cycle time, review latency, WIP, stale items, flaky steps, sprints  |
+| [Digest](digest.md)                   | What happened in a window, for a standup or a weekly update         |
+| [Cross links](links.md)               | How GitHub and Jira references are connected                        |
 | [Web viewer](web.md)                  | The React viewer and the JSON API behind it                         |
+| [MCP server](mcp.md)                  | Serving the same data to an AI assistant                            |
 | [Development](development.md)         | Monorepo layout, tests, how to extend devcontext                    |
 | [Troubleshooting](troubleshooting.md) | Tokens, rate limits, permissions, common errors                     |
 

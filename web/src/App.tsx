@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api.ts';
 import type { Repository, StatusResponse } from './api.ts';
 import { StateMessage, useAsync } from './components/common.tsx';
+import { DigestView } from './views/Digest.tsx';
 import { IssuesView, PullRequestsView, WorkflowRunsView } from './views/GithubViews.tsx';
 import { InsightsView } from './views/Insights.tsx';
 import { SprintsView, WorkitemsView } from './views/JiraViews.tsx';
@@ -17,6 +18,7 @@ const ROUTES = [
   { id: 'workitems', label: 'Jira work items' },
   { id: 'sprints', label: 'Sprints' },
   { id: 'insights', label: 'Insights' },
+  { id: 'digest', label: 'Digest' },
 ] as const;
 
 type RouteId = (typeof ROUTES)[number]['id'];
@@ -80,6 +82,7 @@ export function App(): ReactNode {
             ) : null}
             {route === 'sprints' ? <SprintsView /> : null}
             {route === 'insights' ? <InsightsView /> : null}
+            {route === 'digest' ? <DigestView /> : null}
           </>
         ) : null}
       </main>
