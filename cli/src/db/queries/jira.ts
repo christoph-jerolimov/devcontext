@@ -1,4 +1,6 @@
 import type { Database } from '../database.js';
+import { searchIndexUsable, WEIGHTS } from '../../search/index.js';
+import { toMatchQuery } from '../../search/query.js';
 import { limitClause, orderClause, WhereBuilder } from './filters.js';
 import type { PagingOptions } from './filters.js';
 
@@ -175,14 +177,68 @@ export function getWorkitem(db: Database, key: string): WorkitemRow | undefined 
 }
 
 /**
- * Full text-ish search across work items and their comments. Matches are ranked
- * so that key and summary hits come before body and comment hits.
+ * The matching work item keys, most relevant first, or `null` when there is no
+ * usable index and the caller has to scan.
+ *
+ * More keys are fetched than the caller asked for, because the filters below
+ * still remove some of them; the surplus keeps a filtered search from coming
+ * back short.
+ */
+function rankedKeys(db: Database, query: string, filter: WorkitemFilter): string[] | null {
+  if (!searchIndexUsable(db)) return null;
+
+  const match = toMatchQuery(query);
+  if (match === null) return [];
+
+  const wanted = (filter.limit && filter.limit > 0 ? filter.limit : 50) + (filter.offset ?? 0);
+  try {
+    return db
+      .all<{ ref: string }>(
+        `SELECT ref FROM search_index
+          WHERE search_index MATCH ? AND kind = 'workitem'
+          ORDER BY bm25(search_index, ${WEIGHTS})
+          LIMIT ?`,
+        [match, wanted * 10 + 200],
+      )
+      .map((row) => row.ref);
+  } catch {
+    // FTS5 rejected the expression; the scan below still answers.
+    return null;
+  }
+}
+
+/**
+ * Full text search across work items and their comments, most relevant first.
+ *
+ * It goes through the FTS index when there is one, so the cost is proportional
+ * to the number of matches rather than to every description and comment in the
+ * database. The scan below is the fallback for a SQLite build without FTS5, or
+ * for a database that has not been synced since the index was introduced.
  */
 export function searchWorkitems(
   db: Database,
   query: string,
   filter: WorkitemFilter = {},
 ): WorkitemRow[] {
+  const paging = limitClause(filter);
+
+  const ranked = rankedKeys(db, query, filter);
+  if (ranked !== null) {
+    if (ranked.length === 0) return [];
+
+    const where = applyWorkitemFilters(new WhereBuilder(), filter);
+    where.addIn('key', ranked);
+    const rows = db.all<WorkitemRow>(`SELECT * FROM jira_workitems ${where.sql}`, where.values);
+
+    // The index decided the order; the filters only removed rows from it.
+    const position = new Map(ranked.map((key, index) => [key, index]));
+    const sorted = rows.toSorted((a, b) => (position.get(a.key) ?? 0) - (position.get(b.key) ?? 0));
+    const offset = filter.offset ?? 0;
+    return filter.limit && filter.limit > 0
+      ? sorted.slice(offset, offset + filter.limit)
+      : sorted.slice(offset);
+  }
+
   const where = applyWorkitemFilters(new WhereBuilder(), filter);
   const pattern = `%${query.toLowerCase()}%`;
   where.add(
@@ -195,7 +251,6 @@ export function searchWorkitems(
     pattern,
     pattern,
   );
-  const paging = limitClause(filter);
   return db.all<WorkitemRow>(
     `SELECT * FROM jira_workitems ${where.sql}
       ORDER BY

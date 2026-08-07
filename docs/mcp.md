@@ -41,19 +41,19 @@ that has a `devcontext.yaml`; `--db` points at a database directly.
 
 `devcontext mcp --tools` lists them (add `-o json` for the full schemas).
 
-| Tool                                      | What it answers                                                                                                 |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `devcontext_status`                       | Which repositories and Jira projects exist locally, row counts, how fresh the data is. The one to call first.   |
-| `list_repositories`                       | The synced GitHub repositories                                                                                  |
-| `search`                                  | One phrase across issues, pull requests and work items **including their comments**                             |
-| `list_issues`                             | Issues by repository, state, label, author, assignee, text, age                                                 |
-| `get_issue`                               | One issue: body, every comment, the full timeline                                                               |
-| `list_pull_requests`                      | Pull requests, plus merged / base branch / reviewer filters                                                     |
-| `get_pull_request`                        | One pull request: commits, changed files, every review with its inline comments, the conversation, the timeline |
-| `list_workitems`                          | Jira work items by project, type, status, category, assignee, sprint, epic, text, age                           |
-| `get_workitem`                            | One work item: description, custom fields, links, comments, the complete field history                          |
-| `list_sprints` / `get_sprint`             | Sprints, and one sprint with its work items and story points                                                    |
-| `list_workflow_runs` / `get_workflow_run` | Actions runs, and one run with every job and step                                                               |
+| Tool                                      | What it answers                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `devcontext_status`                       | Which repositories and Jira projects exist locally, row counts, how fresh the data is. The one to call first.                  |
+| `list_repositories`                       | The synced GitHub repositories                                                                                                 |
+| `search`                                  | One query across issues, pull requests and work items **including their comments and reviews**, ranked, with the matching text |
+| `list_issues`                             | Issues by repository, state, label, author, assignee, text, age                                                                |
+| `get_issue`                               | One issue: body, every comment, the full timeline                                                                              |
+| `list_pull_requests`                      | Pull requests, plus merged / base branch / reviewer filters                                                                    |
+| `get_pull_request`                        | One pull request: commits, changed files, every review with its inline comments, the conversation, the timeline                |
+| `list_workitems`                          | Jira work items by project, type, status, category, assignee, sprint, epic, text, age                                          |
+| `get_workitem`                            | One work item: description, custom fields, links, comments, the complete field history                                         |
+| `list_sprints` / `get_sprint`             | Sprints, and one sprint with its work items and story points                                                                   |
+| `list_workflow_runs` / `get_workflow_run` | Actions runs, and one run with every job and step                                                                              |
 
 Time filters (`updatedSince`, `updatedBefore`) take the same values as the CLI:
 `30d`, `6w`, `3mo` or an absolute date. `updatedBefore` is how an assistant

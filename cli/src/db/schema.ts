@@ -9,7 +9,7 @@
  *    GitHub Enterprise servers or Jira sites can live in the same database;
  *  - `synced_at` records when devcontext last wrote the row.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS meta (
@@ -766,5 +766,42 @@ CREATE TABLE IF NOT EXISTS jira_sprint_workitems (
   workitem_id  TEXT NOT NULL,
   workitem_key TEXT NOT NULL,
   PRIMARY KEY (site, sprint_id, workitem_id)
+);
+
+-- "What did the last sync write?" is asked after every run to reindex only
+-- that; without these it is a full scan of the largest tables.
+CREATE INDEX IF NOT EXISTS idx_gh_issues_synced ON gh_issues (synced_at);
+CREATE INDEX IF NOT EXISTS idx_gh_comments_synced ON gh_comments (synced_at);
+CREATE INDEX IF NOT EXISTS idx_gh_pull_requests_synced ON gh_pull_requests (synced_at);
+CREATE INDEX IF NOT EXISTS idx_gh_reviews_synced ON gh_reviews (synced_at);
+CREATE INDEX IF NOT EXISTS idx_jira_workitems_synced ON jira_workitems (synced_at);
+CREATE INDEX IF NOT EXISTS idx_jira_comments_synced ON jira_comments (synced_at);
+`;
+
+/**
+ * The full text index, one row per issue, pull request or work item, with its
+ * comments folded in — a result is an *item*, not a fragment.
+ *
+ * Kept out of `SCHEMA_SQL` and applied separately because FTS5 is a compile
+ * time option: a SQLite build without it must degrade to scanning, not fail to
+ * open the database. `searchIndexAvailable` is how the rest of the code asks.
+ */
+export const SEARCH_SCHEMA_SQL = /* sql */ `
+CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+  -- Indexed columns come first because bm25() assigns its weights by column
+  -- position; putting them last would weight the UNINDEXED ones instead.
+  ref,                     -- PLAT-42 or acme/platform#42; people search for these
+  title,
+  body,
+  comments,
+  people,
+  labels,
+  kind UNINDEXED,          -- issue | pull-request | workitem
+  source UNINDEXED,        -- github | jira
+  container UNINDEXED,     -- repository full name or Jira project key
+  state UNINDEXED,
+  updated_at UNINDEXED,
+  url UNINDEXED,
+  tokenize = "unicode61 remove_diacritics 2"
 );
 `;

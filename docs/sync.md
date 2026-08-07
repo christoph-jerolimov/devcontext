@@ -67,6 +67,16 @@ Use it after changing the sync flags of a repository, or when you suspect a gap.
 
 Every row also keeps the untouched API payload in its `raw` column.
 
+### After the fetch
+
+Two passes run over what was just written, both entirely local:
+
+- the **cross reference** table is rebuilt, so the documents carry their links
+  (see [links.md](links.md));
+- the **search index** is updated (see [search.md](search.md)). A full sync
+  rebuilds it; an incremental sync only reindexes the items it wrote, so a
+  three ticket sync stays fast on a large database.
+
 ## Rate limits and pacing
 
 Every API call goes through a rate limiter that

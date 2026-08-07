@@ -32,6 +32,8 @@ no native dependency to compile.
 | `sync_runs`                   | One row per target per `devcontext sync`: mode, status, API calls, items, duration, error |
 | `sync_operations`             | One row per resource inside a run, with the cursor before and after                       |
 | `sync_state`                  | Where the next incremental sync continues, per scope                                      |
+| `cross_links`                 | Rebuilt after every sync from the references found in the synced text                     |
+| `search_index`                | FTS5 index behind `devcontext search`; one row per item, comments folded in               |
 
 ## GitHub tables
 
@@ -199,3 +201,12 @@ The schema is versioned in `meta.schema_version` and created idempotently on
 every start, so opening an older database upgrades it in place. A database
 written by a _newer_ devcontext is refused with a clear error instead of being
 corrupted.
+
+`search_index` is created separately and inside a `try`, because FTS5 is a
+SQLite compile time option: a build without it must lose fast search, not the
+ability to open the database. Everything else works unchanged, and searching
+falls back to scanning — see [search.md](search.md).
+
+Version 2 added `search_index` and the `synced_at` indexes it needs. Upgrading
+is automatic; the index itself fills in on the next sync, and searching scans
+until it does.
