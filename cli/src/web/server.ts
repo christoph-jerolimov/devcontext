@@ -156,6 +156,9 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       github: gh.githubStats(db),
       jira: jira.jiraStats(db),
       links: crossLinks.linkStats(db),
+      // Served rather than duplicated in the viewer, so the dropdown and the
+      // grouping that backs it cannot drift apart.
+      filters: { workitemTypes: [...jira.WORKITEM_TYPES] },
       runs: ctx.journal.listRuns({ limit: 20 }),
       state: ctx.journal.listState(),
     };

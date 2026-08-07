@@ -71,6 +71,7 @@ export function App(): ReactNode {
                 projects={[
                   ...new Set(status.data.config.projects.flatMap((project) => project.jira)),
                 ].map((entry) => entry.split('/').pop() ?? entry)}
+                types={status.data.filters.workitemTypes}
               />
             ) : null}
             {route === 'sprints' ? <SprintsView /> : null}

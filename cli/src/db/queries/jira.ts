@@ -76,6 +76,37 @@ export interface JiraProjectRow {
   workitem_count?: number;
 }
 
+/**
+ * The work item types worth offering as a filter, and the names each one goes
+ * by.
+ *
+ * Jira lets every site rename its types, and the same idea arrives spelled
+ * several ways — a subtask is `Sub-task` on Cloud, `Subtask` on some Server
+ * installations, and `Sub Task` where somebody typed it by hand. Filtering on
+ * "Task" and getting none of the subtasks under it is not what anybody means,
+ * so the group is what gets matched.
+ *
+ * A type that is not a group name is matched exactly, which keeps a site's own
+ * custom types filterable.
+ */
+export const WORKITEM_TYPE_GROUPS: Record<string, string[]> = {
+  bug: ['Bug', 'Defect'],
+  task: ['Task', 'Sub-task', 'Subtask', 'Sub Task', 'Subtask (Sub-task)'],
+  story: ['Story'],
+  epic: ['Epic'],
+  feature: ['Feature'],
+  outcome: ['Outcome'],
+};
+
+/** The order the filters offer them in: broadest first, smallest last. */
+export const WORKITEM_TYPES = ['Outcome', 'Epic', 'Feature', 'Story', 'Task', 'Bug'] as const;
+
+/** Turns each requested type into every name it is known by. */
+export function expandWorkitemTypes(types: string[]): string[] {
+  const expanded = types.flatMap((type) => WORKITEM_TYPE_GROUPS[type.toLowerCase()] ?? [type]);
+  return [...new Set(expanded.map((type) => type.toLowerCase()))];
+}
+
 export interface WorkitemFilter extends PagingOptions {
   projects?: string[] | undefined;
   sites?: string[] | undefined;
@@ -112,11 +143,9 @@ function applyWorkitemFilters(where: WhereBuilder, filter: WorkitemFilter): Wher
     filter.keys?.map((value) => value.toUpperCase()),
   );
   if (filter.types && filter.types.length > 0) {
-    const placeholders = filter.types.map(() => '?').join(', ');
-    where.add(
-      `LOWER(type) IN (${placeholders})`,
-      ...filter.types.map((value) => value.toLowerCase()),
-    );
+    const types = expandWorkitemTypes(filter.types);
+    const placeholders = types.map(() => '?').join(', ');
+    where.add(`LOWER(type) IN (${placeholders})`, ...types);
   }
   if (filter.statuses && filter.statuses.length > 0) {
     const placeholders = filter.statuses.map(() => '?').join(', ');

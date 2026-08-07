@@ -14,6 +14,8 @@ export interface StatusResponse {
   };
   github: Record<string, number>;
   jira: Record<string, number>;
+  /** Choices the server defines, so the viewer does not restate them. */
+  filters: { workitemTypes: string[] };
   runs: SyncRun[];
   state: SyncState[];
 }

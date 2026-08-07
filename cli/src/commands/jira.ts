@@ -24,11 +24,14 @@ export function createJiraCommand(): Command {
   const command = new Command('jira').description('read Jira data from the local database');
 
   command.addCommand(workitemsCommand('workitems', ['workitem', 'items', 'item'], undefined));
-  command.addCommand(workitemsCommand('stories', ['story'], ['Story']));
-  command.addCommand(workitemsCommand('epics', ['epic'], ['Epic']));
-  command.addCommand(workitemsCommand('features', ['feature'], ['Feature']));
-  command.addCommand(workitemsCommand('bugs', ['bug'], ['Bug', 'Defect']));
-  command.addCommand(workitemsCommand('tasks', ['task'], ['Task', 'Sub-task', 'Subtask']));
+  // The type names each of these covers live in WORKITEM_TYPE_GROUPS, so the
+  // shortcut commands, `--type` and the viewer's dropdown all agree.
+  command.addCommand(workitemsCommand('stories', ['story'], ['story']));
+  command.addCommand(workitemsCommand('epics', ['epic'], ['epic']));
+  command.addCommand(workitemsCommand('features', ['feature'], ['feature']));
+  command.addCommand(workitemsCommand('outcomes', ['outcome'], ['outcome']));
+  command.addCommand(workitemsCommand('bugs', ['bug'], ['bug']));
+  command.addCommand(workitemsCommand('tasks', ['task'], ['task']));
   command.addCommand(treeCommand());
   command.addCommand(searchCommand());
   command.addCommand(sprintsCommand());
