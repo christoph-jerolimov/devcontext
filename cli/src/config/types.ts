@@ -91,6 +91,8 @@ export interface SyncSettings {
   respectRateLimit: boolean;
   /** Keep this many requests in reserve before waiting for the rate limit window to reset. */
   rateLimitReserve: number;
+  /** Fail instead of waiting longer than this for a rate limit window to reset. */
+  maxRateLimitWaitMs: number;
   requestTimeoutMs: number;
   pageSize: number;
   progress: boolean;

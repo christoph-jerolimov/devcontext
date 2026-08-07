@@ -55,6 +55,7 @@ sync:
   retryBaseMs: 1000 # exponential backoff base (1s, 2s, 4s, ...)
   respectRateLimit: true # wait for the rate limit window instead of failing
   rateLimitReserve: 50 # start waiting once fewer than N calls are left
+  maxRateLimitWaitMs: 900000 # never wait longer than this; fail instead
   requestTimeoutMs: 60000
   pageSize: 100 # page size for Jira searches (GitHub always uses 100)
   progress: true # render the progress indicator

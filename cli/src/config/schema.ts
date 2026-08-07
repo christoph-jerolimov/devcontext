@@ -120,6 +120,7 @@ export const configSchema = z
         retryBaseMs: z.number().int().min(0).optional(),
         respectRateLimit: z.boolean().optional(),
         rateLimitReserve: z.number().int().min(0).optional(),
+        maxRateLimitWaitMs: z.number().int().min(0).optional(),
         requestTimeoutMs: z.number().int().positive().optional(),
         pageSize: z.number().int().min(1).max(100).optional(),
         progress: z.boolean().optional(),

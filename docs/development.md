@@ -95,8 +95,9 @@ Two rules keep this navigable:
 ## Tests
 
 ```bash
-npm test                          # everything
+npm test                          # everything, offline
 npm test -- src/config            # one directory
+npm run test:e2e                  # against the real GitHub API, see below
 npm run test:watch --workspace @devcontext/cli
 ```
 
@@ -105,6 +106,26 @@ npm run test:watch --workspace @devcontext/cli
 markdown and yaml files, the incremental second run and the dry run. It is the
 fastest way to see how the pieces fit together, and the first place to extend
 when you add a resource.
+
+### End to end tests
+
+`cli/src/e2e/*.e2e.test.ts` sync this repository from the **real** GitHub API
+and assert on what actually comes back — pagination, payload shapes, the
+timeline media type, and cursors that survive a second incremental run. They
+are excluded from `npm test` so the normal suite stays offline and
+deterministic, and they run as their own CI job.
+
+They are opt in:
+
+```bash
+DEVCONTEXT_E2E_TOKEN=ghp_... npm run test:e2e   # recommended
+DEVCONTEXT_E2E=1 npm run test:e2e               # unauthenticated, 60 calls/hour
+```
+
+Without either variable every test skips itself. A token is strongly
+recommended: the unauthenticated budget is 60 requests per hour and one run
+needs about 30, so a second run in the same hour fails on the rate limit.
+`DEVCONTEXT_E2E_REPO` and `DEVCONTEXT_E2E_SINCE` override what is synced.
 
 ## Adding a synced resource
 

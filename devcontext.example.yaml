@@ -20,6 +20,9 @@ sync:
   # Wait for the rate limit window to reset instead of running into HTTP 403.
   respectRateLimit: true
   rateLimitReserve: 50
+  # Fail with a clear error instead of sitting out a rate limit window that is
+  # longer than this. 15 minutes by default.
+  maxRateLimitWaitMs: 900000
   requestTimeoutMs: 60000
   pageSize: 100
   progress: true
