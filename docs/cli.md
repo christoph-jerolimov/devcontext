@@ -329,6 +329,58 @@ Lists the Jira fields of the synced sites together with the friendly name you
 configured. `--mapped` shows only the mapped ones. This is the fastest way to
 find the `customfield_*` ids you want to map.
 
+## `devcontext tickets` (alias `ticket`)
+
+GitHub issues and Jira work items as one list. Pull requests are not here — a
+pull request is a change, not a request for one, and `gh prs` already lists
+them.
+
+| Option                   | Description                                             |
+| ------------------------ | ------------------------------------------------------- |
+| `--source <source>`      | `github` or `jira`, repeatable; both when omitted       |
+| `-c, --container <name>` | Repository (`acme/platform`) or Jira project (`PLAT`)   |
+| `-t, --type <type>`      | `Bug`, `Story`, `Issue`, ... repeatable                 |
+| `-s, --state <state>`    | `open`, `closed` or `all` (default)                     |
+| `--assignee <name>`      | Assigned to this person                                 |
+| `--search <text>`        | Substring of the title or the body                      |
+| `--types`                | List the types present and how many carry each, instead |
+| `--containers`           | List the repositories and projects present, instead     |
+
+```bash
+devcontext tickets --state open --container PLAT
+devcontext tickets --type Bug --source jira
+devcontext tickets --types            # what types exist, and how many of each
+devcontext tickets --containers       # which repositories and projects have any
+```
+
+`--types` is what the viewer's type dropdown is built from, so the list is
+whatever your data contains rather than a set of names hardcoded somewhere.
+Every other filter applies to the counts, so they describe the list you are
+looking at:
+
+```
+SOURCE  TYPE   TICKETS
+github  Issue        3
+jira    Story        2
+jira    Epic         1
+jira    Task         1
+```
+
+### What a "type" is
+
+Jira has always had one. GitHub only started offering typed issues recently and
+most repositories have none, so an issue without one is called `Issue` rather
+than being left blank — a dropdown entry with no name that matches nearly
+everything is worse than a plain word.
+
+### Open and closed across both
+
+GitHub stores `open` / `closed`. Jira has no such flag, only a status and the
+category it belongs to, so a work item counts as closed when its category is
+`Done` — the same rule [History](history.md) uses. The original word is kept as
+the status, so the table shows `In Progress` rather than flattening it to
+`open`.
+
 ## `devcontext search <query...>` (aliases `find`, `q`)
 
 Full text search across issues, pull requests, work items and their comments,

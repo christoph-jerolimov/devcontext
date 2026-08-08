@@ -9,6 +9,7 @@ export { SyncJournal } from './db/journal.js';
 export * as githubQueries from './db/queries/github.js';
 export * as jiraQueries from './db/queries/jira.js';
 export * as historyQueries from './db/queries/history.js';
+export * as ticketQueries from './db/queries/tickets.js';
 export * as insights from './insights/index.js';
 export { buildDigest } from './insights/digest.js';
 export { buildStateHistory } from './history/build.js';

@@ -15,6 +15,7 @@ import { createSearchCommand } from './commands/search.js';
 import { createServeCommand } from './commands/serve.js';
 import { createStatusCommand } from './commands/status.js';
 import { createSyncCommand } from './commands/sync.js';
+import { createTicketsCommand } from './commands/tickets.js';
 import { VERSION } from './version.js';
 
 export { VERSION };
@@ -38,6 +39,7 @@ export function createProgram(): Command {
   program.addCommand(createSearchCommand());
   program.addCommand(createGithubCommand());
   program.addCommand(createJiraCommand());
+  program.addCommand(createTicketsCommand());
   program.addCommand(createServeCommand());
   program.addCommand(createInsightsCommand());
   program.addCommand(createDigestCommand());

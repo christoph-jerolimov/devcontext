@@ -105,6 +105,42 @@ export interface Workitem {
   url: string | null;
 }
 
+/** A GitHub issue or a Jira work item, reconciled into one shape. */
+export interface Ticket {
+  source: 'github' | 'jira';
+  ref: string;
+  container: string;
+  type: string;
+  title: string | null;
+  /** The word the source uses: `open`, `closed`, `In Progress`, `Done`. */
+  status: string | null;
+  /** Normalised, so both sides can be filtered and counted together. */
+  state: 'open' | 'closed';
+  assignee: string | null;
+  author: string | null;
+  updated_at: string | null;
+  created_at: string | null;
+  url: string | null;
+}
+
+export interface TicketsResponse {
+  tickets: Ticket[];
+  /** Everything the filters match, which the page usually is not. */
+  total: number;
+}
+
+export interface TicketType {
+  source: 'github' | 'jira';
+  type: string;
+  count: number;
+}
+
+export interface TicketContainer {
+  source: 'github' | 'jira';
+  container: string;
+  count: number;
+}
+
 export interface Sprint {
   id: number;
   name: string | null;
@@ -333,6 +369,12 @@ export const api = {
   workflowRuns: (params: Record<string, string | undefined>) =>
     request<WorkflowRun[]>('/api/github/runs', params),
   workflowRun: (id: number) => request<IssueDocument>(`/api/github/runs/${id}`),
+  tickets: (params: Record<string, string | undefined>) =>
+    request<TicketsResponse>('/api/tickets', params),
+  ticketTypes: (params: Record<string, string | undefined>) =>
+    request<TicketType[]>('/api/tickets/types', params),
+  ticketContainers: (params: Record<string, string | undefined>) =>
+    request<TicketContainer[]>('/api/tickets/containers', params),
   workitems: (params: Record<string, string | undefined>) =>
     request<Workitem[]>('/api/jira/workitems', params),
   workitem: (key: string) => request<IssueDocument>(`/api/jira/workitems/${key}`),

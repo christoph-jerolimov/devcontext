@@ -6,6 +6,7 @@ import { REFERENCE } from '../fixtures/data.mjs';
 /** Every entry in the viewer's main navigation, in the order the sidebar has them. */
 const PAGES = [
   { id: 'overview', label: 'Overview' },
+  { id: 'tickets', label: 'Tickets' },
   { id: 'issues', label: 'GitHub issues' },
   { id: 'pulls', label: 'Pull requests' },
   { id: 'runs', label: 'Workflow runs' },
@@ -101,6 +102,31 @@ test.describe('the data actually arrived', () => {
 
     await openViewer(page, 'runs');
     await expect(page.locator('.table tbody tr')).toHaveCount(4);
+  });
+
+  test('the ticket list merges both sources and builds its filters from them', async ({ page }) => {
+    await openViewer(page, 'tickets');
+
+    const rows = page.locator('.table tbody tr');
+    // Three GitHub issues and four Jira work items, in one table.
+    await expect(rows).toHaveCount(7);
+    await expect(rows.filter({ hasText: 'acme/platform#' })).toHaveCount(3);
+    await expect(rows.filter({ hasText: 'PLAT-' })).toHaveCount(4);
+    // A pull request is not a ticket, so #42 must not be here.
+    await expect(rows.filter({ hasText: '#42' })).toHaveCount(0);
+
+    /*
+     * The type dropdown is built from the data, not from a list in the code.
+     * Story and Epic exist only because the fixture's work items carry them,
+     * and Issue only because GitHub issues without a type are called that.
+     */
+    const types = page.locator('.panel-actions select').nth(2);
+    await expect(types.locator('option')).toContainText(['All types', 'Issue (3)', 'Story (2)']);
+
+    // Narrowing to one source narrows the type list with it.
+    await page.locator('.panel-actions select').first().selectOption('jira');
+    await expect(rows).toHaveCount(4);
+    await expect(types.locator('option')).not.toContainText(['Issue (3)']);
   });
 
   test('state and size are colour coded, and cancelled is not a failure', async ({ page }) => {

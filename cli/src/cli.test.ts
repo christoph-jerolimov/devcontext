@@ -51,6 +51,7 @@ suite('the command surface', () => {
       'serve',
       'status',
       'sync',
+      'tickets',
     ]);
   });
 
