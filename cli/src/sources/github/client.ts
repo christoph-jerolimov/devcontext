@@ -105,6 +105,16 @@ export class GithubClient {
   ): Promise<number | null> {
     const url = this.http.buildUrl(path, { ...query, per_page: 1 });
     const response = await this.http.request<unknown>(url);
+
+    // A few list endpoints — actions/runs, actions/workflows, the search ones —
+    // wrap the array in an object and state the total outright. That is better
+    // than anything the Link header can be made to say, and it is also the only
+    // thing that works: an object is not an array, so counting the items on the
+    // page yields nothing and a single page response has no Link header to fall
+    // back on. Sizing those endpoints quietly produced zero before.
+    const stated = statedTotal(response.data);
+    if (stated !== null) return stated;
+
     const items = Array.isArray(response.data) ? response.data.length : 0;
     return totalFromLinkHeader(response.headers.get('link'), items);
   }
@@ -306,6 +316,13 @@ export function nextPageUrl(linkHeader: string | null): string | null {
  * Returns null when the header is present but unreadable, so a caller can tell
  * "no idea" from "none".
  */
+/** `total_count` from an object shaped list response, when it carries one. */
+export function statedTotal(data: unknown): number | null {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return null;
+  const total = (data as Record<string, unknown>)['total_count'];
+  return typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : null;
+}
+
 export function totalFromLinkHeader(linkHeader: string | null, itemsOnPage: number): number | null {
   if (!linkHeader) return itemsOnPage;
 

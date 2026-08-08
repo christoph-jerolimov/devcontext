@@ -393,9 +393,13 @@ function route(rawUrl: string): Response {
     });
   }
   if (path === '/repos/acme/platform/actions/runs/1001/jobs') {
+    // Three jobs, deliberately: a run with one job cannot tell an estimate of
+    // "one job per run" apart from a correct one.
     return json({
-      total_count: 1,
+      total_count: 3,
       jobs: [
+        { id: 2002, run_id: 1001, name: 'lint', status: 'completed', conclusion: 'success' },
+        { id: 2003, run_id: 1001, name: 'docs', status: 'completed', conclusion: 'success' },
         {
           id: 2001,
           run_id: 1001,
@@ -429,6 +433,9 @@ function route(rawUrl: string): Response {
   }
   if (path === '/repos/acme/platform/actions/jobs/2001/logs') {
     return new Response('2024-03-02T00:00:01Z npm test\nfailed', { status: 200 });
+  }
+  if (/\/actions\/jobs\/(2002|2003)\/logs$/.test(path)) {
+    return new Response('2024-03-02T00:00:01Z ok', { status: 200 });
   }
 
   // ---- Jira ---------------------------------------------------------------
@@ -465,6 +472,7 @@ function route(rawUrl: string): Response {
   if (path === '/rest/agile/1.0/board/1/sprint') {
     return json({
       isLast: true,
+      // Three, for the same reason as the jobs above.
       values: [
         {
           id: 33,
@@ -474,12 +482,15 @@ function route(rawUrl: string): Response {
           endDate: '2024-01-29T00:00:00.000Z',
           originBoardId: 1,
         },
+        { id: 34, name: 'Sprint 8', state: 'future', originBoardId: 1 },
+        { id: 35, name: 'Sprint 6', state: 'closed', originBoardId: 1 },
       ],
     });
   }
   if (path === '/rest/agile/1.0/sprint/33/issue') {
     return json({ total: 1, issues: [{ id: '10001', key: 'PLAT-42' }] });
   }
+  if (/\/sprint\/(34|35)\/issue$/.test(path)) return json({ total: 0, issues: [] });
 
   return new Response(JSON.stringify({ message: `unexpected request ${path}` }), { status: 404 });
 }
@@ -659,9 +670,10 @@ describe('runSync', () => {
       const runs = gh.listWorkflowRuns(db);
       expect(runs.map((run) => run.conclusion)).toEqual(['failure']);
       const jobs = gh.listWorkflowJobs(db, { runId: runs[0]!.id });
-      expect(jobs).toHaveLength(1);
-      expect(jobs[0]?.duration_ms).toBe(300_000);
-      const steps = gh.listWorkflowSteps(db, { jobId: jobs[0]!.id });
+      expect(jobs.map((job) => job.name).toSorted()).toEqual(['build', 'docs', 'lint']);
+      const build = jobs.find((job) => job.name === 'build');
+      expect(build?.duration_ms).toBe(300_000);
+      const steps = gh.listWorkflowSteps(db, { jobId: build!.id });
       expect(steps.map((step) => step.name)).toEqual(['Checkout', 'Test']);
       expect(gh.getJobLog(db, 2001)?.content).toContain('npm test');
 
@@ -678,7 +690,12 @@ describe('runSync', () => {
         'labels',
       ]);
       expect(jira.listLinks(db, 'PLAT-42')).toHaveLength(1);
-      expect(jira.listSprints(db).map((sprint) => sprint.name)).toEqual(['Sprint 7']);
+      expect(
+        jira
+          .listSprints(db)
+          .map((sprint) => sprint.name)
+          .toSorted(),
+      ).toEqual(['Sprint 6', 'Sprint 7', 'Sprint 8']);
       expect(jira.listSprintWorkitems(db, 33).map((item) => item.key)).toEqual(['PLAT-42']);
       expect(
         jira.listJiraFields(db, { onlyMapped: true }).map((field) => field.mapped_name),
@@ -967,16 +984,56 @@ describe('runSync', () => {
      * The figure printed before the first item is fetched, against what the
      * run actually cost. Being close is the whole point — a plan that is only
      * accurate once the work is done is the behaviour this replaced.
+     *
+     * On a *first* sync it cannot be exact, and the shortfall is specific:
+     * neither API can be asked how many jobs a workflow run has or how many
+     * sprints hang off a board without listing them, and an empty database has
+     * nothing to go on either. Everything else is priced up front.
      */
-    /*
-     * Within a tenth of what the run went on to cost, stated before a single
-     * item was fetched. It is not exact, and cannot be: how many sprints hang
-     * off a board, and how many jobs off a workflow run, is only known once
-     * the board and the run have been fetched. Those are the only parts still
-     * discovered as the sync goes.
-     */
-    expect(predicted).toBeGreaterThanOrEqual(Math.round(summary.apiCalls * 0.85));
+    expect(predicted).toBeGreaterThanOrEqual(Math.round(summary.apiCalls * 0.7));
     expect(predicted).toBeLessThanOrEqual(Math.round(summary.apiCalls * 1.15));
+  });
+
+  it('prices the jobs and the sprints from the last sync, so the second is exact', async () => {
+    // The two ratios a cold database cannot know. This fixture has three jobs
+    // on its run and three sprints on its board, so an estimate of "one each"
+    // is visibly wrong rather than accidentally right.
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    const lines: string[] = [];
+    const summary = await runSync({
+      config,
+      logger: { ...nullLogger, info: (message: string) => void lines.push(message) },
+      // Ignore the cursors, so the second run does the same work as the first
+      // and the two figures are comparable.
+      full: true,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    const planned = lines.find((line) => line.startsWith('Planned '));
+    const predicted = Number(/about (\d+) API call/.exec(planned ?? '')?.[1]);
+
+    /*
+     * One call out, and it is a known one: the survey reserves a comments
+     * request per work item, and a Jira search usually returns the comments
+     * embedded so the request is never made. Whether it will is a property of
+     * the individual item, not a ratio, so nothing up front can predict it.
+     *
+     * The two this change is about are worth six calls here — three job logs
+     * and three sprint memberships — so the bound below fails if either
+     * regresses, while staying honest about what is left.
+     */
+    expect(predicted).toBeGreaterThanOrEqual(summary.apiCalls);
+    expect(predicted).toBeLessThanOrEqual(summary.apiCalls + 1);
   });
 
   it('only syncs the requested source', async () => {
