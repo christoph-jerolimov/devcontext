@@ -112,12 +112,20 @@ moment it happened.
 work item is closed when its status category is `Done`. See
 [History](history.md).
 
-**Story points are not historical.** This is the one number here that is taken
-from today rather than from the day being drawn. The changelog records an
-estimate being changed, but nothing joins that record to a burndown without a
-fourth dimension in `state_changes`, so a story re-estimated from three to
-eight is drawn as eight for every day of the sprint — including the days it was
-a three. Item counts have no such caveat, which is why they are the default.
+**Story points are historical too.** An estimate is a fourth dimension in
+`state_changes`, exactly like the sprint and the state, so a story re-estimated
+from three to eight on day four is drawn as a three for the first three days
+and steps up on the fourth — which is when the team's plan actually changed.
+
+The estimate change is found in the changelog by the field id the sync mapped,
+falling back to the names Jira uses for it. `5`, `5.0` and a padded `5` are one
+estimate, so an edit that changed nothing does not step the line.
+
+One case is not historical, and says so. A database written before this existed
+has no points rows until the history is rebuilt — which the next sync does
+anyway, and `devcontext history --rebuild` does now. Until then the reports use
+today's estimates and print a line saying they did, because a burndown of
+zeroes would be a wrong number told confidently.
 
 **A sprint with no dates gets no ideal line.** It still gets a burndown, over
 the days its membership actually changed. Inventing a start and an end from the

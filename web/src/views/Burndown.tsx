@@ -85,6 +85,13 @@ export function BurndownView(): ReactNode {
               </p>
             ) : null}
 
+            {points && !data.pointsAreHistorical ? (
+              <p className="muted small">
+                These estimates are the current ones, not the ones each item had on the day — this
+                database predates the points history. Run <code>devcontext history --rebuild</code>.
+              </p>
+            ) : null}
+
             <BurnChart days={data.days} points={points} />
 
             {data.scope.changes.length > 0 ? <ScopeTable changes={data.scope.changes} /> : null}

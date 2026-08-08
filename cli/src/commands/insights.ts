@@ -400,6 +400,12 @@ function renderSection(
         options['points'] === true && !report.hasPoints
           ? note('No work item in this sprint carries a story point estimate; showing item counts.')
           : '',
+        usePoints && !report.pointsAreHistorical
+          ? note(
+              'These estimates are the current ones, not the ones each item had on the day: ' +
+                'this database predates the points history. Run "devcontext history --rebuild".',
+            )
+          : '',
         report.scope.changes.length > 0
           ? renderTable(
               report.scope.changes,

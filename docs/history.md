@@ -21,16 +21,16 @@ So the shape is stored separately, as the changes that produced it.
 `state_changes` holds one row per transition: **+1 when an item enters a state,
 −1 when it leaves**.
 
-| Column      | Meaning                             |
-| ----------- | ----------------------------------- |
-| `source`    | `github` or `jira`                  |
-| `ref`       | `acme/platform#42`, `PLAT-7`        |
-| `kind`      | `issue`, `pull_request`, `workitem` |
-| `container` | the repository or Jira project      |
-| `dimension` | `state`, `assignee`, `sprint`       |
-| `value`     | `open`, a person, a sprint id       |
-| `at`        | when the transition happened        |
-| `delta`     | `+1` or `-1`                        |
+| Column      | Meaning                                    |
+| ----------- | ------------------------------------------ |
+| `source`    | `github` or `jira`                         |
+| `ref`       | `acme/platform#42`, `PLAT-7`               |
+| `kind`      | `issue`, `pull_request`, `workitem`        |
+| `container` | the repository or Jira project             |
+| `dimension` | `state`, `assignee`, `sprint`, `points`    |
+| `value`     | `open`, a person, a sprint id, an estimate |
+| `at`        | when the transition happened               |
+| `delta`     | `+1` or `-1`                               |
 
 The count at any moment is the sum of every delta up to that moment:
 

@@ -26,6 +26,18 @@ const NOW = '2024-03-10T00:00:00.000Z';
 beforeEach(() => {
   db = Database.openAndMigrate(':memory:');
 
+  // The catalogue the sync stores. The changelog labels an estimate change with
+  // whatever the site calls the field, so this is how it is recognised.
+  db.upsert('jira_fields', {
+    site: 'acme',
+    id: 'customfield_10016',
+    name: 'Story Points',
+    mapped_name: 'storyPoints',
+    custom: 1,
+    synced_at: NOW,
+    raw: '{}',
+  });
+
   sprint({ id: 1, name: 'Sprint 7', state: 'closed', start: SPRINT_START, end: SPRINT_END });
 });
 
@@ -66,10 +78,10 @@ function sprint(row: {
 function workitem(row: {
   key: string;
   created: string;
-  points?: number;
+  points?: number | null;
   sprintId?: number | null;
   doneAt?: string;
-  history?: Array<{ field: string; from?: string; to?: string; at: string }>;
+  history?: Array<{ field: string; fieldId?: string; from?: string; to?: string; at: string }>;
 }): void {
   db.upsert('jira_workitems', {
     site: 'acme',
@@ -100,6 +112,7 @@ function workitem(row: {
       author: 'grace',
       created_at: change.at,
       field: change.field,
+      field_id: change.fieldId ?? null,
       from_string: change.from ?? null,
       to_string: change.to ?? null,
       synced_at: NOW,
@@ -203,6 +216,104 @@ describe('the sprint burndown', () => {
     expect(report.committed.points).toBe(8);
     expect(report.days.map((entry) => entry.remainingPoints)).toEqual([8, 8, 3, 3, 3, 3, 3, 3]);
     expect(report.days.map((entry) => entry.donePoints)).toEqual([0, 0, 5, 5, 5, 5, 5, 5]);
+  });
+
+  it('burns the estimate the item had on the day, not the one it has now', () => {
+    /*
+     * The caveat this dimension removes. PLAT-1 is re-estimated from 3 to 8 on
+     * day 3. Read from today's number it was worth 8 all along, so the first
+     * three days of the sprint are drawn 5 points heavier than they were and
+     * the line does not step where the team's plan actually changed.
+     */
+    workitem({
+      key: 'PLAT-1',
+      created: day(-5),
+      points: 8,
+      history: [
+        { field: 'Story Points', fieldId: 'customfield_10016', from: '3', to: '8', at: day(3) },
+      ],
+    });
+    buildStateHistory(db);
+
+    const report = sprintBurndown(db, 1, { now: NOW })!;
+
+    expect(report.pointsAreHistorical).toBe(true);
+    expect(report.committed.points).toBe(3);
+    expect(report.days.map((entry) => entry.remainingPoints)).toEqual([3, 3, 3, 8, 8, 8, 8, 8]);
+  });
+
+  it('recognises the estimate change by field id whatever the site calls it', () => {
+    workitem({
+      key: 'PLAT-1',
+      created: day(-5),
+      points: 8,
+      history: [
+        // A site that renamed the field. The id still identifies it.
+        { field: 'Complexity', fieldId: 'customfield_10016', from: '3', to: '8', at: day(3) },
+      ],
+    });
+    buildStateHistory(db);
+
+    expect(sprintBurndown(db, 1, { now: NOW })?.committed.points).toBe(3);
+  });
+
+  it('treats 5, 5.0 and a padded 5 as one estimate', () => {
+    /*
+     * Asserted on the rows rather than on the line, because the line cannot see
+     * it: both spellings read back as 5 either way. What the normalising buys
+     * is that an edit which changed nothing leaves no transition behind — so
+     * the history says the estimate held steady, which is what happened.
+     */
+    workitem({
+      key: 'PLAT-1',
+      created: day(-5),
+      points: 5,
+      history: [
+        { field: 'Story Points', fieldId: 'customfield_10016', from: '5', to: ' 5.0 ', at: day(3) },
+      ],
+    });
+    buildStateHistory(db);
+
+    const rows = db.all<{ value: string; delta: number }>(
+      `SELECT value, delta FROM state_changes WHERE dimension = 'points' ORDER BY at, seq`,
+    );
+
+    expect(rows).toEqual([{ value: '5', delta: 1 }]);
+    expect(sprintBurndown(db, 1, { now: NOW })?.days.map((entry) => entry.remainingPoints)).toEqual(
+      [5, 5, 5, 5, 5, 5, 5, 5],
+    );
+  });
+
+  it('drops an item that had its estimate cleared', () => {
+    workitem({
+      key: 'PLAT-1',
+      created: day(-5),
+      points: null,
+      history: [
+        { field: 'Story Points', fieldId: 'customfield_10016', from: '5', to: '', at: day(3) },
+      ],
+    });
+    buildStateHistory(db);
+
+    const report = sprintBurndown(db, 1, { now: NOW })!;
+
+    expect(report.days.map((entry) => entry.remainingPoints)).toEqual([5, 5, 5, 0, 0, 0, 0, 0]);
+  });
+
+  it('falls back to today when the history was never rebuilt', () => {
+    /*
+     * A database written before this dimension existed. Zeroes would be a
+     * wrong number told confidently; the old number is an old number, and the
+     * report says which it gave.
+     */
+    workitem({ key: 'PLAT-1', created: day(-5), points: 5 });
+    buildStateHistory(db);
+    db.exec(`DELETE FROM state_changes WHERE dimension = 'points'`);
+
+    const report = sprintBurndown(db, 1, { now: NOW })!;
+
+    expect(report.pointsAreHistorical).toBe(false);
+    expect(report.committed.points).toBe(5);
   });
 
   it('does not claim points a team that never estimates has', () => {
