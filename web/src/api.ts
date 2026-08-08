@@ -114,6 +114,19 @@ export interface VelocityResponse {
   pointsAreHistorical: boolean;
 }
 
+/** How long work sits in each status, from the state history. */
+export interface StatusTimesResponse {
+  kind: 'status-time';
+  statuses: Array<{
+    status: string;
+    category: string | null;
+    stays: number;
+    hours: { count: number; p50: number | null; p85: number | null; max: number | null };
+  }>;
+  /** Stays that had not ended; excluded from the numbers rather than guessed at. */
+  ongoing: number;
+}
+
 export interface PersonOption {
   id: string;
   name: string;
@@ -507,6 +520,8 @@ export const api = {
     request<BurndownResponse>(`/api/insights/burndown/${String(sprint)}`),
   velocity: (params: Record<string, string | undefined>) =>
     request<VelocityResponse>('/api/insights/velocity', params),
+  statusTimes: (params: Record<string, string | undefined>) =>
+    request<StatusTimesResponse>('/api/insights/status-time', params),
   insights: (params: Record<string, string | undefined>) =>
     request<InsightsResponse>('/api/insights', params),
   digest: (params: Record<string, string | undefined>) =>

@@ -712,3 +712,11 @@ export type {
   Velocity,
   VelocitySprint,
 } from './sprint.js';
+
+/*
+ * Where the work sits and how long it sits there. Like the sprint reports next
+ * door, these read `state_changes` rather than the current tables — the status
+ * an item is in now says nothing about Tuesday.
+ */
+export { cumulativeFlow, statusTimes } from './flow.js';
+export type { CumulativeFlow, FlowDay, FlowFilter, StatusDuration, StatusTimes } from './flow.js';
