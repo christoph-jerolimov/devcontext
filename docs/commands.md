@@ -934,7 +934,7 @@ devcontext insights [options] [section]
 
 | Argument | Required | Description |
 | -------- | -------- | ----------- |
-| `section` | no | one of cycle-time, review-latency, wip, stale, flaky, sprint; omit for an overview of all of them |
+| `section` | no | one of cycle-time, review-latency, wip, stale, flaky, sprint, burndown, velocity; omit for an overview of all of them |
 
 | Option | Values | Default | Description |
 | --- | --- | --- | --- |
@@ -944,7 +944,9 @@ devcontext insights [options] [section]
 | `-p, --project <key>` | — | — | Jira project key, repeatable |
 | `--stale-after <duration>` | — | `30d` | age at which open work counts as stale |
 | `--min-runs <count>` | — | `5` | minimum runs before a step can be called flaky |
-| `--sprint <id>` | — | — | sprint id for the sprint report |
+| `--sprint <id>` | — | — | sprint id for the sprint and burndown reports |
+| `--board <id>` | — | — | board id, to keep velocity to one team |
+| `--points` | — | — | burn story points rather than item counts |
 | `-n, --limit <count>` | — | `15` | rows per section |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |

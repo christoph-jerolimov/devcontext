@@ -661,17 +661,37 @@ export const WORKITEMS = [
       },
     ],
   ),
-  workitem('PLAT-8', {
-    summary: 'Audit what is stored on a laptop',
-    description: doc('Security asked.'),
-    issuetype: { name: 'Task' },
-    status: { name: 'To Do', statusCategory: { name: 'To Do' } },
-    reporter: { displayName: 'Linus', accountId: 'l-1' },
-    labels: [],
-    customfield_10016: 8,
-    created: jiraDate(45),
-    updated: jiraDate(40),
-  }),
+  /*
+   * Pulled into Sprint 7 three days after it started, and still open.
+   *
+   * The one work item here whose sprint membership *changed*, which is what
+   * the burndown needs to have anything to say: without it every item was in
+   * the sprint from the first day and the scope line is flat, so a report that
+   * backdated mid-sprint arrivals would look identical to one that does not.
+   */
+  workitem(
+    'PLAT-8',
+    {
+      summary: 'Audit what is stored on a laptop',
+      description: doc('Security asked.'),
+      issuetype: { name: 'Task' },
+      status: { name: 'To Do', statusCategory: { name: 'To Do' } },
+      reporter: { displayName: 'Linus', accountId: 'l-1' },
+      labels: [],
+      customfield_10016: 8,
+      customfield_10020: [SPRINT_7],
+      created: jiraDate(45),
+      updated: jiraDate(4),
+    },
+    [
+      {
+        id: '9104',
+        author: { displayName: 'Linus', accountId: 'l-1' },
+        created: jiraDate(4),
+        items: [{ field: 'Sprint', fieldtype: 'custom', fromString: '', toString: 'Sprint 7' }],
+      },
+    ],
+  ),
 ];
 
 export const BOARDS = [{ id: 1, name: 'Platform board', type: 'scrum' }];

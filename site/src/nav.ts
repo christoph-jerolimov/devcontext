@@ -19,7 +19,7 @@ export const NAV: NavGroup[] = [
   { title: 'Using it', ids: ['sync', 'cli', 'commands', 'search', 'outputs'] },
   {
     title: 'Reading the data',
-    ids: ['insights', 'digest', 'history', 'people', 'links', 'database'],
+    ids: ['insights', 'digest', 'history', 'sprints', 'people', 'links', 'database'],
   },
   { title: 'Surfaces', ids: ['web', 'tui', 'mcp', 'agent'] },
   { title: 'Operating it', ids: ['audit', 'troubleshooting', 'development'] },
@@ -38,6 +38,7 @@ const LABELS: Record<string, string> = {
   insights: 'Insights',
   digest: 'Digest',
   history: 'History',
+  sprints: 'Sprint reports',
   people: 'People',
   links: 'Cross links',
   database: 'Database',

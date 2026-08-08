@@ -14,6 +14,7 @@ const PAGES = [
   { id: 'sprints', label: 'Sprints' },
   { id: 'activity', label: 'Activity' },
   { id: 'history', label: 'History' },
+  { id: 'burndown', label: 'Burndown' },
   { id: 'insights', label: 'Insights' },
   { id: 'digest', label: 'Digest' },
 ] as const;
@@ -131,10 +132,19 @@ async function pinVolatileValues(page: Page): Promise<void> {
   await page.route('**/api/insights**', async (route) => {
     const response = await route.fetch();
     const body = (await response.json()) as {
-      wip: { byAssignee: Array<Record<string, unknown>> };
+      wip?: { byAssignee: Array<Record<string, unknown>> };
     };
-    // An age the server measures from its own now, so it grows by a day a day.
-    body.wip.byAssignee = body.wip.byAssignee.map((row) => ({ ...row, oldestHours: 36 }));
+    /*
+     * Everything under /api/insights matches this glob, and only the overview
+     * has a `wip` section — the burndown and velocity reports have their own
+     * shapes and nothing here to pin. Rewriting blindly turned a new endpoint
+     * into a 500 and a page stuck on "Loading…", which is a confusing way to
+     * find out that a stub outgrew its route.
+     */
+    if (body.wip) {
+      // An age the server measures from its own now, so it grows by a day a day.
+      body.wip.byAssignee = body.wip.byAssignee.map((row) => ({ ...row, oldestHours: 36 }));
+    }
     await route.fulfill({ response, json: body });
   });
 }

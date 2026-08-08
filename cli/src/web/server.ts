@@ -279,6 +279,22 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         const id = rest[0] ? Number(rest[0]) : numberParam(query, 'id');
         return id === undefined || Number.isNaN(id) ? undefined : insights.sprintReport(db, id);
       }
+      /*
+       * The two reports that read `state_changes` rather than the current
+       * tables — the shape a sprint took, not the shape it is in. See
+       * docs/sprints.md.
+       */
+      case 'burndown': {
+        const id = rest[0] ? Number(rest[0]) : numberParam(query, 'sprint');
+        return id === undefined || Number.isNaN(id) ? undefined : insights.sprintBurndown(db, id);
+      }
+      case 'velocity': {
+        const board = numberParam(query, 'board');
+        return insights.sprintVelocity(db, {
+          limit,
+          ...(board === undefined || Number.isNaN(board) ? {} : { board }),
+        });
+      }
       case undefined:
         return {
           cycleTime: insights.cycleTime(db, filter),
