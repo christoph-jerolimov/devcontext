@@ -27,7 +27,9 @@ const PAGES = [
  */
 async function openViewer(page: Page, hash: string): Promise<void> {
   await page.clock.setFixedTime(new Date(REFERENCE));
+  await pinVolatileValues(page);
   await page.goto(`/#/${hash}`);
+  await pinTheMonospaceFont(page);
   // The shell renders before the fetches resolve; waiting on the panel avoids
   // photographing a half loaded page.
   await expect(page.locator('.content .panel, .content .cards').first()).toBeVisible();
@@ -35,30 +37,105 @@ async function openViewer(page: Page, hash: string): Promise<void> {
 }
 
 /**
- * The few things on a page that cannot be the same twice.
+ * Pins the one font the stylesheet never actually names.
  *
- * Almost everything the viewer shows comes from the fixture and is rendered
- * against the frozen clock, so it is stable. These are the exceptions: values
- * the *server* derives from its own clock, or from where the database happens
- * to live. Masking them is narrower than dropping the page from the
- * comparison, which would leave its layout unwatched.
+ * Every monospace rule in the viewer ends in the generic `monospace`, and a
+ * generic family is by definition whatever the machine decides — fontconfig
+ * picks it, and two Linux boxes need not pick the same one. The overview is
+ * the only screenshotted page with any monospace text on it (the configuration
+ * and database paths), and it was the only page that differed between this
+ * machine and the runner, by a few hundred pixels of identical characters.
+ *
+ * The body font is pinned to whatever it already resolves to, because the nine
+ * other pages matching exactly is proof that both environments agree on it.
+ * The cost is that those two paths appear in the body font in the pictures
+ * rather than in a monospace one, which for a screenshot of two invented paths
+ * is not much of a cost at all.
  */
-function unstable(page: Page, id: string) {
-  if (id === 'overview') {
-    return [
-      // Absolute paths on this machine.
-      page.locator('.panel', { hasText: 'Projects' }).locator('p.muted'),
-      // When the sync ran, and the cursors it wrote — both real timestamps.
-      page.locator('.panel', { hasText: 'Recent sync runs' }).locator('tbody'),
-      page.locator('.panel', { hasText: 'Sync state' }).locator('tbody'),
-    ];
-  }
-  if (id === 'insights') {
-    // "Oldest" is an age the server computes from now, not from the frozen
-    // browser clock, so it grows by a day every day.
-    return [page.locator('.panel', { hasText: 'Work in progress' }).locator('td:last-child')];
-  }
-  return [];
+async function pinTheMonospaceFont(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `code, pre, .palette-ref, .mono, .tree-key { font-family: inherit; }`,
+  });
+}
+
+/**
+ * Pins the handful of values the *server* derives from its own clock, or from
+ * where the database happens to live.
+ *
+ * Everything else the viewer shows comes from the fixture and is rendered
+ * against the frozen clock above, so it is already stable. These are the
+ * exceptions, and they used to be painted over with Playwright's mask instead
+ * — which made the screenshots reproducible and simultaneously useless for
+ * anything else, because a mask is a solid magenta rectangle.
+ *
+ * Rewriting the response is narrower than masking in both directions. The rows
+ * stay in the picture, so their layout is still compared rather than hidden,
+ * and the picture stays a picture of the product.
+ */
+async function pinVolatileValues(page: Page): Promise<void> {
+  await page.route('**/api/status', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      config: { path: string; database: string };
+      runs: Array<Record<string, unknown>>;
+      state: Array<Record<string, unknown>>;
+    };
+
+    // Absolute paths on whichever machine ran the sync.
+    body.config.path = '/work/platform/devcontext.yaml';
+    body.config.database = '/work/platform/.devcontext/devcontext.db';
+
+    /*
+     * Everything in this table except what was synced is a measurement of the
+     * run rather than a property of the product: the ids count up across runs,
+     * the timings are wall clock, and the call and item counts move with how
+     * the sync happened to go on this machine.
+     *
+     * The real numbers are asserted in the DOM tests below, where being exact
+     * costs nothing. Here they only need to be the same shape every time.
+     */
+    body.runs = body.runs.toSorted((a, b) =>
+      String(a['target']).localeCompare(String(b['target'])),
+    );
+    body.runs.forEach((run, index) => {
+      Object.assign(run, {
+        id: index + 1,
+        started_at: REFERENCE,
+        duration_ms: 1200,
+        api_calls: 30,
+        items_synced: 17,
+      });
+    });
+    /*
+     * Cursors come in two kinds and only one of them is stable.
+     *
+     * Most are the newest `updated_at` the walk saw, which is fixture data and
+     * never moves. The rest — labels, milestones, workflows, sprints — have no
+     * timestamp to carry, so the sync stores the moment it ran, which is a
+     * different string every time. Anything later than the frozen reference is
+     * one of those by construction.
+     */
+    body.state = body.state.map((entry) => ({
+      ...entry,
+      updated_at: REFERENCE,
+      cursor:
+        typeof entry['cursor'] === 'string' && entry['cursor'] > REFERENCE
+          ? REFERENCE
+          : entry['cursor'],
+    }));
+
+    await route.fulfill({ response, json: body });
+  });
+
+  await page.route('**/api/insights**', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      wip: { byAssignee: Array<Record<string, unknown>> };
+    };
+    // An age the server measures from its own now, so it grows by a day a day.
+    body.wip.byAssignee = body.wip.byAssignee.map((row) => ({ ...row, oldestHours: 36 }));
+    await route.fulfill({ response, json: body });
+  });
 }
 
 test.describe('the viewer, page by page', () => {
@@ -70,10 +147,7 @@ test.describe('the viewer, page by page', () => {
       // would show up as something other than a screenshot difference.
       await expect(page.locator('.sidebar a.active')).toHaveText(label);
 
-      await expect(page).toHaveScreenshot(`${id}.png`, {
-        fullPage: true,
-        mask: unstable(page, id),
-      });
+      await expect(page).toHaveScreenshot(`${id}.png`, { fullPage: true });
     });
   }
 });
@@ -84,6 +158,25 @@ test.describe('the data actually arrived', () => {
    * that the sync put something on each of them. They are about the pipeline —
    * CLI sync, SQLite, JSON API, React — not about layout.
    */
+  test('the sync really made the calls the screenshot no longer shows', async ({ request }) => {
+    /*
+     * The overview screenshot shows pinned call and item counts, so nothing in
+     * the picture would notice a sync that did nothing. This reads the API
+     * directly — the `request` fixture has no page and therefore no route
+     * handler — and checks the real numbers instead.
+     */
+    const status = (await (await request.get('/api/status')).json()) as {
+      runs: Array<{ source: string; status: string; api_calls: number; items_synced: number }>;
+    };
+
+    expect(status.runs.map((run) => run.status)).toEqual(['completed', 'completed']);
+    expect(status.runs.map((run) => run.source).toSorted()).toEqual(['github', 'jira']);
+    for (const run of status.runs) {
+      expect(run.api_calls).toBeGreaterThan(0);
+      expect(run.items_synced).toBeGreaterThan(0);
+    }
+  });
+
   test('the overview counts what was synced', async ({ page }) => {
     await openViewer(page, 'overview');
     await expect(page.locator('.sidebar-footer')).toContainText('1 repositories');
