@@ -14,6 +14,7 @@ import * as historyQueries from '../db/queries/history.js';
 import * as ticketQueries from '../db/queries/tickets.js';
 import * as peopleQueries from '../db/queries/people.js';
 import * as activityQueries from '../db/queries/activity.js';
+import * as contributorQueries from '../db/queries/contributors.js';
 import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
 import { Directory } from '../people/directory.js';
@@ -419,8 +420,9 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
     if (resource === 'containers') return ticketQueries.ticketContainers(db, filter);
     if (resource !== undefined) return undefined;
 
+    const rows = ticketQueries.listTickets(db, filter);
     return {
-      tickets: ticketQueries.listTickets(db, filter),
+      tickets: withContributors(db, directory, rows, (row) => row.ref),
       // So the viewer can say "showing 100 of 4,312" rather than implying the
       // page it got is everything there is.
       total: ticketQueries.countTickets(db, filter),
@@ -492,20 +494,25 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
           const pr = gh.getPullRequest(db, `${owner}/${name}`, Number(number));
           return pr ? buildPullRequestDocument(db, pr).data : undefined;
         }
-        return gh.listPullRequests(db, {
-          repos,
-          // All states by default: see the `prs` command.
-          state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
-          labels: listParam(query, 'label'),
-          author: query.get('author') ?? undefined,
-          people: selection?.github,
-          excludeBots: query.get('bots') === 'false',
-          onlyBots: query.get('bots') === 'only',
-          bots: directory.botIdentities('github'),
-          search,
-          limit,
-          offset,
-        });
+        return withContributors(
+          db,
+          directory,
+          gh.listPullRequests(db, {
+            repos,
+            // All states by default: see the `prs` command.
+            state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
+            labels: listParam(query, 'label'),
+            author: query.get('author') ?? undefined,
+            people: selection?.github,
+            excludeBots: query.get('bots') === 'false',
+            onlyBots: query.get('bots') === 'only',
+            bots: directory.botIdentities('github'),
+            search,
+            limit,
+            offset,
+          }),
+          (row) => `${row.repo_full_name}#${String(row.number)}`,
+        );
       }
       case 'workflows':
         return gh.listWorkflows(db, { repos, search, limit, offset });
@@ -669,6 +676,36 @@ function listParam(query: URLSearchParams, name: string): string[] | undefined {
   const values = query.getAll(name).flatMap((value) => value.split(','));
   const filtered = values.map((value) => value.trim()).filter(Boolean);
   return filtered.length > 0 ? filtered : undefined;
+}
+
+/**
+ * Attaches the people who touched each row.
+ *
+ * The names are resolved here rather than in the viewer, which has the display
+ * names but not the identities behind them — the same split the activity feed
+ * uses. One query for the whole page, not one per row.
+ *
+ * `contributors` rather than a rendered string, so the viewer can decide how
+ * many fit: a table cell and a tooltip want different amounts of the same
+ * answer.
+ */
+function withContributors<T extends object>(
+  db: Database,
+  directory: Directory,
+  rows: T[],
+  refOf: (row: T) => string,
+): Array<T & { contributors: Array<{ name: string; roles: string[]; events: number }> }> {
+  const byRef = contributorQueries.contributorsByRef(db, rows.map(refOf));
+
+  return rows.map((row) =>
+    Object.assign(row, {
+      contributors: (byRef.get(refOf(row)) ?? []).map((person) => ({
+        name: directory.identify(person.source, person.identity)?.name ?? person.identity,
+        roles: person.roles,
+        events: person.events,
+      })),
+    }),
+  );
 }
 
 export function ensureDatabase(path: string): void {

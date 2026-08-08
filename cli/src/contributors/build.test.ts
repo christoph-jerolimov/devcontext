@@ -10,7 +10,13 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { contributorsOf, contributionsOf, descendantsOf } from '../db/queries/contributors.js';
+import {
+  contributionsOf,
+  contributorsByRef,
+  contributorsOf,
+  descendantsOf,
+  summariseContributors,
+} from '../db/queries/contributors.js';
 import { Database } from '../db/database.js';
 import { buildContributors, CONTRIBUTOR_ROLES, ROLE_DESCRIPTIONS } from './build.js';
 
@@ -308,6 +314,65 @@ describe('a work item', () => {
     buildContributors(db);
 
     expect(rolesFor('PLAT-1', 'Ada Lovelace')).toEqual(['worked']);
+  });
+});
+
+describe('a column of names', () => {
+  beforeEach(() => {
+    pull({ id: 42, number: 42, author: 'ada', mergedBy: 'ghopper' });
+    review({ id: 1, prId: 42, number: 42, author: 'ghopper' });
+    comment({ id: 3, issueId: 42, number: 42, author: 'linus', at: '2024-03-03T09:00:00Z' });
+    issue({ id: 7, number: 7, author: 'grace' });
+    buildContributors(db);
+  });
+
+  it('keeps each item to its own people rather than mixing the page together', () => {
+    /*
+     * One query for a whole table, but a row must get back only its own
+     * names. Folding them — which is what the rollup wants — would put every
+     * contributor of the page on every row, and every row would look
+     * plausible.
+     */
+    const byRef = contributorsByRef(db, ['acme/platform#42', 'acme/platform#7']);
+
+    expect(byRef.get('acme/platform#7')?.map((person) => person.identity)).toEqual(['grace']);
+    expect(
+      byRef
+        .get('acme/platform#42')
+        ?.map((person) => person.identity)
+        .toSorted(),
+    ).toEqual(['ada', 'ghopper', 'linus']);
+  });
+
+  it('names the ones who carried it and counts the rest', () => {
+    /*
+     * A column that silently shows the first two looks like the whole answer;
+     * the +N is what stops it reading as one.
+     *
+     * ghopper comes first having both reviewed and merged it, ahead of the
+     * author — which is the ordering a truncated cell needs. Alphabetical
+     * would have kept whoever sorts early rather than whoever did the work.
+     */
+    const people = contributorsByRef(db, ['acme/platform#42']).get('acme/platform#42') ?? [];
+
+    expect(summariseContributors(people, { show: 2 })).toBe('ghopper, ada +1');
+    expect(summariseContributors(people, { show: 9 })).toBe('ghopper, ada, linus');
+    expect(summariseContributors([])).toBe('');
+  });
+
+  it('counts one person under two identities once', () => {
+    /*
+     * A GitHub login and a Jira display name for the same colleague are one
+     * person in this cell. Counting them twice inflates the "+N" and makes a
+     * team look bigger than it is.
+     */
+    const people = contributorsByRef(db, ['acme/platform#42']).get('acme/platform#42') ?? [];
+    const asOnePerson = summariseContributors(people, {
+      show: 2,
+      resolve: () => 'Grace Hopper',
+    });
+
+    expect(asOnePerson).toBe('Grace Hopper');
   });
 });
 

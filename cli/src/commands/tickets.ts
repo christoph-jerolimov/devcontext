@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 
+import { contributorsByRef, summariseContributors } from '../db/queries/contributors.js';
 import * as tickets from '../db/queries/tickets.js';
 import type { Ticket } from '../db/queries/tickets.js';
 import { printOutput, renderTable, truncate } from '../output/format.js';
@@ -45,7 +46,7 @@ export function createTicketsCommand(): Command {
   return addListOptions(command).action((options: Record<string, unknown>, self: Command) => {
     const ctx = openReadContext(self);
     try {
-      const { selection } = readPeopleFilter(ctx.config, options as PeopleFilterOptions);
+      const { selection, directory } = readPeopleFilter(ctx.config, options as PeopleFilterOptions);
 
       const filter: tickets.TicketFilter = {
         sources: options['source'] as string[],
@@ -104,6 +105,13 @@ export function createTicketsCommand(): Command {
       }
 
       const rows = tickets.listTickets(ctx.db, filter);
+      // One query for the page rather than one per row: a list of 200 would
+      // otherwise be 200 round trips to fill in a column.
+      const people = contributorsByRef(
+        ctx.db,
+        rows.map((row) => row.ref),
+      );
+
       printOutput(
         renderTable(
           rows,
@@ -117,6 +125,18 @@ export function createTicketsCommand(): Command {
               style: (row: Ticket) => stateColour(row),
             },
             { header: 'ASSIGNEE', value: (row: Ticket) => row.assignee ?? '' },
+            {
+              // Everybody who touched it, not only whoever holds it now. The
+              // assignee column answers "whose problem is this"; this one
+              // answers "who would know about it", and they are rarely the
+              // same person.
+              header: 'PEOPLE',
+              value: (row: Ticket) =>
+                summariseContributors(people.get(row.ref) ?? [], {
+                  resolve: (source, identity) =>
+                    directory.identify(source as 'github' | 'jira', identity)?.name ?? identity,
+                }),
+            },
             { header: 'UPDATED', value: (row: Ticket) => row.updated_at?.slice(0, 10) ?? '' },
           ],
           {
