@@ -249,7 +249,9 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         }
         return gh.listIssues(db, {
           repos,
-          state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'open',
+          // Every state by default, as pull requests do: see the `issues`
+          // command for why.
+          state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
           labels: listParam(query, 'label'),
           author: query.get('author') ?? undefined,
           assignee: query.get('assignee') ?? undefined,
@@ -268,7 +270,7 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         }
         return gh.listPullRequests(db, {
           repos,
-          // All states by default, unlike issues: see the `prs` command.
+          // All states by default: see the `prs` command.
           state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
           labels: listParam(query, 'label'),
           author: query.get('author') ?? undefined,

@@ -93,7 +93,7 @@ const TIME =
 
 const ISSUE_FILTERS = {
   repo: { type: 'string', description: 'Repository as owner/name. Omit for all repositories.' },
-  state: { type: 'string', enum: ['open', 'closed', 'all'], description: 'Default open.' },
+  state: { type: 'string', enum: ['open', 'closed', 'all'], description: 'Default all.' },
   labels: { type: 'array', items: { type: 'string' }, description: 'All of these labels.' },
   author: { type: 'string' },
   assignee: { type: 'string' },
@@ -125,7 +125,10 @@ function issueFilter(args: Record<string, unknown>): gh.IssueFilter {
   const repo = str(args, 'repo');
   return {
     repos: repo ? [repo] : undefined,
-    state: (str(args, 'state') as 'open' | 'closed' | 'all' | undefined) ?? 'open',
+    // Every state by default, matching the CLI and the viewer. An assistant
+    // asked "what did we ship" from a list that hides everything finished
+    // gives a confidently wrong answer.
+    state: (str(args, 'state') as 'open' | 'closed' | 'all' | undefined) ?? 'all',
     labels: list(args, 'labels'),
     author: str(args, 'author'),
     assignee: str(args, 'assignee'),

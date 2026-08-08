@@ -89,11 +89,12 @@ test.describe('the data actually arrived', () => {
   });
 
   test('issues, pull requests and runs are listed', async ({ page }) => {
+    // No state filter anywhere: both lists default to every state, so the
+    // closed issue and the merged pull request are here without asking.
     await openViewer(page, 'issues');
-    await expect(page.locator('.table tbody tr')).toHaveCount(2); // open only, by default
+    await expect(page.locator('.table tbody tr')).toHaveCount(3);
+    await expect(page.locator('.table tbody .badge', { hasText: 'closed' })).toBeVisible();
 
-    // No state filter: pull requests default to every state, so the merged
-    // one is here without asking.
     await openViewer(page, 'pulls');
     await expect(page.locator('.table tbody tr')).toHaveCount(2);
     await expect(page.getByText('PLAT-3: respect the secondary rate limit')).toBeVisible();
