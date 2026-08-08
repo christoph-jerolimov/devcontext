@@ -140,9 +140,10 @@ devcontext history --rebuild
 
 A sprint that shows nothing at all usually means one of:
 
-- **The Sprint field is not mapped.** This is the common one. Jira keeps sprint
-  membership in a custom field whose id differs per site, so devcontext only
-  fills `sprint_id` when the configuration says which field it is:
+- **The Sprint field was never found.** Jira keeps sprint membership in a
+  custom field whose id differs per site. devcontext finds it by name from the
+  field catalogue, so this normally takes care of itself — but a site that
+  calls it something other than `Sprint` needs the mapping written out:
 
   ```yaml
   jira:
@@ -152,9 +153,9 @@ A sprint that shows nothing at all usually means one of:
           customfield_10020: sprint
   ```
 
-  `devcontext jira fields` lists what your site offers; the one named `Sprint`
-  is the one to map. Without it the work items are in no sprint at all, so
-  every burndown is empty and every velocity row is zero.
+  `devcontext jira fields` shows what was mapped, detected or configured. With
+  nothing there the work items are in no sprint at all, so every burndown is
+  empty and every velocity row is zero.
 
 - **`changelog: false`** for that Jira project, so no sprint moves were ever
   stored. The membership then starts at each item's creation.

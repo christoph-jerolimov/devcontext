@@ -191,6 +191,38 @@ Three names are understood by devcontext itself and fill dedicated columns:
 
 Mappings can be defined per site and per project; the project level wins.
 
+### Those three are found for you
+
+**You do not normally have to map them.** The sync fetches the field catalogue
+anyway, and the catalogue carries each field's name — so a field Jira calls
+`Sprint` is mapped to `sprint`, `Story Points` to `storyPoints` and `Epic Link`
+to `epicLink`, without anything in `devcontext.yaml`.
+
+The id is unguessable; the name is not. Asking every user to look up
+`customfield_10020` before a burndown works was a poor trade, and getting it
+wrong was silent — the sprint column simply stayed empty.
+
+Two things to know about it:
+
+- **An explicit mapping always wins.** Detection only ever adds, and never
+  claims a field id you already mapped to something else. If your site names
+  things unusually, write the mapping and it is used unchanged.
+- **Order is fixed where a site has several.** Jira Cloud commonly ships both
+  `Story Points` and `Story point estimate` — company-managed and team-managed
+  projects each get their own — and only one is populated. `Story Points` is
+  preferred, then `Story point estimate`, so the choice is the same on every
+  run rather than whichever the API happened to list first.
+
+`devcontext jira fields` shows the result: the `MAPPED` column carries what was
+detected as well as what was configured, so there is one place to check what
+the sync actually used.
+
+A sync that detected something says so once:
+
+```
+Detected sprint, storyPoints on acme from the field catalogue; set `fields:` in devcontext.yaml to override.
+```
+
 ### Jira project sync flags
 
 | Flag          | Default | What it downloads                                         |

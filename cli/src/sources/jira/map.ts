@@ -10,6 +10,65 @@ const json = (value: unknown): string => JSON.stringify(value ?? null);
 /** Field ids devcontext understands without an explicit mapping. */
 export const WELL_KNOWN_FIELD_ALIASES = ['storyPoints', 'epicLink', 'sprint'] as const;
 
+/**
+ * What Jira calls the fields devcontext understands, in preference order.
+ *
+ * Three of the columns devcontext fills — story points, the epic link and the
+ * sprint — live in custom fields whose ids differ per site, so they can only be
+ * reached through a mapping. Asking every user to write that mapping by hand is
+ * a poor trade: the id is unguessable, but the *name* is not, and the field
+ * catalogue devcontext already syncs carries it.
+ *
+ * Ordered rather than a set, because Jira Cloud commonly ships both
+ * "Story Points" and "Story point estimate" on the same site — team-managed and
+ * company-managed projects each get their own — and only one of them is
+ * populated. First match wins, so the choice is deterministic and explainable
+ * rather than whichever the API happened to list first.
+ */
+const ALIAS_NAMES: Record<(typeof WELL_KNOWN_FIELD_ALIASES)[number], string[]> = {
+  storyPoints: ['Story Points', 'Story point estimate', 'Story Points estimate'],
+  epicLink: ['Epic Link'],
+  sprint: ['Sprint'],
+};
+
+/** The little of a Jira field that naming it requires. */
+export interface FieldCandidate {
+  id: string;
+  name: string | null;
+}
+
+/**
+ * The mappings the field catalogue implies, minus the ones already configured.
+ *
+ * Returns only additions, and never contradicts `configured`: an explicit
+ * mapping is somebody who looked at their own site, which beats a name match
+ * every time. Two ways it defers — an alias already claimed is left alone, and
+ * a field id already mapped to something else is not stolen.
+ */
+export function detectFieldAliases(
+  candidates: readonly FieldCandidate[],
+  configured: Record<string, string>,
+): Record<string, string> {
+  const claimed = new Set(Object.values(configured));
+  const found: Record<string, string> = {};
+
+  for (const [alias, names] of Object.entries(ALIAS_NAMES)) {
+    if (claimed.has(alias)) continue;
+
+    for (const name of names) {
+      const match = candidates.find(
+        (candidate) => candidate.name?.trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (match && !(match.id in configured) && !(match.id in found)) {
+        found[match.id] = alias;
+        break;
+      }
+    }
+  }
+
+  return found;
+}
+
 export interface JiraContext {
   site: string;
   projectKey: string;

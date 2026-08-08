@@ -572,7 +572,10 @@ jira:
       email: bot@acme.test
       token: test-token
       fields:
-        customfield_10016: storyPoints
+        # customfield_10016 is deliberately not mapped: this site calls it
+        # "Story point estimate", and the sync is expected to work that out.
+        # customfield_10020 is, because this site's catalogue has no Sprint
+        # field at all — detection can only name what the catalogue lists.
         customfield_10020: sprint
 projects:
   - key: demo

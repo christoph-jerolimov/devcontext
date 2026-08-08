@@ -261,7 +261,10 @@ class JiraProjectSyncer {
       site: target.site.name,
       projectKey: target.projectKey,
       baseUrl: target.site.baseUrl,
-      fields: target.fields,
+      // A copy, not the configuration's own object: the detected mappings
+      // below are this target's business and must not leak into a config that
+      // other targets — and the audit report — read back.
+      fields: { ...target.fields },
     };
   }
 
@@ -524,14 +527,58 @@ class JiraProjectSyncer {
 
   private async syncFields(): Promise<void> {
     const fields = await this.client.fields();
+
+    // Before the rows are written, so `jira_fields.mapped_name` records what
+    // was inferred and `devcontext jira fields` shows it.
+    this.detectFields(
+      fields.map((field) => ({ id: str(field, 'id') ?? '', name: str(field, 'name') })),
+    );
+
     const syncedAt = nowIso();
     for (const field of fields) {
       this.write(
         'jira_fields',
-        map.mapField(field, this.jiraCtx.site, this.target.fields, syncedAt),
+        // The detected mapping, not the configured one, so mapped_name
+        // records what the sync actually used.
+        map.mapField(field, this.jiraCtx.site, this.jiraCtx.fields, syncedAt),
       );
     }
     this.ctx.progress.recordItems(fields.length);
+  }
+
+  /**
+   * Fills in the well known field ids the configuration did not name.
+   *
+   * An explicit mapping always wins; this only ever adds. See
+   * `detectFieldAliases` for why the names are matched in a fixed order.
+   */
+  private detectFields(candidates: map.FieldCandidate[]): void {
+    const found = map.detectFieldAliases(candidates, this.jiraCtx.fields);
+    const aliases = Object.values(found);
+    if (aliases.length === 0) return;
+
+    Object.assign(this.jiraCtx.fields, found);
+    this.ctx.progress.log(
+      `Detected ${aliases.join(', ')} on ${this.target.site.name} from the field catalogue; ` +
+        'set `fields:` in devcontext.yaml to override.',
+    );
+  }
+
+  /**
+   * The same detection, from the catalogue a previous sync stored.
+   *
+   * A targeted sync of one work item never fetches the field list — it is one
+   * item, and a whole catalogue for it would be absurd — so without this the
+   * story points and sprint of that item would be dropped on exactly the runs
+   * that a full sync gets right. The rows are already local, so it is free.
+   */
+  private seedFieldsFromDatabase(): void {
+    this.detectFields(
+      this.ctx.db.all<{ id: string; name: string | null }>(
+        'SELECT id, name FROM jira_fields WHERE site = ?',
+        [this.jiraCtx.site],
+      ),
+    );
   }
 
   /** Builds the JQL used to select the work items that should be synced. */
@@ -677,6 +724,7 @@ class JiraProjectSyncer {
    * changes nothing because every write is an upsert.
    */
   async syncSingleWorkitem(key: string): Promise<void> {
+    this.seedFieldsFromDatabase();
     this.ctx.progress.setPhase(key);
     this.ctx.progress.expect(2);
 
