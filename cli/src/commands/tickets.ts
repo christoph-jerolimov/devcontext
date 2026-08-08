@@ -38,6 +38,7 @@ export function createTicketsCommand(): Command {
     .option('--assignee <name>', 'assigned to this person')
     .option('--person <id>', 'raised by or assigned to this configured person, repeatable', collect)
     .option('--team <id>', 'raised by or assigned to a member of this team, repeatable', collect)
+    .option('--me', 'shorthand for --person <the id me: names in devcontext.yaml>')
     .option('--types', 'list the types present and how many carry each, instead')
     .option('--containers', 'list the repositories and projects present, instead');
 

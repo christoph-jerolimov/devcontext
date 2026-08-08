@@ -152,6 +152,8 @@ export interface ResolvedConfig {
   jiraSites: Map<string, JiraSite>;
   /** Humans and bots, in configuration order; humans first when both sections are used. */
   people: Person[];
+  /** The id of the person running devcontext, when they said so. */
+  me: string | null;
   teams: Team[];
   projects: ProjectConfig[];
 }

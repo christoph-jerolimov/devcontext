@@ -193,6 +193,14 @@ export const configSchema = z
       })
       .strict()
       .optional(),
+    /*
+     * Which of the people below is you.
+     *
+     * Every command that filters by person takes an id, and the id of the
+     * person running the command is the one they type most and the one nobody
+     * should have to type at all.
+     */
+    me: z.string().min(1).optional(),
     people: z.array(personSchema).optional(),
     // The same shape as `people`, with `bot` already answered. A configuration
     // with four humans and nine automations reads far better split in two than

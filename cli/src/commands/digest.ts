@@ -1,10 +1,13 @@
 import { Command } from 'commander';
 
+import type { ResolvedConfig } from '../config/types.js';
 import { buildDigest } from '../insights/digest.js';
 import type { Digest, DigestEntry } from '../insights/digest.js';
 import { formatHours } from '../insights/stats.js';
 import { printOutput, renderKeyValues, renderTable, truncate } from '../output/format.js';
 import type { OutputFormat } from '../output/format.js';
+import { Directory } from '../people/directory.js';
+import { CliError } from '../util/errors.js';
 import { resolveTimeExpression } from '../util/time.js';
 import { addOutputOptions, collect, openReadContext, parseLimit } from './shared.js';
 
@@ -16,7 +19,13 @@ export function createDigestCommand(): Command {
     .option('--until <when>', 'end of the window; defaults to now')
     .option('-r, --repo <repo>', 'GitHub repository, repeatable', collect, [])
     .option('-p, --project <key>', 'Jira project key, repeatable', collect, [])
-    .option('--person <name>', 'only activity by this person, repeatable', collect, [])
+    .option(
+      '--person <name>',
+      'a configured person id, or a raw login / display name, repeatable',
+      collect,
+      [],
+    )
+    .option('--me', 'shorthand for --person <the id me: names in devcontext.yaml>')
     .option('--stale-after <duration>', 'age at which open work counts as stale', '30d')
     .option('--no-stale', 'skip the stale section')
     .option('-n, --limit <count>', 'rows per section', '10');
@@ -29,7 +38,7 @@ export function createDigestCommand(): Command {
         until: options['until'] ? resolveTimeExpression(String(options['until'])) : undefined,
         repos: optional(options['repo']),
         projects: optional(options['project']),
-        people: optional(options['person']),
+        people: digestPeople(ctx.config, options),
         staleAfter:
           options['stale'] === false
             ? undefined
@@ -202,4 +211,40 @@ function subheading(title: string, format: OutputFormat): string {
   if (format === 'markdown') return `## ${title}\n`;
   if (format === 'plain') return `# ${title}`;
   return `\u001b[1m${title}\u001b[0m`;
+}
+
+/**
+ * The names to filter the digest by.
+ *
+ * The digest matches raw logins and display names, because it predates the
+ * people directory and a raw name is still a perfectly good thing to type. So
+ * a value is expanded through the directory when it names a configured person
+ * — one id becoming every identity they answer to, across both sources — and
+ * passed through untouched when it does not.
+ *
+ * `--me` has no raw reading at all, so it is resolved or it is an error.
+ */
+function digestPeople(
+  config: ResolvedConfig,
+  options: Record<string, unknown>,
+): string[] | undefined {
+  const directory = Directory.from(config);
+  const asked = [...((options['person'] as string[] | undefined) ?? [])];
+  if (options['me'] === true) asked.push('me');
+  if (asked.length === 0) return undefined;
+
+  const names: string[] = [];
+  for (const value of asked) {
+    const person = directory.person(value);
+    if (person) {
+      names.push(...person.github, ...person.jira);
+    } else if (value.trim().toLowerCase() === 'me') {
+      throw new CliError('devcontext.yaml does not say which of the people is you.', {
+        hint: 'Add `me: <person id>` at the top level — see docs/people.md.',
+      });
+    } else {
+      names.push(value);
+    }
+  }
+  return names;
 }

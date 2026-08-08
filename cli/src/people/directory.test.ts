@@ -138,6 +138,50 @@ bots:
   });
 });
 
+describe('me', () => {
+  const WITH_ME = `me: grace\n${TEAM}`;
+
+  it('resolves --person me to whoever the configuration names', () => {
+    const directory = directoryFrom(WITH_ME);
+
+    expect(directory.me?.id).toBe('grace');
+    expect(directory.person('me')?.id).toBe('grace');
+    expect(directory.select({ people: ['me'] })?.github).toEqual(['ghopper', 'grace-h']);
+  });
+
+  it('means nothing when the configuration does not say who you are', () => {
+    // Better than quietly picking the first person in the list, which would be
+    // somebody else's work reported as yours.
+    const directory = directoryFrom(TEAM);
+
+    expect(directory.me).toBeUndefined();
+    expect(() => directory.select({ people: ['me'] })).toThrow(/does not say which/);
+  });
+
+  it('lets a person actually called me keep the name', () => {
+    const directory = directoryFrom(`
+me: grace
+people:
+  - id: grace
+    github: [ghopper]
+  - id: me
+    github: [somebody]
+`);
+
+    expect(directory.person('me')?.github).toEqual(['somebody']);
+  });
+
+  it('refuses a me: that names nobody', () => {
+    expect(() =>
+      directoryFrom(`
+me: gracie
+people:
+  - id: grace
+`),
+    ).toThrow(/me: names "gracie"/);
+  });
+});
+
 describe('the configuration behind it', () => {
   it('rejects two people claiming the same identity', () => {
     expect(() =>

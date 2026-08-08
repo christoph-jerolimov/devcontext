@@ -97,6 +97,7 @@ export function addPeopleFilterOptions(command: Command): Command {
   return command
     .option('--person <id>', 'only items involving this configured person, repeatable', collect)
     .option('--team <id>', 'only items involving a member of this team, repeatable', collect)
+    .option('--me', 'shorthand for --person <the id me: names in devcontext.yaml>')
     .option('--no-bots', 'hide items written by a bot')
     .option('--bots-only', 'only items written by a bot');
 }
@@ -104,6 +105,7 @@ export function addPeopleFilterOptions(command: Command): Command {
 export interface PeopleFilterOptions {
   person?: string[];
   team?: string[];
+  me?: boolean;
   /** Commander turns `--no-bots` into `bots: false`; unset means include them. */
   bots?: boolean;
   botsOnly?: boolean;
@@ -125,7 +127,13 @@ export function readPeopleFilter(
   onlyBots: boolean;
 } {
   const directory = Directory.from(config);
-  const selection = directory.select({ people: options.person, teams: options.team });
+  /*
+   * `--me` is sugar for naming yourself, so it goes in as one more person and
+   * is refused by the same code when the configuration does not say who you
+   * are. Combining it with `--person` is allowed and means both.
+   */
+  const named = options.me === true ? [...(options.person ?? []), 'me'] : options.person;
+  const selection = directory.select({ people: named, teams: options.team });
   return {
     directory,
     selection,

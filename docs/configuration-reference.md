@@ -141,6 +141,10 @@ jira:
     boards: true
     sprints: true # sprints of those boards, including their membership
 
+# Which of the people below is you, by id. Turns --me into --person <that id>
+# on every command that filters by person. (no default)
+me: grace
+
 # Who the names in the data belong to. Optional, and empty by default: without
 # it a person is whatever string each API returned, so the same colleague is
 # `ghopper` on one side and `Grace Hopper` on the other. See docs/people.md.

@@ -264,6 +264,7 @@ export function resolveConfig(
 
   const people = resolvePeople(raw);
   const teams = resolveTeams(raw, people);
+  const me = resolveMe(raw, people);
 
   const projects: ProjectConfig[] = [];
   const seenProjectKeys = new Set<string>();
@@ -360,8 +361,30 @@ export function resolveConfig(
     jiraSites,
     people,
     teams,
+    me,
     projects,
   };
+}
+
+/**
+ * `me:` names one of the configured people, and must actually name one.
+ *
+ * A typo here would otherwise turn every `--me` into a filter matching nobody,
+ * which is indistinguishable from a quiet week — the same reason an unknown
+ * `--person` is an error rather than an empty result.
+ */
+function resolveMe(raw: RawConfig, people: Person[]): string | null {
+  if (raw.me === undefined) return null;
+
+  const match = people.find((person) => person.id.toLowerCase() === raw.me?.toLowerCase());
+  if (!match) {
+    throw new CliError(`me: names "${raw.me}", who is not in the people list.`, {
+      hint: people.length
+        ? `Known people: ${people.map((person) => person.id).join(', ')}`
+        : 'Add a people: section first — see docs/people.md.',
+    });
+  }
+  return match.id;
 }
 
 function firstKey<T>(map: Map<string, T>): string | undefined {
