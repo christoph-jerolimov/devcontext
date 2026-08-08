@@ -135,6 +135,21 @@ test.describe('the data actually arrived', () => {
    * that the sync put something on each of them. They are about the pipeline —
    * CLI sync, SQLite, JSON API, React — not about layout.
    */
+  // TEMPORARY: prints what the overview actually renders, so a screenshot
+  // difference between this machine and the runner can be read rather than
+  // guessed at. Remove once the overview baseline is stable.
+  test('DEBUG dump the overview text', async ({ page }) => {
+    await openViewer(page, 'overview');
+    const panels = page.locator('.content .panel');
+    const count = await panels.count();
+    for (let index = 0; index < count; index += 1) {
+      const text = (await panels.nth(index).innerText()).replaceAll('\n', ' | ');
+      console.log(`PANEL ${String(index)}: ${text}`);
+    }
+    const cards = await page.locator('.content .cards').innerText();
+    console.log(`CARDS: ${cards.replaceAll('\n', ' | ')}`);
+  });
+
   test('the sync really made the calls the screenshot no longer shows', async ({ request }) => {
     /*
      * The overview screenshot shows pinned call and item counts, so nothing in
