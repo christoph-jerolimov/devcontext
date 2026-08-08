@@ -127,3 +127,9 @@ devcontext history --kind pull_request --output json
 - **History only goes back as far as what was synced.** A repository synced
   with `issueTimeline: false` has closes and reopens reconciled from the row,
   so the balance is right today but the shape between is flat.
+
+## What else it is for
+
+The same table is what makes [sprint reports](sprints.md) possible. A burndown
+needs to know when an item joined the sprint, not only that it is in one, and
+that is exactly what a `sprint` dimension row is.

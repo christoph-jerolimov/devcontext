@@ -503,6 +503,33 @@ Cycle time, review latency, work in progress, stale items, flaky workflow steps
 and sprint reports, all computed from the local database. Takes an optional
 section name to print just one of them. See [insights.md](insights.md).
 
+Sections: `cycle-time`, `review-latency`, `wip`, `stale`, `flaky`, `sprint`,
+`burndown`, `velocity`.
+
+| Option                     | Description                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `--since <when>`           | Start of the window (default `90d`)                    |
+| `--until <when>`           | End of the window                                      |
+| `-r, --repo <repo>`        | GitHub repository, repeatable                          |
+| `-p, --project <key>`      | Jira project key, repeatable                           |
+| `--stale-after <duration>` | Age at which open work counts as stale (default `30d`) |
+| `--min-runs <count>`       | Minimum runs before a step can be called flaky         |
+| `--sprint <id>`            | Sprint id for the `sprint` and `burndown` sections     |
+| `--board <id>`             | Board id, to keep `velocity` to one team               |
+| `--points`                 | Burn story points rather than item counts              |
+| `-n, --limit <count>`      | Rows per section (default `15`)                        |
+
+`burndown` and `velocity` are the two sections that read the
+[state history](history.md) rather than the current tables, which is what lets
+them show work pulled into a sprint after it started. See
+[Sprint reports](sprints.md).
+
+```bash
+devcontext insights burndown --sprint 33
+devcontext insights burndown --points
+devcontext insights velocity --board 1
+```
+
 ## `devcontext digest` (aliases `standup`, `summary`)
 
 What happened in a window — merged, finished, started, opened, plus who did it

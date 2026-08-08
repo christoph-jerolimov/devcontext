@@ -697,3 +697,18 @@ export function sprintReport(db: Database, sprintId: number): SprintReport | nul
     scopeChanges,
   };
 }
+
+/*
+ * Burndown and velocity live next door, in sprint.ts, because they read a
+ * different table: `sprintReport` above asks the current tables what a sprint
+ * looks like now, and those two ask `state_changes` what shape it took.
+ */
+export { sprintBurndown, sprintVelocity } from './sprint.js';
+export type {
+  BurndownDay,
+  ScopeChange,
+  SprintBurndown,
+  SprintMeta,
+  Velocity,
+  VelocitySprint,
+} from './sprint.js';

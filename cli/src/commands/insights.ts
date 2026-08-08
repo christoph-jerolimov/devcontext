@@ -3,14 +3,23 @@ import { Command } from 'commander';
 import * as insights from '../insights/index.js';
 import { formatHours } from '../insights/stats.js';
 import type { Distribution } from '../insights/stats.js';
-import { printOutput, renderKeyValues, renderTable, truncate } from '../output/format.js';
+import { colour, printOutput, renderKeyValues, renderTable, truncate } from '../output/format.js';
 import type { OutputFormat } from '../output/format.js';
 import { CliError } from '../util/errors.js';
 import { resolveTimeExpression } from '../util/time.js';
 import { addOutputOptions, collect, openReadContext, parseLimit } from './shared.js';
 import type { CommandContext } from './shared.js';
 
-const SECTIONS = ['cycle-time', 'review-latency', 'wip', 'stale', 'flaky', 'sprint'] as const;
+const SECTIONS = [
+  'cycle-time',
+  'review-latency',
+  'wip',
+  'stale',
+  'flaky',
+  'sprint',
+  'burndown',
+  'velocity',
+] as const;
 type Section = (typeof SECTIONS)[number];
 
 export function createInsightsCommand(): Command {
@@ -24,7 +33,9 @@ export function createInsightsCommand(): Command {
     .option('-p, --project <key>', 'Jira project key, repeatable', collect, [])
     .option('--stale-after <duration>', 'age at which open work counts as stale', '30d')
     .option('--min-runs <count>', 'minimum runs before a step can be called flaky', '5')
-    .option('--sprint <id>', 'sprint id for the sprint report')
+    .option('--sprint <id>', 'sprint id for the sprint and burndown reports')
+    .option('--board <id>', 'board id, to keep velocity to one team')
+    .option('--points', 'burn story points rather than item counts')
     .option('-n, --limit <count>', 'rows per section', '15');
 
   return addOutputOptions(command).action(
@@ -297,9 +308,195 @@ function renderSection(
         .join('\n');
     }
 
+    case 'burndown': {
+      const sprintId =
+        options['sprint'] !== undefined ? Number(options['sprint']) : latestSprint(ctx);
+      if (sprintId === null) return null;
+
+      const report = insights.sprintBurndown(ctx.db, sprintId);
+      if (!report) {
+        if (options['sprint'] !== undefined) {
+          throw new CliError(`No sprint ${String(sprintId)} in the database.`);
+        }
+        return null;
+      }
+      reports['burndown'] = report;
+
+      /*
+       * Points only when the team estimates *and* asked for them. A points
+       * column of zeroes reads as a broken report rather than as a team that
+       * does not estimate, and the note below says which it is.
+       */
+      const usePoints = options['points'] === true && report.hasPoints;
+      const remaining = (row: insights.BurndownDay): number =>
+        usePoints ? row.remainingPoints : row.remaining;
+      const ideal = (row: insights.BurndownDay): number | null =>
+        usePoints ? row.idealPoints : row.ideal;
+      const peak = Math.max(
+        1,
+        ...report.days.map((row) => Math.max(remaining(row), ideal(row) ?? 0)),
+      );
+
+      const unit = usePoints ? 'points' : 'items';
+      const scopeLine =
+        report.scope.added + report.scope.removed === 0
+          ? 'no scope change'
+          : `${String(report.scope.added)} added, ${String(report.scope.removed)} removed after the start`;
+
+      return [
+        heading(`Burndown — ${report.sprint.name ?? String(report.sprint.id)}`),
+        renderKeyValues(
+          [
+            ['State', report.sprint.state],
+            [
+              'Dates',
+              [report.sprint.startDate?.slice(0, 10), report.sprint.endDate?.slice(0, 10)]
+                .filter(Boolean)
+                .join(' \u2192 '),
+            ],
+            [
+              'Committed',
+              `${String(report.committed.items)} items, ${String(report.committed.points)} points`,
+            ],
+            [
+              'Final scope',
+              `${String(report.finalScope.items)} items, ${String(report.finalScope.points)} points`,
+            ],
+            [
+              'Completed',
+              `${String(report.completed.items)} items, ${String(report.completed.points)} points`,
+            ],
+            ['Scope', scopeLine],
+          ],
+          format,
+        ),
+        renderTable(
+          report.days,
+          [
+            { header: 'DAY', value: (row) => row.day },
+            {
+              header: usePoints ? 'POINTS LEFT' : 'LEFT',
+              value: (row) => (row.actual ? remaining(row) : ''),
+              align: 'right',
+            },
+            { header: 'DONE', value: (row) => (row.actual ? row.done : ''), align: 'right' },
+            { header: 'IDEAL', value: (row) => ideal(row) ?? '', align: 'right', optional: true },
+            {
+              header: 'SCOPE',
+              value: (row) => scopeCell(row),
+              style: (row) => (row.added > row.removed ? 'yellow' : 'gray'),
+              optional: true,
+            },
+            { header: '', value: (row) => (row.actual ? burnBar(remaining(row), peak) : '') },
+          ],
+          {
+            format,
+            list: ctx.list,
+            listValue: (row) => row.day,
+            emptyMessage:
+              'This sprint has no recorded history. Run "devcontext history --rebuild".',
+          },
+        ),
+        options['points'] === true && !report.hasPoints
+          ? note('No work item in this sprint carries a story point estimate; showing item counts.')
+          : '',
+        report.scope.changes.length > 0
+          ? renderTable(
+              report.scope.changes,
+              [
+                { header: 'WHEN', value: (row) => row.at.slice(0, 10) },
+                {
+                  header: 'CHANGE',
+                  value: (row) => row.direction,
+                  style: (row) => (row.direction === 'added' ? 'yellow' : 'gray'),
+                },
+                { header: 'ITEM', value: (row) => row.key },
+                { header: 'POINTS', value: (row) => row.points || '', align: 'right' },
+              ],
+              { format, title: `Scope changes (the ${unit} above already include them)` },
+            )
+          : '',
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
+    }
+
+    case 'velocity': {
+      const report = insights.sprintVelocity(ctx.db, {
+        limit: filter.limit,
+        ...(options['board'] === undefined ? {} : { board: Number(options['board']) }),
+      });
+      reports['velocity'] = report;
+      if (report.sprints.length === 0) return null;
+
+      return [
+        heading('Velocity'),
+        renderTable(
+          report.sprints,
+          [
+            { header: 'SPRINT', value: (row) => row.name ?? String(row.id) },
+            { header: 'STARTED', value: (row) => row.startDate?.slice(0, 10) ?? '' },
+            { header: 'COMMITTED', value: (row) => row.committed.items, align: 'right' },
+            { header: 'COMPLETED', value: (row) => row.completed.items, align: 'right' },
+            {
+              header: 'PTS DONE',
+              value: (row) => (report.hasPoints ? row.completed.points : ''),
+              align: 'right',
+              optional: true,
+            },
+            { header: 'ADDED', value: (row) => row.added || '', align: 'right', optional: true },
+            {
+              header: 'RATIO',
+              value: (row) => (row.ratio === null ? '' : `${String(Math.round(row.ratio * 100))}%`),
+              align: 'right',
+              style: (row) => ratioColour(row.ratio),
+            },
+          ],
+          {
+            format,
+            list: ctx.list,
+            listValue: (row) => String(row.id),
+            emptyMessage: 'No sprint has a start date, so none can be placed in time.',
+          },
+        ),
+        note(
+          `Average completed: ${String(report.average.items)} items` +
+            (report.hasPoints ? `, ${String(report.average.points)} points` : '') +
+            ' per sprint.',
+        ),
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
+    }
+
     default:
       return null;
   }
+}
+
+/** `+2 -1`, or nothing on a quiet day. */
+function scopeCell(row: insights.BurndownDay): string {
+  const parts: string[] = [];
+  if (row.added > 0) parts.push(`+${String(row.added)}`);
+  if (row.removed > 0) parts.push(`-${String(row.removed)}`);
+  return parts.join(' ');
+}
+
+/** Scaled to the tallest of the actual and ideal lines, so the two compare. */
+function burnBar(value: number, peak: number): string {
+  return colour('\u2588'.repeat(Math.round((value / peak) * 20)), 'gray');
+}
+
+/**
+ * Green when a sprint delivered what it promised, yellow when it fell short.
+ *
+ * Above 100% is not praise: it means work arrived after the plan was agreed,
+ * which the ADDED column explains. So it is neither colour.
+ */
+function ratioColour(ratio: number | null): 'green' | 'yellow' | 'gray' {
+  if (ratio === null) return 'gray';
+  if (ratio >= 1) return ratio > 1 ? 'gray' : 'green';
+  return 'yellow';
 }
 
 /** The most recent active sprint, so the overview has something to show. */

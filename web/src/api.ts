@@ -53,6 +53,64 @@ export interface ActivityResponse {
   kinds: string[];
 }
 
+export interface BurndownDay {
+  day: string;
+  inSprint: number;
+  remaining: number;
+  done: number;
+  remainingPoints: number;
+  donePoints: number;
+  added: number;
+  removed: number;
+  /** Null when the sprint has no dates to draw an ideal line between. */
+  ideal: number | null;
+  idealPoints: number | null;
+  /** False once the day is in the future; the actual series stops there. */
+  actual: boolean;
+}
+
+export interface BurndownResponse {
+  kind: 'burndown';
+  sprint: {
+    id: number;
+    name: string | null;
+    state: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    completeDate: string | null;
+    goal: string | null;
+  };
+  committed: { items: number; points: number };
+  finalScope: { items: number; points: number };
+  completed: { items: number; points: number };
+  scope: {
+    added: number;
+    removed: number;
+    changes: Array<{ key: string; at: string; direction: 'added' | 'removed'; points: number }>;
+  };
+  days: BurndownDay[];
+  /** False when nothing in the sprint carries an estimate. */
+  hasPoints: boolean;
+}
+
+export interface VelocityResponse {
+  kind: 'velocity';
+  sprints: Array<{
+    id: number;
+    name: string | null;
+    state: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    committed: { items: number; points: number };
+    completed: { items: number; points: number };
+    added: number;
+    removed: number;
+    ratio: number | null;
+  }>;
+  average: { items: number; points: number };
+  hasPoints: boolean;
+}
+
 export interface PersonOption {
   id: string;
   name: string;
@@ -442,6 +500,10 @@ export const api = {
   sprints: (params: Record<string, string | undefined>) =>
     request<Sprint[]>('/api/jira/sprints', params),
   sprint: (id: number) => request<IssueDocument>(`/api/jira/sprints/${id}`),
+  burndown: (sprint: number) =>
+    request<BurndownResponse>(`/api/insights/burndown/${String(sprint)}`),
+  velocity: (params: Record<string, string | undefined>) =>
+    request<VelocityResponse>('/api/insights/velocity', params),
   insights: (params: Record<string, string | undefined>) =>
     request<InsightsResponse>('/api/insights', params),
   digest: (params: Record<string, string | undefined>) =>
