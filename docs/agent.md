@@ -48,9 +48,8 @@ opens a terminal REPL. `devcontext agent` forwards extra arguments to
 
 ## Tools
 
-`devcontext mcp --tools` lists them; the agent has the same fourteen, from
-`devcontext_status` to `get_workflow_run`. Each tool file under
-`eve/agent/tools/` is a one-line bridge:
+`devcontext mcp --tools` lists them; the agent has the same set, one file per
+tool. Each tool file under `eve/agent/tools/` is a one-line bridge:
 
 ```ts
 import { devcontextTool } from '../lib/devcontext.js';
@@ -60,3 +59,7 @@ export default devcontextTool('search');
 
 `eve/agent/lib/devcontext.ts` loads the configuration the same way the CLI
 does (walking up from the working directory) and opens the database read only.
+
+Nothing at runtime notices a tool that exists on the MCP side and not here — the
+agent just cannot answer that question, with no error saying why — so a test
+asserts the two sets are equal.

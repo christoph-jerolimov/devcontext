@@ -4,6 +4,12 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
+import * as ticketQueries from '../db/queries/tickets.js';
+import * as activityQueries from '../db/queries/activity.js';
+import * as historyQueries from '../db/queries/history.js';
+import * as insights from '../insights/index.js';
+import { buildDigest } from '../insights/digest.js';
+import { Directory } from '../people/directory.js';
 import {
   buildIssueDocument,
   buildPullRequestDocument,
@@ -78,6 +84,16 @@ function limit(args: Record<string, unknown>, fallback = 50): number {
   return Math.max(1, Math.min(500, Math.floor(value)));
 }
 
+/**
+ * The properties that are actually set, so an exactOptionalPropertyTypes filter
+ * does not receive a key whose value is `undefined`.
+ */
+function defined<T extends object>(values: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
+
 export function isArgumentError(error: unknown): error is Error {
   return error instanceof ArgumentError;
 }
@@ -90,6 +106,27 @@ const LIMIT = { type: 'number', description: 'Maximum number of rows (default 50
 const SEARCH = { type: 'string', description: 'Substring match on the title/summary and body.' };
 const TIME =
   'Relative (30d, 6w, 3mo) or absolute (2024-01-31, 2024-01-31T08:00:00Z) point in time.';
+
+/**
+ * Filtering by who, on every list that has an author.
+ *
+ * A person id rather than a login, because one colleague is often three logins
+ * and an assistant has no way to know which. `list_people` is where the ids
+ * come from; an unknown one is an error rather than an empty list, so a wrong
+ * guess is visible instead of looking like a quiet week.
+ */
+const PEOPLE_FILTERS = {
+  person: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Configured person ids, from list_people. "me" is whoever the config names.',
+  },
+  team: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Configured team ids, from list_people. Expands to every member.',
+  },
+};
 
 const ISSUE_FILTERS = {
   repo: { type: 'string', description: 'Repository as owner/name. Omit for all repositories.' },
@@ -165,6 +202,54 @@ function workitemFilter(args: Record<string, unknown>): jira.WorkitemFilter {
  * through the same query layer, so what an agent sees and what a human sees
  * can never drift apart.
  */
+/** `person` and `team` resolved through the directory, or nothing selected. */
+function peopleSelection(args: Record<string, unknown>, ctx: ToolContext) {
+  return Directory.from(ctx.config).select({
+    ...defined({ people: list(args, 'person'), teams: list(args, 'team') }),
+  });
+}
+
+function ticketFilter(args: Record<string, unknown>, ctx: ToolContext): ticketQueries.TicketFilter {
+  const selection = peopleSelection(args, ctx);
+  return {
+    state: (str(args, 'state') as 'open' | 'closed' | 'all' | undefined) ?? 'all',
+    limit: limit(args),
+    ...defined({
+      sources: list(args, 'source'),
+      containers: list(args, 'container'),
+      types: list(args, 'type'),
+      search: str(args, 'search'),
+    }),
+    ...(selection ? { people: { github: selection.github, jira: selection.jira } } : {}),
+  };
+}
+
+function activityFilter(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+  directory: Directory,
+): activityQueries.ActivityFilter {
+  const selection = directory.select({
+    ...defined({ people: list(args, 'person'), teams: list(args, 'team') }),
+  });
+  const bots = str(args, 'bots');
+
+  return {
+    since: time(args, 'since') ?? resolveTimeExpression('14d'),
+    limit: limit(args),
+    excludeBots: bots === 'exclude',
+    onlyBots: bots === 'only',
+    bots: directory.botIdentities(),
+    ...defined({
+      until: time(args, 'until'),
+      sources: list(args, 'source'),
+      containers: list(args, 'container'),
+      kinds: list(args, 'kind'),
+    }),
+    ...(selection ? { people: { github: selection.github, jira: selection.jira } } : {}),
+  };
+}
+
 export const TOOLS: Tool[] = [
   {
     definition: {
@@ -327,7 +412,8 @@ export const TOOLS: Tool[] = [
     definition: {
       name: 'list_pull_requests',
       title: 'List GitHub pull requests',
-      description: 'Filtered list of pull requests.',
+      description:
+        'Filtered list of pull requests. Every state by default, not just the open ones GitHub shows.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -439,7 +525,8 @@ export const TOOLS: Tool[] = [
     definition: {
       name: 'list_sprints',
       title: 'List sprints',
-      description: 'Sprints with their work item counts.',
+      description:
+        'Sprints with their work item counts, and the sprint ids get_sprint and sprint_burndown take.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -566,6 +653,387 @@ export const TOOLS: Tool[] = [
       const run = db.get<gh.WorkflowRunRow>('SELECT * FROM gh_workflow_runs WHERE id = ?', [id]);
       if (!run) throw new ArgumentError(`No workflow run ${id} in the local database.`);
       return buildWorkflowRunDocument(db, run).data;
+    },
+  },
+
+  /* ------------------------------------------------------------------------ */
+  /* Everything above answers "what is the state of things". The rest answer   */
+  /* questions the current tables cannot: who did it, what shape it took, and  */
+  /* which colleague the names belong to.                                      */
+  /* ------------------------------------------------------------------------ */
+
+  {
+    definition: {
+      name: 'list_tickets',
+      title: 'GitHub issues and Jira work items as one list',
+      description:
+        'Both trackers in one list, with one vocabulary. Prefer this over list_issues + list_workitems when the question is about work rather than about a tool. Pull requests are deliberately not here — a pull request is a change, not a request for one.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', enum: ['github', 'jira'], description: 'Both when omitted.' },
+          container: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Repositories (acme/platform) and Jira project keys (PLAT), mixed.',
+          },
+          type: { type: 'array', items: { type: 'string' }, description: 'Bug, Story, Issue, ...' },
+          state: { type: 'string', enum: ['open', 'closed', 'all'], description: 'Default all.' },
+          ...PEOPLE_FILTERS,
+          search: SEARCH,
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, ctx) => {
+      const filter = ticketFilter(args, ctx);
+      return {
+        tickets: ticketQueries.listTickets(ctx.db, filter),
+        // So the answer can say "showing 50 of 900" rather than implying the
+        // page it got is everything there is.
+        total: ticketQueries.countTickets(ctx.db, filter),
+      };
+    },
+  },
+
+  {
+    definition: {
+      name: 'ticket_types',
+      title: 'Which ticket types exist, and how many carry each',
+      description:
+        'The types actually present in the data, with counts. Use it before filtering by type: the vocabulary is whatever these projects use, not a fixed list.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', enum: ['github', 'jira'] },
+          container: { type: 'array', items: { type: 'string' } },
+          state: { type: 'string', enum: ['open', 'closed', 'all'] },
+          ...PEOPLE_FILTERS,
+        },
+      },
+    },
+    run: (args, ctx) => ticketQueries.ticketTypes(ctx.db, ticketFilter(args, ctx)),
+  },
+
+  {
+    definition: {
+      name: 'list_activity',
+      title: 'What people did, newest first',
+      description:
+        'Status changes, comments and reviews across both platforms. This is the only tool that answers "what happened" — every list above answers "what is the state of things", and an item opened, argued over and closed looks there exactly like one nobody touched.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: `Default 14d. ${TIME}` },
+          until: { type: 'string', description: TIME },
+          source: { type: 'string', enum: ['github', 'jira'] },
+          container: { type: 'array', items: { type: 'string' } },
+          kind: {
+            type: 'array',
+            items: { type: 'string', enum: ['status', 'comment', 'review'] },
+            description: 'All three when omitted.',
+          },
+          ...PEOPLE_FILTERS,
+          bots: {
+            type: 'string',
+            enum: ['include', 'exclude', 'only'],
+            description: 'Default include.',
+          },
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, ctx) => {
+      const directory = Directory.from(ctx.config);
+      const filter = activityFilter(args, ctx, directory);
+      return {
+        events: activityQueries.listActivity(ctx.db, filter).map((event) =>
+          Object.assign(event, {
+            person: directory.identify(event.source, event.actor)?.name ?? null,
+          }),
+        ),
+        total: activityQueries.countActivity(ctx.db, filter),
+      };
+    },
+  },
+
+  {
+    definition: {
+      name: 'activity_by_person',
+      title: 'Who was busy in a window',
+      description:
+        'The same window rolled up per identity. Per identity rather than per person on purpose: a second row under a familiar name is a login nobody mapped, which is worth seeing.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: `Default 14d. ${TIME}` },
+          until: { type: 'string', description: TIME },
+          container: { type: 'array', items: { type: 'string' } },
+          ...PEOPLE_FILTERS,
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, ctx) =>
+      activityQueries.activityByActor(
+        ctx.db,
+        activityFilter(args, ctx, Directory.from(ctx.config)),
+      ),
+  },
+
+  {
+    definition: {
+      name: 'list_people',
+      title: 'The configured people, bots and teams',
+      description:
+        'Who the names in the data belong to. Call this before filtering by person or team: the ids these tools accept are defined here, and one person often has several logins.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    run: (_args, ctx) => {
+      const directory = Directory.from(ctx.config);
+      return {
+        me: directory.me?.id ?? null,
+        people: directory.people,
+        teams: directory.teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          description: team.description,
+          people: directory.membersOf(team).map((person) => person.name),
+        })),
+      };
+    },
+  },
+
+  {
+    definition: {
+      name: 'open_items_history',
+      title: 'How many items were open, day by day',
+      description:
+        'The balance over a window, which no other tool can answer: the current tables know where an item ended up, not the shape it took getting there.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: `Default 30 days ago. ${TIME}` },
+          to: { type: 'string', description: TIME },
+          source: { type: 'string', enum: ['github', 'jira'] },
+          container: { type: 'string' },
+          kind: { type: 'string', enum: ['issue', 'pull_request', 'workitem'] },
+          assignee: { type: 'string' },
+        },
+      },
+    },
+    run: (args, { db }) => {
+      const to = time(args, 'to') ?? new Date().toISOString();
+      const from = time(args, 'from') ?? new Date(Date.now() - 29 * 86_400_000).toISOString();
+      return {
+        from,
+        to,
+        days: historyQueries.openByDay(db, {
+          from,
+          to,
+          ...defined({
+            source: str(args, 'source'),
+            container: str(args, 'container'),
+            kind: str(args, 'kind'),
+            assignee: str(args, 'assignee'),
+          }),
+        }),
+      };
+    },
+  },
+
+  {
+    definition: {
+      name: 'sprint_burndown',
+      title: 'How a sprint actually went',
+      description:
+        'Remaining work per day against the ideal, with the scope changes listed. Unlike get_sprint this reads the history, so work pulled in mid sprint lifts the line on the day it arrived rather than being backdated to the start.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sprint: { type: 'number', description: 'Sprint id, as list_sprints gives.' },
+        },
+        required: ['sprint'],
+      },
+    },
+    run: (args, { db }) => {
+      const id = requiredNum(args, 'sprint');
+      const report = insights.sprintBurndown(db, id);
+      if (!report) throw new ArgumentError(`No sprint ${String(id)} in the local database.`);
+      return report;
+    },
+  },
+
+  {
+    definition: {
+      name: 'sprint_velocity',
+      title: 'Committed against completed, sprint by sprint',
+      description:
+        'Both figures read at the instant they refer to, so work that arrived after the plan was agreed is not counted as work the team promised. A ratio above 100% means exactly that, and the added column says how much.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          board: { type: 'number', description: 'One board, when several teams share a site.' },
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, { db }) =>
+      insights.sprintVelocity(db, {
+        limit: limit(args, 10),
+        ...defined({ board: num(args, 'board') }),
+      }),
+  },
+
+  {
+    definition: {
+      name: 'status_times',
+      title: 'How long work sits in each status',
+      description:
+        'Median, p85 and longest stay per status. cycle_time measures the whole journey; this says which stop is the slow one. A stay that has not ended is counted separately rather than averaged in as if it were short.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: `Default 90d. ${TIME}` },
+          project: { type: 'array', items: { type: 'string' }, description: 'Jira project keys.' },
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, { db }) =>
+      insights.statusTimes(db, {
+        from: time(args, 'since') ?? resolveTimeExpression('90d'),
+        limit: limit(args, 15),
+        ...defined({ containers: list(args, 'project') }),
+      }),
+  },
+
+  {
+    definition: {
+      name: 'cumulative_flow',
+      title: 'How many items sat in each status, day by day',
+      description:
+        'A cumulative flow diagram over the status history: the count in every status on every day, with the statuses in board order. open_items_history knows only open and closed, so a backlog of forty and a review queue of forty look the same there; this tells them apart.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: `Default 30 days ago. ${TIME}` },
+          to: { type: 'string', description: TIME },
+          project: { type: 'array', items: { type: 'string' }, description: 'Jira project keys.' },
+          status: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Only these statuses. Every status present when omitted.',
+          },
+        },
+      },
+    },
+    run: (args, { db }) =>
+      insights.cumulativeFlow(db, {
+        ...defined({
+          from: time(args, 'from'),
+          to: time(args, 'to'),
+          containers: list(args, 'project'),
+          statuses: list(args, 'status'),
+        }),
+      }),
+  },
+
+  {
+    definition: {
+      name: 'insights',
+      title: 'Cycle time, review latency, work in progress, stale work, flaky steps',
+      description:
+        'The standing health report over a window. Ask for one section when the question is narrow; the whole thing is a lot of numbers at once.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: `Default 90d. ${TIME}` },
+          section: {
+            type: 'string',
+            enum: ['cycle-time', 'review-latency', 'wip', 'stale', 'flaky'],
+            description: 'All of them when omitted.',
+          },
+          repo: { type: 'array', items: { type: 'string' } },
+          project: { type: 'array', items: { type: 'string' } },
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, { db }) => {
+      const filter = {
+        since: time(args, 'since') ?? resolveTimeExpression('90d'),
+        limit: limit(args, 15),
+        ...defined({ repos: list(args, 'repo'), projects: list(args, 'project') }),
+      };
+      const staleAfter = new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+      switch (str(args, 'section')) {
+        case 'cycle-time':
+          return insights.cycleTime(db, filter);
+        case 'review-latency':
+          return insights.reviewLatency(db, filter);
+        case 'wip':
+          return insights.wip(db, filter);
+        case 'stale':
+          return insights.staleItems(db, staleAfter, filter);
+        case 'flaky':
+          return insights.flakySteps(db, filter);
+        default:
+          return {
+            cycleTime: insights.cycleTime(db, filter),
+            reviewLatency: insights.reviewLatency(db, filter),
+            wip: insights.wip(db, filter),
+            stale: insights.staleItems(db, staleAfter, filter),
+            flaky: insights.flakySteps(db, filter),
+          };
+      }
+    },
+  },
+
+  {
+    definition: {
+      name: 'digest',
+      title: 'What happened in a window, ready to summarise',
+      description:
+        'Merged, finished, started and opened in one window, with who did it and what is still stuck. The tool to reach for when asked to write a standup or a weekly update.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: `Default 7d. ${TIME}` },
+          until: { type: 'string', description: TIME },
+          repo: { type: 'array', items: { type: 'string' } },
+          project: { type: 'array', items: { type: 'string' } },
+          person: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'A configured person id, or a raw login / display name.',
+          },
+          limit: LIMIT,
+        },
+      },
+    },
+    run: (args, ctx) => {
+      const directory = Directory.from(ctx.config);
+      const asked = list(args, 'person');
+      // One person id becomes every identity they answer to, across both
+      // sources; anything the directory does not know is passed through.
+      const people = asked?.flatMap((value) => {
+        const person = directory.person(value);
+        return person ? person.github.concat(person.jira) : [value];
+      });
+
+      return buildDigest(ctx.db, {
+        since: time(args, 'since') ?? resolveTimeExpression('7d'),
+        staleAfter: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+        limit: limit(args, 10),
+        ...defined({
+          until: time(args, 'until'),
+          repos: list(args, 'repo'),
+          projects: list(args, 'project'),
+          people,
+        }),
+      });
     },
   },
 ];

@@ -55,10 +55,23 @@ that has a `devcontext.yaml`; `--db` points at a database directly.
 | `get_links`                               | What references a ticket or pull request, and what it references                                                               |
 | `list_sprints` / `get_sprint`             | Sprints, and one sprint with its work items and story points                                                                   |
 | `list_workflow_runs` / `get_workflow_run` | Actions runs, and one run with every job and step                                                                              |
+| `list_tickets` / `ticket_types`           | Issues and work items as one list across both trackers, and the type breakdown                                                 |
+| `list_activity` / `activity_by_person`    | Status changes, comments and reviews as one feed, and who did how much of what                                                 |
+| `list_people`                             | The configured people, bots and teams, and which id is `me`                                                                    |
+| `open_items_history`                      | How many items were open on each day                                                                                           |
+| `cumulative_flow` / `status_times`        | Which status the work sat in day by day, and how long a stay in each one lasts                                                 |
+| `sprint_burndown` / `sprint_velocity`     | Remaining work through a sprint, and completed points across recent sprints                                                    |
+| `insights`                                | Cycle time, review latency, work in progress, stale work, flaky steps                                                          |
+| `digest`                                  | What happened in a window, as a standup or weekly summary                                                                      |
 
-Time filters (`updatedSince`, `updatedBefore`) take the same values as the CLI:
-`30d`, `6w`, `3mo` or an absolute date. `updatedBefore` is how an assistant
-finds stale work.
+Time filters (`updatedSince`, `updatedBefore`, `since`, `from`) take the same
+values as the CLI: `30d`, `6w`, `3mo` or an absolute date. `updatedBefore` is how
+an assistant finds stale work.
+
+Anywhere a `person` or `team` filter appears it takes the ids from
+`list_people`, including `me`, and matches across both trackers at once — a
+person with no Jira identity matches no Jira rows rather than all of them. An id
+nobody configured is an error, not an empty result.
 
 The tools go through the same query layer as the CLI commands, so what an agent
 sees and what you see can never drift apart.
@@ -72,6 +85,10 @@ sees and what you see can never drift apart.
   `get_workflow_run` gives the failing step directly)
 - "Summarise the review discussion on pull request 42."
 - "What is in the current sprint, and how many story points are done?"
+- "What did I touch last week?" (`digest` with `person: ["me"]`)
+- "Where is work piling up?" (`cumulative_flow` shows the band that swells,
+  `status_times` says how long a stay there lasts)
+- "Is this sprint going to land?" (`sprint_burndown` against `sprint_velocity`)
 
 ## Implementation notes
 
