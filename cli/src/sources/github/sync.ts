@@ -3,6 +3,7 @@ import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import type { SyncMode } from '../../db/journal.js';
 import { errorMessage } from '../../util/errors.js';
+import { positionOf } from '../../sync/progress.js';
 import { isSyncStopped } from '../../sync/stop.js';
 import { num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
@@ -495,6 +496,17 @@ class GithubRepoSyncer {
   }
 
   /**
+   * Which item of the current list is being fetched.
+   *
+   * `index` is zero based here and one based on the line, so the first item
+   * reads "1 of 231" rather than "0 of 231" — nobody counts the thing they are
+   * looking at as not yet started.
+   */
+  private at(label: string, index: number, total: number): void {
+    this.ctx.progress.setPosition(positionOf(label, index, total));
+  }
+
+  /**
    * Whether a resource finished in the run being resumed.
    *
    * Only ever true under `--resume`, and only for resources whose operation
@@ -751,7 +763,8 @@ class GithubRepoSyncer {
 
   /** The comments and the timeline of every issue the list phase found. */
   private async fetchIssueDetails(): Promise<void> {
-    for (const issue of this.issueRefs) {
+    for (const [index, issue] of this.issueRefs.entries()) {
+      this.at(`#${String(issue.number)}`, index, this.issueRefs.length);
       await this.writeIssueDetails(issue);
     }
   }
@@ -804,7 +817,8 @@ class GithubRepoSyncer {
 
     let newestUpdate: string | null = null;
 
-    for (const number of this.pullRequestNumbers) {
+    for (const [index, number] of this.pullRequestNumbers.entries()) {
+      this.at(`#${String(number)}`, index, this.pullRequestNumbers.length);
       const raw = await this.client.pullRequest(this.target.owner, this.target.repo, number);
       const syncedAt = nowIso();
       this.write('gh_pull_requests', map.mapPullRequest(raw, this.ref, syncedAt));
@@ -820,7 +834,8 @@ class GithubRepoSyncer {
   }
 
   private async fetchPullRequestDetails(): Promise<void> {
-    for (const number of this.pullRequestNumbers) {
+    for (const [index, number] of this.pullRequestNumbers.entries()) {
+      this.at(`#${String(number)}`, index, this.pullRequestNumbers.length);
       await this.writePullRequestDetails(number);
     }
   }
@@ -980,7 +995,8 @@ class GithubRepoSyncer {
     let jobsSeen = 0;
     let runsDone = 0;
 
-    for (const runId of this.workflowRunIds) {
+    for (const [index, runId] of this.workflowRunIds.entries()) {
+      this.at(`run ${String(runId)}`, index, runs);
       const jobs = await this.client.workflowRunJobs(this.target.owner, this.target.repo, runId);
       jobsSeen += jobs.length;
       runsDone += 1;

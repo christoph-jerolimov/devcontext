@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { parseConfig } from '../config/load.js';
 import { nullLogger } from '../util/logger.js';
 import { parseReference } from './runner.js';
-import { ProgressReporter } from './progress.js';
+import { positionOf, ProgressReporter } from './progress.js';
 import { RateLimiter } from './rateLimiter.js';
 
 function createClock() {
@@ -283,5 +283,110 @@ describe('ProgressReporter', () => {
     progress.expect(7);
 
     expect(progress.expectedApiCallCount).toBe(257);
+  });
+});
+
+/**
+ * A reporter drawing to a fake terminal.
+ *
+ * Interactive rather than logged, because that is the path the position is
+ * for: outside a terminal the line is only reprinted every ten percent, so a
+ * per-item position would never be seen there and should not be asserted as
+ * if it were. `enabled: false` skips rendering altogether, and the composed
+ * line is exactly what is worth checking — the snapshot can be right while
+ * the line that reaches the person is not.
+ */
+function capturing(): { progress: ProgressReporter; lines: string[] } {
+  const lines: string[] = [];
+  const stream = {
+    isTTY: true,
+    write: (chunk: string) => {
+      lines.push(chunk);
+      return true;
+    },
+  } as unknown as NodeJS.WriteStream;
+
+  // The reporter treats NO_COLOR as "not a terminal", and CI sets it.
+  vi.stubEnv('NO_COLOR', '');
+
+  return {
+    progress: new ProgressReporter({
+      enabled: true,
+      logger: nullLogger,
+      stream,
+      throttleMs: 0,
+    }),
+    lines,
+  };
+}
+
+describe('where a phase has got to', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('names the item and the place in the list', () => {
+    const { progress, lines } = capturing();
+
+    progress.setPhase('acme/platform: pull requests');
+    progress.setPosition({ label: '#4021', index: 5, total: 231 });
+
+    expect(lines.at(-1)).toContain('acme/platform: pull requests (currently on #4021, 5 of 231)');
+  });
+
+  it('counts the item being fetched as started', () => {
+    /*
+     * The syncers walk with a zero based loop index, and the first item of a
+     * walk is being fetched rather than not yet fetched. "0 of 231" says the
+     * opposite, and would also never reach 231.
+     */
+    expect(positionOf('#4021', 0, 231)).toEqual({ label: '#4021', index: 1, total: 231 });
+    expect(positionOf('#9', 230, 231)).toEqual({ label: '#9', index: 231, total: 231 });
+
+    const { progress } = capturing();
+    progress.setPosition(positionOf('#1', 0, 231));
+
+    expect(progress.snapshot.position).toBe('#1, 1 of 231');
+  });
+
+  it('leaves the phase alone when there is no position', () => {
+    const { progress, lines } = capturing();
+
+    progress.setPhase('acme/platform: issues');
+
+    expect(lines.at(-1)).toContain('acme/platform: issues');
+    expect(lines.at(-1)).not.toContain('currently on');
+  });
+
+  it('forgets the position when the phase changes', () => {
+    /*
+     * The position belongs to the list the previous phase was walking. Carried
+     * over it would claim the new phase is on item 231 of 231 before it has
+     * made a single request.
+     */
+    const { progress, lines } = capturing();
+
+    progress.setPhase('acme/platform: pull requests');
+    progress.setPosition({ label: '#4021', index: 231, total: 231 });
+    progress.setPhase('acme/platform: workflow jobs');
+
+    expect(progress.snapshot.position).toBe('');
+    expect(lines.at(-1)).not.toContain('currently on');
+  });
+
+  it('says nothing about a list that turned out to be empty', () => {
+    const { progress } = capturing();
+
+    progress.setPosition({ label: '#1', index: 1, total: 0 });
+
+    expect(progress.snapshot.position).toBe('');
+  });
+
+  it('counts without a label when the items have no name worth printing', () => {
+    const { progress } = capturing();
+
+    progress.setPosition({ index: 3, total: 9 });
+
+    expect(progress.snapshot.position).toBe('3 of 9');
   });
 });
