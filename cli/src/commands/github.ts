@@ -86,7 +86,10 @@ function issuesCommand(): Command {
     .description('list issues, or show one issue with all comments and events')
     .argument('[number]', 'issue number to show in detail')
     .option('-r, --repo <repo>', 'repository (owner/name), repeatable', collect, [])
-    .option('-s, --state <state>', 'open, closed or all', 'open')
+    // Every state, like pull requests: a closed issue is the normal end of
+    // one, and a list that hides them reads as if nothing was ever finished.
+    // `--state open` narrows it back down.
+    .option('-s, --state <state>', 'open, closed or all', 'all')
     .option('-l, --label <label>', 'label filter, repeatable', collect, [])
     .option('-a, --author <login>', 'issue author')
     .option('--assignee <login>', 'assigned to this user')
@@ -155,9 +158,9 @@ function pullRequestsCommand(): Command {
     .description('list pull requests, or show one with reviews, commits and files')
     .argument('[number]', 'pull request number to show in detail')
     .option('-r, --repo <repo>', 'repository (owner/name), repeatable', collect, [])
-    // Unlike issues, which default to open: a merged pull request is the
-    // normal end of one, and hiding them makes the list read as if nothing
-    // ever shipped. `--state open` narrows it back down.
+    // A merged pull request is the normal end of one, and hiding them makes
+    // the list read as if nothing ever shipped. `--state open` narrows it
+    // back down.
     .option('-s, --state <state>', 'open, closed or all', 'all')
     .option('-l, --label <label>', 'label filter, repeatable', collect, [])
     .option('-a, --author <login>', 'pull request author')

@@ -124,7 +124,7 @@ body, every comment and the full timeline.
 | Option                 | Description                              |
 | ---------------------- | ---------------------------------------- |
 | `-r, --repo <repo>`    | Repository `owner/name`, repeatable      |
-| `-s, --state <state>`  | `open` (default), `closed`, `all`        |
+| `-s, --state <state>`  | `open`, `closed`, `all` (default)        |
 | `-l, --label <label>`  | Label, repeatable or comma separated     |
 | `-a, --author <login>` | Author                                   |
 | `--assignee <login>`   | Assignee                                 |
@@ -156,10 +156,9 @@ In addition to the issue options:
 | `--draft` / `--no-draft`   | Only / never drafts         |
 | `--merged` / `--no-merged` | Only merged / only unmerged |
 
-`--state` defaults to **`all`** here, unlike `gh issues`, which defaults to
-`open`. A merged pull request is the normal end of one, so a list that hid them
-would read as if nothing had ever shipped. `--state open` narrows it back down
-to what is still in flight.
+`--state` defaults to **`all`**, as `gh issues` does. A merged pull request is
+the normal end of one, so a list that hid them would read as if nothing had
+ever shipped. `--state open` narrows it back down to what is still in flight.
 
 ```bash
 devcontext gh prs --state open --base main

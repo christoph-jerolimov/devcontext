@@ -12,6 +12,27 @@ function find(name: string) {
   );
 }
 
+/** The default commander would apply for `--state` on a `gh` subcommand. */
+function stateDefault(sub: string): unknown {
+  const github = find('gh');
+  const command = github?.commands.find((entry) => entry.name() === sub);
+  return command?.options.find((option) => option.long === '--state')?.defaultValue;
+}
+
+suite('every list shows every state by default', () => {
+  /*
+   * The three surfaces used to disagree: pull requests showed all states while
+   * issues showed only open ones, and the MCP tools showed open for both. A
+   * closed issue and a merged pull request are the normal end of each, so a
+   * list that hides them reads as if nothing was ever finished — and an
+   * assistant asked "what did we ship" answers confidently from the gap.
+   */
+  it('defaults gh issues and gh prs to all', () => {
+    expect(stateDefault('issues')).toBe('all');
+    expect(stateDefault('prs')).toBe('all');
+  });
+});
+
 suite('the command surface', () => {
   it('registers every command', () => {
     expect(commandNames().toSorted()).toEqual([
