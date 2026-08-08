@@ -50,12 +50,26 @@ changes:
 
 | Resource                          | Cursor              | How it is used                                                                                                   |
 | --------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| GitHub issues (and pull requests) | newest `updated_at` | `GET /issues?since=<cursor>&sort=updated&direction=asc`                                                          |
+| GitHub issues (and pull requests) | newest `updated_at` | decides which items get their comments and timeline; the list itself is always complete                          |
 | GitHub workflow runs              | newest `created_at` | `GET /actions/runs?created=>=<cursor>`, stops as soon as older runs appear                                       |
 | Jira work items                   | newest `updated`    | `... AND updated >= "<cursor>"`, rewound by five minutes because JQL resolves to minutes in the server time zone |
 
 Anything the API returns again is simply written again, so re-fetching the
 boundary item is harmless.
+
+### What `since` does and does not bound
+
+It bounds the **requests made per item**, not the list.
+
+Every issue, pull request and work item is listed on every run, whatever the
+cursor says. That is not thoroughness for its own sake: how many issues were
+open in March cannot be answered from the ones that changed since March. The
+balance carried in from before is exactly the part that would be missing, and
+no amount of later syncing recovers it — see [History](history.md).
+
+The list is also the cheap half. A repository with 20,000 issues is 200 list
+pages against 40,000 comment and timeline calls, so a complete walk costs about
+half a percent more and the run gets no slower.
 
 `--full` ignores the stored cursors and downloads everything a second time.
 Use it after changing the sync flags of a repository, or when you suspect a gap.

@@ -62,6 +62,7 @@ devcontext [options] <command>
 - [`insights`, `report`, `stats`](#devcontext-insights) — cycle time, review latency, work in progress, stale items, flaky steps, sprints
 - [`digest`, `standup`, `summary`](#devcontext-digest) — what happened in a window: shipped, started, reviewed, and still stuck
 - [`links`, `link`](#devcontext-links) — cross references between GitHub issues/pull requests and Jira work items
+- [`history`](#devcontext-history) — how many issues, pull requests or work items were open over time
 - [`audit`](#devcontext-audit) — what is stored locally, who is in it, and what a sync would fetch
 - [`mcp`](#devcontext-mcp) — serve the local database over the Model Context Protocol (stdio)
 - [`agent`](#devcontext-agent) — start the @devcontext/eve agent in dev mode (experimental)
@@ -889,6 +890,31 @@ devcontext links [options] [ref]
 | `--high` | — | — | only high confidence links (branch names, titles, Jira fields) |
 | `--from <source>` | — | — | github or jira |
 | `--to <source>` | — | — | github or jira |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+| `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
+| `--offset <count>` | — | — | skip this many rows |
+| `--search <text>` | — | — | match text in the title / summary / body |
+
+## `devcontext history`
+
+How many issues, pull requests or work items were open over time
+
+```
+devcontext history [options]
+```
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `--from <when>` | — | `30d` | start of the window (30d, 2024-01-31) |
+| `--to <when>` | — | `now` | end of the window |
+| `--source <source>` | — | — | github or jira |
+| `--container <name>` | — | — | one repository (acme/platform) or Jira project (PLAT) |
+| `--kind <kind>` | — | — | issue, pull_request or workitem |
+| `--assignee <person>` | — | — | only items assigned to this person at the time |
+| `--sprint <id>` | — | — | only items in this sprint at the time |
+| `--by-assignee` | — | — | a snapshot per person at the end of the window instead |
+| `--rebuild` | — | — | recompute the history from the synced timelines before reading it |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |

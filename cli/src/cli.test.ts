@@ -20,6 +20,7 @@ suite('the command surface', () => {
       'digest',
       'export',
       'github',
+      'history',
       'init',
       'insights',
       'jira',
