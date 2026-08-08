@@ -4,6 +4,8 @@ import type { Command } from 'commander';
 import { loadConfig } from '../config/load.js';
 import type { ResolvedConfig } from '../config/types.js';
 import { Database } from '../db/database.js';
+import { Directory } from '../people/directory.js';
+import type { PersonSelection } from '../people/directory.js';
 import { CliError } from '../util/errors.js';
 import { createLogger } from '../util/logger.js';
 import type { Logger, LogLevel } from '../util/logger.js';
@@ -82,6 +84,54 @@ export function addListOptions(command: Command): Command {
     .option('-n, --limit <count>', 'maximum number of rows (0 for no limit)', '50')
     .option('--offset <count>', 'skip this many rows')
     .option('--search <text>', 'match text in the title / summary / body');
+}
+
+/**
+ * `--person`, `--team` and the two bot switches.
+ *
+ * Separate from `addListOptions` because they only mean something on a list
+ * whose rows have an author: the workflow run list has an actor and no author,
+ * and offering the filter there would promise something it cannot deliver.
+ */
+export function addPeopleFilterOptions(command: Command): Command {
+  return command
+    .option('--person <id>', 'only items involving this configured person, repeatable', collect)
+    .option('--team <id>', 'only items involving a member of this team, repeatable', collect)
+    .option('--no-bots', 'hide items written by a bot')
+    .option('--bots-only', 'only items written by a bot');
+}
+
+export interface PeopleFilterOptions {
+  person?: string[];
+  team?: string[];
+  /** Commander turns `--no-bots` into `bots: false`; unset means include them. */
+  bots?: boolean;
+  botsOnly?: boolean;
+}
+
+/**
+ * The people options resolved against the configuration.
+ *
+ * `selection` is undefined when neither `--person` nor `--team` was given, and
+ * an unknown id throws — see `Directory.select`.
+ */
+export function readPeopleFilter(
+  config: ResolvedConfig,
+  options: PeopleFilterOptions,
+): {
+  directory: Directory;
+  selection: PersonSelection | undefined;
+  excludeBots: boolean;
+  onlyBots: boolean;
+} {
+  const directory = Directory.from(config);
+  const selection = directory.select({ people: options.person, teams: options.team });
+  return {
+    directory,
+    selection,
+    excludeBots: options.bots === false,
+    onlyBots: options.botsOnly === true,
+  };
 }
 
 export function addTimeFilterOptions(command: Command): Command {

@@ -22,6 +22,7 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [Insights](insights.md)                     | Cycle time, review latency, WIP, stale items, flaky steps, sprints  |
 | [Digest](digest.md)                         | What happened in a window, for a standup or a weekly update         |
 | [History](history.md)                       | How many items were open at a past moment, and for whom             |
+| [People](people.md)                         | Mapping GitHub and Jira names to one person, and grouping them      |
 | [Cross links](links.md)                     | How GitHub and Jira references are connected                        |
 | [Audit](audit.md)                           | What is stored locally, whose data it is, and what a sync fetches   |
 | [Web viewer](web.md)                        | The React viewer and the JSON API behind it                         |

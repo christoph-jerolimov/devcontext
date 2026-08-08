@@ -59,6 +59,8 @@ devcontext [options] <command>
   - [`projects`, `project`](#devcontext-jira-projects) — list the Jira projects that have been synced
   - [`fields`, `field`](#devcontext-jira-fields) — list Jira fields and the friendly names configured for them
 - [`tickets`, `ticket`](#devcontext-tickets) — GitHub issues and Jira work items as one list
+- [`people`, `person`](#devcontext-people) — the configured people and bots, with their GitHub and Jira identities
+- [`teams`, `team`](#devcontext-teams) — the configured teams and their members
 - [`serve`, `web`](#devcontext-serve) — serve the React viewer and a JSON API for the local database
 - [`insights`, `report`, `stats`](#devcontext-insights) — cycle time, review latency, work in progress, stale items, flaky steps, sprints
 - [`digest`, `standup`, `summary`](#devcontext-digest) — what happened in a window: shipped, started, reviewed, and still stuck
@@ -224,6 +226,10 @@ devcontext github issues [options] [number]
 | `--updated-since <when>` | — | — | updated at or after (30d, 6w, 2024-01-31) |
 | `--updated-before <when>` | — | — | updated before, i.e. untouched since then |
 | `--stale <duration>` | — | — | only items not updated for this long (e.g. 90d) |
+| `--person <id>` | — | — | only items involving this configured person, repeatable |
+| `--team <id>` | — | — | only items involving a member of this team, repeatable |
+| `--no-bots` | — | — | hide items written by a bot |
+| `--bots-only` | — | — | only items written by a bot |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
@@ -264,6 +270,10 @@ devcontext github prs [options] [number]
 | `--updated-since <when>` | — | — | updated at or after (30d, 6w, 2024-01-31) |
 | `--updated-before <when>` | — | — | updated before, i.e. untouched since then |
 | `--stale <duration>` | — | — | only items not updated for this long (e.g. 90d) |
+| `--person <id>` | — | — | only items involving this configured person, repeatable |
+| `--team <id>` | — | — | only items involving a member of this team, repeatable |
+| `--no-bots` | — | — | hide items written by a bot |
+| `--bots-only` | — | — | only items written by a bot |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
@@ -823,6 +833,8 @@ devcontext tickets [options]
 | `-t, --type <type>` | — | — | Bug, Story, Issue, ... repeatable |
 | `-s, --state <state>` | — | `all` | open, closed or all |
 | `--assignee <name>` | — | — | assigned to this person |
+| `--person <id>` | — | — | raised by or assigned to this configured person, repeatable |
+| `--team <id>` | — | — | raised by or assigned to a member of this team, repeatable |
 | `--types` | — | — | list the types present and how many carry each, instead |
 | `--containers` | — | — | list the repositories and projects present, instead |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
@@ -830,6 +842,41 @@ devcontext tickets [options]
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
 | `--offset <count>` | — | — | skip this many rows |
 | `--search <text>` | — | — | match text in the title / summary / body |
+
+## `devcontext people`
+
+Alias: `person`
+
+The configured people and bots, with their GitHub and Jira identities
+
+```
+devcontext people [options]
+```
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `--team <id>` | — | — | only members of this team, repeatable |
+| `--bots-only` | — | — | only the configured bots |
+| `--no-bots` | — | — | only the humans |
+| `--identities` | — | — | one row per identity, with what the data knows about it |
+| `--unmapped` | — | — | names found in the data that belong to nobody, busiest first |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+
+## `devcontext teams`
+
+Alias: `team`
+
+The configured teams and their members
+
+```
+devcontext teams [options]
+```
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 
 ## `devcontext serve`
 

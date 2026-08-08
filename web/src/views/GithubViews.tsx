@@ -11,6 +11,7 @@ import {
   useSelection,
 } from '../components/common.tsx';
 import { DetailPanel } from '../components/DetailPanel.tsx';
+import { usePeopleFilter } from '../components/PeopleFilter.tsx';
 import { useUrlState } from '../router.ts';
 
 /** `acme/platform#42` — the reference the URL carries and the API needs. */
@@ -48,6 +49,7 @@ export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
   // end of one, and a list that hides them reads as if nothing was finished.
   const [state, setState] = useUrlState('state', 'all');
   const [search, setSearch] = useUrlState('search');
+  const people = usePeopleFilter();
 
   const detail = useSelection((reference) => {
     const parts = splitReference(reference);
@@ -56,8 +58,15 @@ export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
   });
 
   const { data, error, loading } = useAsync<Issue[]>(
-    () => api.issues({ repo: repo || undefined, state, search: search || undefined, limit: '200' }),
-    [repo, state, search],
+    () =>
+      api.issues({
+        repo: repo || undefined,
+        state,
+        search: search || undefined,
+        ...people.params,
+        limit: '200',
+      }),
+    [repo, state, search, people.key],
   );
 
   return (
@@ -72,6 +81,7 @@ export function IssuesView({ repos }: { repos: Repository[] }): ReactNode {
               <option value="closed">closed</option>
               <option value="all">all</option>
             </select>
+            {people.control}
             <input
               type="search"
               placeholder="search title and body"
@@ -138,6 +148,7 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
   // end of one, and hiding them makes the list read as if nothing shipped.
   const [state, setState] = useUrlState('state', 'all');
   const [search, setSearch] = useUrlState('search');
+  const people = usePeopleFilter();
 
   const detail = useSelection((reference) => {
     const parts = splitReference(reference);
@@ -146,8 +157,15 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
   });
 
   const { data, error, loading } = useAsync<PullRequest[]>(
-    () => api.pulls({ repo: repo || undefined, state, search: search || undefined, limit: '200' }),
-    [repo, state, search],
+    () =>
+      api.pulls({
+        repo: repo || undefined,
+        state,
+        search: search || undefined,
+        ...people.params,
+        limit: '200',
+      }),
+    [repo, state, search, people.key],
   );
 
   return (
@@ -162,6 +180,7 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
               <option value="closed">closed</option>
               <option value="all">all</option>
             </select>
+            {people.control}
             <input
               type="search"
               placeholder="search title and body"

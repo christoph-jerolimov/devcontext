@@ -11,6 +11,7 @@ import type { ExportSummary } from '../exporters/index.js';
 import { buildStateHistory } from '../history/build.js';
 import type { StateHistoryStats } from '../history/build.js';
 import { buildCrossLinks } from '../links/build.js';
+import { storeDirectory } from '../people/store.js';
 import { buildSearchIndex } from '../search/index.js';
 import type { SearchIndexStats } from '../search/index.js';
 import type { BuildLinksResult } from '../links/build.js';
@@ -108,6 +109,10 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       }
       return summary;
     }
+
+    // Mirrored once per run rather than per project: people and teams are
+    // configured globally and belong to no single project.
+    if (!options.dryRun) storeDirectory(db, config);
 
     const plans: Array<{ plan: TargetPlan; announce: string }> = [];
 

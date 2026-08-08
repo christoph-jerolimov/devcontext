@@ -132,6 +132,10 @@ body, every comment and the full timeline.
 | `--search <text>`      | Substring of the title or body           |
 | `--sort <field>`       | `updated` (default), `created`, `number` |
 | `--order <direction>`  | `desc` (default), `asc`                  |
+| `--person <id>`        | Raised by or assigned to this person     |
+| `--team <id>`          | Raised by or assigned to a team member   |
+| `--no-bots`            | Hide items written by a bot              |
+| `--bots-only`          | Only items written by a bot              |
 | time filters           | see above                                |
 
 ```bash
@@ -155,6 +159,10 @@ In addition to the issue options:
 | `--base <ref>`             | Target branch               |
 | `--draft` / `--no-draft`   | Only / never drafts         |
 | `--merged` / `--no-merged` | Only merged / only unmerged |
+
+`--person`, `--team`, `--no-bots` and `--bots-only` work here too — see
+[People](people.md). `--no-bots` on an open pull request list is usually what
+you want: it takes the dependency updates out without naming them.
 
 `--state` defaults to **`all`**, as `gh issues` does. A merged pull request is
 the normal end of one, so a list that hid them would read as if nothing had
@@ -342,6 +350,8 @@ them.
 | `-t, --type <type>`      | `Bug`, `Story`, `Issue`, ... repeatable                 |
 | `-s, --state <state>`    | `open`, `closed` or `all` (default)                     |
 | `--assignee <name>`      | Assigned to this person                                 |
+| `--person <id>`          | Raised by or assigned to this configured person         |
+| `--team <id>`            | Raised by or assigned to a member of this team          |
 | `--search <text>`        | Substring of the title or the body                      |
 | `--types`                | List the types present and how many carry each, instead |
 | `--containers`           | List the repositories and projects present, instead     |
@@ -380,6 +390,39 @@ category it belongs to, so a work item counts as closed when its category is
 `Done` — the same rule [History](history.md) uses. The original word is kept as
 the status, so the table shows `In Progress` rather than flattening it to
 `open`.
+
+## `devcontext people` (alias `person`)
+
+The configured people and bots, with the GitHub and Jira identities each of
+them answers to. See [People](people.md) for the configuration itself.
+
+| Option         | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| `--team <id>`  | Only members of this team, repeatable                        |
+| `--bots-only`  | Only the configured bots                                     |
+| `--no-bots`    | Only the humans                                              |
+| `--identities` | One row per identity, with what the data knows about it      |
+| `--unmapped`   | Names found in the data that belong to nobody, busiest first |
+
+```bash
+devcontext people
+devcontext people --identities        # is every configured login actually used?
+devcontext people --unmapped          # who is missing from the configuration?
+devcontext people --team platform --no-bots
+```
+
+`--identities` counts per identity rather than per person on purpose: a login
+with a typo in it looks exactly like a quiet colleague until the two are next
+to each other.
+
+## `devcontext teams` (alias `team`)
+
+The configured teams and their members.
+
+```bash
+devcontext teams
+devcontext teams -o json
+```
 
 ## `devcontext search <query...>` (aliases `find`, `q`)
 
