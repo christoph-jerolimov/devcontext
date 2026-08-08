@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 
 import { api } from '../api.ts';
-import type { HistoryResponse, OpenOnDay } from '../api.ts';
+import type { ClosedResponse, HistoryResponse, RunsResponse, StatusResponse } from '../api.ts';
+import { AreaChart, StackedBarChart } from '../components/Charts.tsx';
 import { Panel, StateMessage, useAsync } from '../components/common.tsx';
+import { usePeopleFilter } from '../components/PeopleFilter.tsx';
 import { useUrlState } from '../router.ts';
 
 const WINDOWS = [
@@ -13,60 +15,182 @@ const WINDOWS = [
 ];
 
 /**
- * How many items were open, day by day.
+ * The shape of the work over time, as four charts.
  *
- * No other view can answer this. An item opened in January, closed in February
- * and reopened in March is one row saying "open", and that row reads the same
- * whichever month you ask about — so the shape comes from `state_changes`,
- * which keeps the transitions rather than the outcome. See docs/history.md.
+ * Three of them are balances — how many were open on each day — and no other
+ * view can answer that: an item opened in January, closed in February and
+ * reopened in March is one row saying "open", and that row reads the same
+ * whichever month you ask about. They come from `state_changes`, which keeps
+ * the transitions rather than the outcome. See docs/history.md.
+ *
+ * The last two are counts of events inside the window rather than balances,
+ * which is a different question with a different right answer, so they come
+ * from the items themselves.
  */
 export function HistoryView(): ReactNode {
   const [days, setDays] = useUrlState('days', '30');
-  const [source, setSource] = useUrlState('source');
+  const [container, setContainer] = useUrlState('container');
+  const people = usePeopleFilter();
 
-  const { data, error, loading } = useAsync<HistoryResponse>(() => {
-    const to = new Date();
-    const from = new Date(to.getTime() - (Number(days) - 1) * 86_400_000);
-    return api.history({
-      from: from.toISOString(),
-      to: to.toISOString(),
-      source: source || undefined,
-    });
-  }, [days, source]);
+  const to = new Date();
+  const from = new Date(to.getTime() - (Number(days) - 1) * 86_400_000);
+  const window = { from: from.toISOString(), to: to.toISOString() };
+  const scope = { ...window, container: container || undefined };
 
-  const rows = data?.days ?? [];
+  const status = useAsync<StatusResponse>(() => api.status(), []);
+  const repositories = status.data?.filters.containers.github ?? [];
+  const projects = status.data?.filters.containers.jira ?? [];
+
+  const tickets = useAsync<HistoryResponse>(() => api.history(scope), [days, container]);
+  const issues = useAsync<HistoryResponse>(
+    () => api.history({ ...scope, source: 'github', kind: 'issue' }),
+    [days, container],
+  );
+  const pulls = useAsync<HistoryResponse>(
+    () => api.history({ ...scope, source: 'github', kind: 'pull_request' }),
+    [days, container],
+  );
+  const runs = useAsync<RunsResponse>(() => api.runsPerDay(scope), [days, container]);
+  const closed = useAsync<ClosedResponse>(
+    () => api.closedPerDay({ ...scope, ...people.params }),
+    [days, container, people.key],
+  );
+
+  const containerControl =
+    repositories.length + projects.length === 0 ? null : (
+      <select
+        value={container}
+        aria-label="Repository or project"
+        onChange={(event) => setContainer(event.target.value)}
+      >
+        <option value="">Everywhere</option>
+        {repositories.length > 0 ? (
+          <optgroup label="Repositories">
+            {repositories.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {projects.length > 0 ? (
+          <optgroup label="Jira projects">
+            {projects.map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+      </select>
+    );
 
   return (
     <div className="stack">
       <Panel
-        title="Open over time"
+        title="Open tickets"
         actions={
           <>
-            <select value={source} onChange={(event) => setSource(event.target.value)}>
-              <option value="">Both sources</option>
-              <option value="github">GitHub</option>
-              <option value="jira">Jira</option>
-            </select>
+            {containerControl}
             <select value={days} onChange={(event) => setDays(event.target.value)}>
-              {WINDOWS.map((window) => (
-                <option key={window.value} value={window.value}>
-                  {window.label}
+              {WINDOWS.map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
                 </option>
               ))}
             </select>
           </>
         }
       >
-        <StateMessage
-          loading={loading}
-          error={error}
-          empty={rows.length === 0}
-          emptyMessage='No history yet. It is built after every sync — or run "devcontext history --rebuild".'
+        <OpenPanel
+          state={tickets}
+          label="Open tickets per day"
+          empty='No history yet. It is built after every sync — or run "devcontext history --rebuild".'
         />
-        {rows.length > 0 ? <OpenChart days={rows} /> : null}
       </Panel>
 
-      {(data?.byAssignee.length ?? 0) > 0 ? (
+      <Panel title="Open GitHub issues">
+        <OpenPanel
+          state={issues}
+          label="Open GitHub issues per day"
+          empty="No GitHub issues in this window."
+        />
+      </Panel>
+
+      <Panel title="Open pull requests">
+        <OpenPanel
+          state={pulls}
+          label="Open pull requests per day"
+          empty="No pull requests in this window."
+        />
+      </Panel>
+
+      <Panel title="Pull requests finished per day" actions={people.control}>
+        {/*
+         * Split by whether they were merged, because one number cannot say
+         * whether a week of closing twelve pull requests went well. The
+         * person filter is here and not on the charts above: those are
+         * balances over every item, and "Ada's open pull requests on the 3rd
+         * of March" needs an assignee history rather than the current row.
+         */}
+        <StateMessage
+          loading={closed.loading}
+          error={closed.error}
+          empty={(closed.data?.days.length ?? 0) === 0}
+          emptyMessage="Nothing finished in this window."
+        />
+        {closed.data && closed.data.days.length > 0 ? (
+          <StackedBarChart
+            label="Pull requests finished per day"
+            legend={[
+              { key: 'merged', className: 'bar-merged' },
+              { key: 'closed unmerged', className: 'bar-discarded' },
+            ]}
+            bars={closed.data.days.map((day) => ({
+              day: day.day,
+              segments: [
+                { key: 'merged', value: day.merged, className: 'bar-merged' },
+                { key: 'discarded', value: day.discarded, className: 'bar-discarded' },
+              ],
+              title: `${day.day}: ${String(day.total)} finished — ${String(day.merged)} merged, ${String(day.discarded)} closed unmerged`,
+            }))}
+            caption={` · ${String(closed.data.days.reduce((sum, day) => sum + day.merged, 0))} merged and ${String(closed.data.days.reduce((sum, day) => sum + day.discarded, 0))} thrown away in the window`}
+          />
+        ) : null}
+      </Panel>
+
+      <Panel title="Workflow runs per day">
+        <StateMessage
+          loading={runs.loading}
+          error={runs.error}
+          empty={(runs.data?.days.length ?? 0) === 0}
+          emptyMessage="No workflow runs in this window."
+        />
+        {runs.data && runs.data.days.length > 0 ? (
+          <StackedBarChart
+            label="Workflow runs per day by conclusion"
+            legend={[
+              { key: 'success', className: 'bar-success' },
+              { key: 'failure', className: 'bar-failure' },
+              { key: 'cancelled', className: 'bar-cancelled' },
+              { key: 'other', className: 'bar-other' },
+            ]}
+            bars={runs.data.days.map((day) => ({
+              day: day.day,
+              segments: [
+                { key: 'success', value: day.success, className: 'bar-success' },
+                { key: 'failure', value: day.failure, className: 'bar-failure' },
+                { key: 'cancelled', value: day.cancelled, className: 'bar-cancelled' },
+                { key: 'other', value: day.other, className: 'bar-other' },
+              ],
+              title: `${day.day}: ${String(day.total)} run(s) — ${String(day.success)} success, ${String(day.failure)} failure, ${String(day.cancelled)} cancelled, ${String(day.other)} other`,
+            }))}
+            caption={` · ${String(runs.data.days.reduce((sum, day) => sum + day.failure, 0))} failed of ${String(runs.data.days.reduce((sum, day) => sum + day.total, 0))} in the window`}
+          />
+        ) : null}
+      </Panel>
+
+      {(tickets.data?.byAssignee.length ?? 0) > 0 ? (
         <Panel title="Open per person, now">
           <table className="table">
             <thead>
@@ -77,14 +201,14 @@ export function HistoryView(): ReactNode {
               </tr>
             </thead>
             <tbody>
-              {(data?.byAssignee ?? []).map((entry) => (
+              {(tickets.data?.byAssignee ?? []).map((entry) => (
                 <tr key={entry.assignee}>
                   <td>{entry.assignee}</td>
                   <td className="right">{entry.open}</td>
                   <td>
                     <Meter
                       value={entry.open}
-                      peak={Math.max(...(data?.byAssignee ?? []).map((row) => row.open), 1)}
+                      peak={Math.max(...(tickets.data?.byAssignee ?? []).map((row) => row.open), 1)}
                     />
                   </td>
                 </tr>
@@ -97,89 +221,41 @@ export function HistoryView(): ReactNode {
   );
 }
 
-const WIDTH = 720;
-const HEIGHT = 200;
-const PADDING = { top: 12, right: 8, bottom: 22, left: 34 };
-
-/**
- * The balance as an area, with what crossed in and out as bars beneath it.
- *
- * Drawn as plain SVG rather than pulled from a charting library: the shape is
- * a line and some rectangles, and a dependency for that would outweigh it.
- * A `viewBox` with no fixed width makes it scale to the panel, so there is no
- * resize handler either.
- */
-function OpenChart({ days }: { days: OpenOnDay[] }): ReactNode {
-  const peak = Math.max(...days.map((day) => day.open), 1);
-  const plotWidth = WIDTH - PADDING.left - PADDING.right;
-  const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
-
-  const x = (index: number): number =>
-    PADDING.left + (days.length <= 1 ? plotWidth / 2 : (index / (days.length - 1)) * plotWidth);
-  const y = (value: number): number => PADDING.top + plotHeight - (value / peak) * plotHeight;
-
-  const line = days.map((day, index) => `${index === 0 ? 'M' : 'L'}${x(index)},${y(day.open)}`);
-  const area = [
-    ...line,
-    `L${x(days.length - 1)},${PADDING.top + plotHeight}`,
-    `L${x(0)},${PADDING.top + plotHeight}`,
-    'Z',
-  ];
-
-  // Enough labels to read the axis, never so many that they collide.
-  const every = Math.max(1, Math.ceil(days.length / 6));
+/** One open-over-time chart, with the loading and empty states around it. */
+function OpenPanel({
+  state,
+  label,
+  empty,
+}: {
+  state: { data: HistoryResponse | null; error: string | null; loading: boolean };
+  label: string;
+  empty: string;
+}): ReactNode {
+  const rows = state.data?.days ?? [];
+  const opened = rows.reduce((sum, day) => sum + day.opened, 0);
+  const closed = rows.reduce((sum, day) => sum + day.closed, 0);
+  const peak = Math.max(...rows.map((day) => day.open), 0);
 
   return (
-    <figure className="chart">
-      <svg
-        viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`Open items per day, from ${days[0]?.day ?? ''} to ${days.at(-1)?.day ?? ''}, peaking at ${String(peak)}`}
-      >
-        {[0, peak].map((value) => (
-          <g key={value}>
-            <line
-              className="chart-grid"
-              x1={PADDING.left}
-              x2={WIDTH - PADDING.right}
-              y1={y(value)}
-              y2={y(value)}
-            />
-            <text className="chart-label" x={PADDING.left - 6} y={y(value) + 4} textAnchor="end">
-              {value}
-            </text>
-          </g>
-        ))}
-
-        <path className="chart-area" d={area.join(' ')} />
-        <path className="chart-line" d={line.join(' ')} />
-
-        {days.map((day, index) => (
-          <g key={day.day}>
-            {/* One transparent column per day, so the native tooltip covers
-                the whole height rather than only the pixel on the line. */}
-            <rect
-              className="chart-hit"
-              x={x(index) - plotWidth / days.length / 2}
-              y={PADDING.top}
-              width={plotWidth / days.length}
-              height={plotHeight}
-            >
-              <title>{`${day.day}: ${String(day.open)} open (+${String(day.opened)} / -${String(day.closed)})`}</title>
-            </rect>
-            {index % every === 0 ? (
-              <text className="chart-label" x={x(index)} y={HEIGHT - 6} textAnchor="middle">
-                {day.day.slice(5)}
-              </text>
-            ) : null}
-          </g>
-        ))}
-      </svg>
-      <figcaption className="muted small">
-        {`${String(days.at(-1)?.open ?? 0)} open now · peak ${String(peak)} · ${String(days.reduce((sum, day) => sum + day.opened, 0))} opened and ${String(days.reduce((sum, day) => sum + day.closed, 0))} closed in the window`}
-      </figcaption>
-    </figure>
+    <>
+      <StateMessage
+        loading={state.loading}
+        error={state.error}
+        empty={rows.length === 0}
+        emptyMessage={empty}
+      />
+      {rows.length > 0 ? (
+        <AreaChart
+          label={label}
+          points={rows.map((day) => ({
+            day: day.day,
+            value: day.open,
+            title: `${day.day}: ${String(day.open)} open (+${String(day.opened)} / -${String(day.closed)})`,
+          }))}
+          caption={`${String(rows.at(-1)?.open ?? 0)} open now · peak ${String(peak)} · ${String(opened)} opened and ${String(closed)} closed in the window`}
+        />
+      ) : null}
+    </>
   );
 }
 
