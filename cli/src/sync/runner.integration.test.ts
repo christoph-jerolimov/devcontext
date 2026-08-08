@@ -177,7 +177,20 @@ const LATE_PULL_AS_ISSUE = {
 
 function route(rawUrl: string): Response {
   const url = new URL(rawUrl);
-  const path = url.pathname;
+  // A second repository answers with the same fixtures below. Only the test
+  // that checks the phase ordering configures one, and what it needs is that
+  // the repository exists and returns the same shapes, not different data.
+  if (url.pathname === '/repos/acme/platform-docs') {
+    return json({
+      id: 556,
+      name: 'platform-docs',
+      full_name: 'acme/platform-docs',
+      default_branch: 'main',
+      open_issues_count: 0,
+      stargazers_count: 0,
+    });
+  }
+  const path = url.pathname.replace('/repos/acme/platform-docs/', '/repos/acme/platform/');
 
   if (mergedDuringTheRun) {
     if (path === '/repos/acme/platform/issues/43') return json(LATE_PULL_AS_ISSUE);
@@ -469,6 +482,34 @@ function route(rawUrl: string): Response {
   }
 
   return new Response(JSON.stringify({ message: `unexpected request ${path}` }), { status: 404 });
+}
+
+/**
+ * Which phase a request belongs to, by shape rather than by name — a
+ * collection, an individual thing a collection named, or something hanging
+ * off an individual thing.
+ */
+function phaseOf(rawUrl: string): 'lists' | 'items' | 'details' | null {
+  const path = new URL(rawUrl).pathname;
+
+  if (/\/(issues|pulls)\/\d+\/(comments|timeline|reviews|commits|files)$/.test(path)) {
+    return 'details';
+  }
+  if (/\/actions\/runs\/\d+\/jobs$/.test(path)) return 'details';
+  if (/\/actions\/jobs\/\d+\/logs$/.test(path)) return 'details';
+  if (/\/sprint\/\d+\/issue$/.test(path)) return 'details';
+
+  if (/\/pulls\/\d+$/.test(path)) return 'items';
+  if (/\/board\/\d+\/sprint$/.test(path)) return 'items';
+
+  if (/\/(issues|labels|milestones|releases)$/.test(path)) return 'lists';
+  if (/\/actions\/(runs|workflows)$/.test(path)) return 'lists';
+  if (path.startsWith('/rest/api/3/search')) return 'lists';
+  if (path === '/rest/agile/1.0/board') return 'lists';
+
+  // The repository, the project, the field catalogue: preludes that belong
+  // to no phase and are not what this test is about.
+  return null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -951,5 +992,75 @@ describe('runSync', () => {
 
     expect(summary.results.map((result) => result.source)).toEqual(['jira']);
     expect(requestedUrls.every((url) => !url.includes('api.github.com'))).toBe(true);
+  });
+
+  describe('the three phases', () => {
+    const TWO_REPOSITORIES = CONFIG_YAML.replace(
+      '      - repo: acme/platform\n',
+      '      - repo: acme/platform\n      - repo: acme/platform-docs\n',
+    );
+
+    it('finishes every list, for every target, before fetching anything they named', async () => {
+      config = parseConfig(TWO_REPOSITORIES, { configPath: join(workspace, 'devcontext.yaml') });
+
+      await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+      });
+
+      const phases = requestedUrls.map(phaseOf).filter((phase) => phase !== null);
+
+      // Both repositories and the Jira project were actually reached, or the
+      // ordering below would hold for an empty run just as well.
+      expect(requestedUrls.some((url) => url.includes('/acme/platform/issues?'))).toBe(true);
+      expect(requestedUrls.some((url) => url.includes('/acme/platform-docs/issues?'))).toBe(true);
+      expect(phases.filter((phase) => phase === 'details').length).toBeGreaterThan(4);
+
+      const lastOf = (phase: string): number => phases.lastIndexOf(phase);
+      const firstOf = (phase: string): number => phases.indexOf(phase);
+
+      expect(lastOf('lists')).toBeLessThan(firstOf('items'));
+      expect(lastOf('items')).toBeLessThan(firstOf('details'));
+    });
+
+    it('leaves the cursor alone when the detail phase fails', async () => {
+      // The list phase writes the issues; the comments come a phase later. A
+      // cursor advanced in between would claim they were synced with comments
+      // that were never fetched, and nothing would ever go back for them.
+      config = parseConfig(
+        CONFIG_YAML.replace('  minDelayMs: 0', '  minDelayMs: 0\n  maxRetries: 0'),
+        {
+          configPath: join(workspace, 'devcontext.yaml'),
+        },
+      );
+
+      const failing = vi.fn<(input: string | URL | Request) => Promise<Response>>(async (input) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        requestedUrls.push(url);
+        if (url.includes('/issues/12/comments')) throw new Error('network went away');
+        return route(url);
+      });
+      vi.stubGlobal('fetch', failing);
+
+      const summary = await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+      });
+
+      expect(summary.results.find((result) => result.source === 'github')?.status).toBe('failed');
+
+      const cursors = readCursors();
+      expect(cursors['github:github.com/acme/platform:issues']).toBeUndefined();
+      // Jira is a separate target and was not affected by the GitHub failure.
+      expect(summary.results.find((result) => result.source === 'jira')?.status).toBe('completed');
+    });
   });
 });

@@ -1,6 +1,7 @@
 import type { JiraProjectTarget } from '../../config/types.js';
 import type { SyncMode } from '../../db/journal.js';
-import type { SyncContext, TargetPlan, TargetSyncResult } from '../../sync/types.js';
+import { SYNC_PHASES } from '../../sync/types.js';
+import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import { CliError, errorMessage } from '../../util/errors.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
@@ -34,10 +35,57 @@ export function planJiraProject(target: JiraProjectTarget, ctx: SyncContext): Ta
   const mode: SyncMode = ctx.full || !hasCursor ? 'initial' : 'incremental';
   const syncer = new JiraProjectSyncer(client, target, ctx, mode, scopePrefix, targetName);
 
+  let runId = 0;
+
   return {
     label: targetName,
     survey: () => syncer.survey(),
-    run: () => runJiraProject(ctx, syncer, mode, targetName),
+
+    begin: () => {
+      runId = ctx.journal.startRun({
+        projectKey: ctx.projectKey,
+        source: 'jira',
+        target: targetName,
+        mode,
+      });
+      syncer.attachRun(runId);
+    },
+
+    runPhase: (phase) => syncer.runPhase(phase),
+
+    finish: (error) => {
+      const base = {
+        runId,
+        source: 'jira' as const,
+        target: targetName,
+        mode,
+        apiCalls: syncer.apiCalls,
+        items: syncer.items,
+      };
+
+      if (error !== null) {
+        const message = errorMessage(error);
+        syncer.abandonOpenOperations(error);
+        ctx.journal.finishRun(runId, {
+          status: 'failed',
+          apiCalls: base.apiCalls,
+          apiCallsExpected: ctx.progress.expectedApiCallCount,
+          itemsSynced: base.items,
+          error: message,
+          details: syncer.summary,
+        });
+        return { ...base, status: 'failed', error: message };
+      }
+
+      ctx.journal.finishRun(runId, {
+        status: 'completed',
+        apiCalls: base.apiCalls,
+        apiCallsExpected: ctx.progress.expectedApiCallCount,
+        itemsSynced: base.items,
+        details: syncer.summary,
+      });
+      return { ...base, status: 'completed' };
+    },
   };
 }
 
@@ -48,66 +96,15 @@ export async function syncJiraProject(
 ): Promise<TargetSyncResult> {
   const plan = planJiraProject(target, ctx);
   await plan.survey();
-  return plan.run();
-}
-
-async function runJiraProject(
-  ctx: SyncContext,
-  syncer: JiraProjectSyncer,
-  mode: SyncMode,
-  targetName: string,
-): Promise<TargetSyncResult> {
-  const runId = ctx.journal.startRun({
-    projectKey: ctx.projectKey,
-    source: 'jira',
-    target: targetName,
-    mode,
-  });
-  syncer.attachRun(runId);
-
-  const callsAtStart = ctx.progress.apiCallCount;
-  const itemsAtStart = ctx.progress.itemCount;
-
-  try {
-    await syncer.run();
-    const result: TargetSyncResult = {
-      runId,
-      source: 'jira',
-      target: targetName,
-      mode,
-      status: 'completed',
-      apiCalls: ctx.progress.apiCallCount - callsAtStart,
-      items: ctx.progress.itemCount - itemsAtStart,
-    };
-    ctx.journal.finishRun(runId, {
-      status: 'completed',
-      apiCalls: result.apiCalls,
-      apiCallsExpected: ctx.progress.expectedApiCallCount,
-      itemsSynced: result.items,
-      details: syncer.summary,
-    });
-    return result;
-  } catch (error) {
-    const message = errorMessage(error);
-    ctx.journal.finishRun(runId, {
-      status: 'failed',
-      apiCalls: ctx.progress.apiCallCount - callsAtStart,
-      apiCallsExpected: ctx.progress.expectedApiCallCount,
-      itemsSynced: ctx.progress.itemCount - itemsAtStart,
-      error: message,
-      details: syncer.summary,
-    });
-    return {
-      runId,
-      source: 'jira',
-      target: targetName,
-      mode,
-      status: 'failed',
-      apiCalls: ctx.progress.apiCallCount - callsAtStart,
-      items: ctx.progress.itemCount - itemsAtStart,
-      error: message,
-    };
+  plan.begin();
+  for (const phase of SYNC_PHASES) {
+    try {
+      await plan.runPhase(phase);
+    } catch (error) {
+      return plan.finish(error);
+    }
   }
+  return plan.finish(null);
 }
 
 /** Syncs one work item immediately, without moving any cursor. */
@@ -185,11 +182,56 @@ export async function syncJiraWorkitem(
   }
 }
 
+/** A resource whose work spans more than one phase, still being accounted. */
+interface OpenOperation {
+  id: number;
+  cursorBefore: string | null;
+  /** Accumulated across phases: the global counter also moves for other targets. */
+  calls: number;
+}
+
+interface WorkitemRef {
+  id: string;
+  key: string;
+}
+
 class JiraProjectSyncer {
   readonly summary: Record<string, number> = {};
   private readonly jiraCtx: JiraContext;
   /** What the survey counted, and for which query, so the walk can reuse it. */
   private surveyed: { jql: string; total: number | null } | null = null;
+
+  /**
+   * Work items whose comments or history the search response did not carry in
+   * full, so a request each is still owed. The rest were written in phase one
+   * and are not here at all.
+   */
+  private readonly needComments: WorkitemRef[] = [];
+  private readonly needChangelog: WorkitemRef[] = [];
+  private readonly needWorklogs: WorkitemRef[] = [];
+  private workitemCount = 0;
+  private workitemsCursor: string | null = null;
+
+  private readonly boardIds: number[] = [];
+  private readonly sprintIds: number[] = [];
+  private sprintItems = 0;
+
+  private readonly openOperations = new Map<string, OpenOperation>();
+
+  /*
+   * The progress counters are global and every target now moves them, so a
+   * delta taken across a phase would bill this target for the others' work.
+   */
+  private ownCalls = 0;
+  private ownItems = 0;
+
+  get apiCalls(): number {
+    return this.ownCalls;
+  }
+
+  get items(): number {
+    return this.ownItems;
+  }
 
   /** Set once the journal run exists, which is after the survey. */
   private runId = 0;
@@ -259,60 +301,146 @@ class JiraProjectSyncer {
     return 1 + Math.max(1, Math.ceil(total / this.ctx.config.sync.pageSize)) + total * perItem;
   }
 
-  async run(): Promise<void> {
-    const { sync } = this.target;
-
-    this.ctx.progress.setPhase(`${this.targetName}: project`);
-    // Sized by the survey; a targeted run has no survey, so it seeds it here.
-    this.ctx.progress.expectFor(`${this.scopePrefix}:project`, 2);
-    await this.syncProject();
-    await this.syncFields();
-
-    if (sync.workitems) await this.operation('workitems', () => this.syncWorkitems());
-    if (sync.boards || sync.sprints) await this.operation('sprints', () => this.syncSprints());
+  async runPhase(phase: SyncPhase): Promise<void> {
+    if (phase === 'lists') return this.listEverything();
+    if (phase === 'items') return this.fetchNamedItems();
+    return this.fetchItemDetails();
   }
 
-  private async operation(resource: string, fn: () => Promise<OperationStats>): Promise<void> {
+  /**
+   * Phase one: the project, the field catalogue, every page of the search, and
+   * the board listing.
+   *
+   * A Jira search already carries the work item in full, and usually its
+   * comments and history too, so most of a project lands here without a request
+   * per item. Only the ones the response truncated are left owing.
+   */
+  private async listEverything(): Promise<void> {
+    const { sync } = this.target;
+
+    this.announce('project');
+    // Sized by the survey; a targeted run has no survey, so it seeds it here.
+    this.ctx.progress.expectFor(`${this.scopePrefix}:project`, 2);
+    await this.slice('project', () => this.syncProject());
+    await this.slice('project', () => this.syncFields());
+
+    if (sync.workitems) {
+      this.announce('workitems');
+      this.beginOperation('workitems');
+      await this.slice('workitems', () => this.listWorkitems());
+    }
+
+    if (sync.boards || sync.sprints) {
+      this.announce('boards');
+      this.beginOperation('sprints');
+      await this.slice('sprints', () => this.listBoards());
+    }
+  }
+
+  /** Phase two: the sprints hanging off each board the listing named. */
+  private async fetchNamedItems(): Promise<void> {
+    if (!this.target.sync.sprints || this.boardIds.length === 0) return;
+    this.announce('sprints');
+    await this.slice('sprints', () => this.listSprints());
+  }
+
+  /** Phase three: what hangs off an individual work item or sprint. */
+  private async fetchItemDetails(): Promise<void> {
+    const { sync } = this.target;
+
+    if (sync.workitems) {
+      this.announce('comments and history');
+      await this.slice('workitems', () => this.fetchWorkitemDetails());
+      this.endOperation('workitems', {
+        items: this.workitemCount,
+        cursor: this.workitemsCursor,
+      });
+    }
+
+    if (sync.boards || sync.sprints) {
+      if (sync.sprints) {
+        this.announce('sprint membership');
+        await this.slice('sprints', () => this.fetchSprintMembership());
+      }
+      this.endOperation('sprints', { items: this.sprintItems, cursor: nowIso() });
+    }
+  }
+
+  private announce(what: string): void {
+    this.ctx.progress.setPhase(`${this.targetName}: ${what}`);
+  }
+
+  /** Runs a slice of one resource's work, billing it to that resource. */
+  private async slice<T>(resource: string, fn: () => Promise<T>): Promise<T> {
+    const callsBefore = this.ctx.progress.apiCallCount;
+    const itemsBefore = this.ctx.progress.itemCount;
+    try {
+      return await fn();
+    } finally {
+      const calls = this.ctx.progress.apiCallCount - callsBefore;
+      this.ownCalls += calls;
+      this.ownItems += this.ctx.progress.itemCount - itemsBefore;
+      const open = this.openOperations.get(resource);
+      if (open) open.calls += calls;
+    }
+  }
+
+  private beginOperation(resource: string): void {
+    if (this.openOperations.has(resource)) return;
     const scope = `${this.scopePrefix}:${resource}`;
     const cursorBefore = this.ctx.journal.getCursor(scope);
-    const operationId = this.ctx.journal.startOperation({
-      runId: this.runId,
-      resource,
-      scope,
+    this.openOperations.set(resource, {
+      id: this.ctx.journal.startOperation({ runId: this.runId, resource, scope, cursorBefore }),
       cursorBefore,
+      calls: 0,
     });
-    const callsBefore = this.ctx.progress.apiCallCount;
-    this.ctx.progress.setPhase(`${this.targetName}: ${resource}`);
+  }
 
-    try {
-      const stats = await fn();
-      this.summary[resource] = stats.items;
-      this.ctx.journal.finishOperation(operationId, {
-        status: 'completed',
-        apiCalls: this.ctx.progress.apiCallCount - callsBefore,
-        itemsSynced: stats.items,
-        cursorAfter: stats.cursor ?? cursorBefore,
+  /**
+   * Closes a resource and advances its cursor, which happens here and nowhere
+   * else — so a resource spanning phases only ends in the last one, and a
+   * cursor never claims work items are synced whose history was never fetched.
+   */
+  private endOperation(resource: string, stats: OperationStats): void {
+    const open = this.openOperations.get(resource);
+    if (!open) return;
+    this.openOperations.delete(resource);
+
+    const scope = `${this.scopePrefix}:${resource}`;
+    const cursor = stats.cursor ?? open.cursorBefore;
+    this.summary[resource] = stats.items;
+
+    this.ctx.journal.finishOperation(open.id, {
+      status: 'completed',
+      apiCalls: open.calls,
+      itemsSynced: stats.items,
+      cursorAfter: cursor,
+    });
+    if (!this.ctx.dryRun) {
+      this.ctx.journal.setState({
+        scope,
+        source: 'jira',
+        target: this.targetName,
+        resource,
+        cursor,
+        runId: this.runId,
+        fullSync: this.mode === 'initial',
       });
-      if (!this.ctx.dryRun) {
-        this.ctx.journal.setState({
-          scope,
-          source: 'jira',
-          target: this.targetName,
-          resource,
-          cursor: stats.cursor ?? cursorBefore,
-          runId: this.runId,
-          fullSync: this.mode === 'initial',
-        });
-      }
-    } catch (error) {
-      this.ctx.journal.finishOperation(operationId, {
-        status: 'failed',
-        apiCalls: this.ctx.progress.apiCallCount - callsBefore,
-        itemsSynced: 0,
-        error: errorMessage(error),
-      });
-      throw error;
     }
+  }
+
+  /** Marks whatever was still in flight as failed, without moving its cursor. */
+  abandonOpenOperations(error: unknown): void {
+    const message = errorMessage(error);
+    for (const open of this.openOperations.values()) {
+      this.ctx.journal.finishOperation(open.id, {
+        status: 'failed',
+        apiCalls: open.calls,
+        itemsSynced: 0,
+        error: message,
+      });
+    }
+    this.openOperations.clear();
   }
 
   private write(table: string, row: Row | null): void {
@@ -346,7 +474,7 @@ class JiraProjectSyncer {
     return `${parts.join(' AND ')} ORDER BY updated ASC`;
   }
 
-  private async syncWorkitems(): Promise<OperationStats> {
+  private async listWorkitems(): Promise<void> {
     const scope = `${this.scopePrefix}:workitems`;
     const since = this.resolveSince(scope);
     const jql = this.buildJql(since);
@@ -362,7 +490,6 @@ class JiraProjectSyncer {
       this.ctx.progress.log(`${total} work item(s) match in ${this.target.projectKey}.`);
     }
 
-    let items = 0;
     let newestUpdate = since;
     let nextPageToken: string | null = null;
     let startAt = 0;
@@ -378,9 +505,9 @@ class JiraProjectSyncer {
       });
 
       for (const raw of page.issues) {
-        const updatedAt = await this.writeWorkitemPayload(raw);
+        const updatedAt = this.writeWorkitemRow(raw);
         if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
-        items += 1;
+        this.workitemCount += 1;
         this.ctx.progress.recordItems();
       }
 
@@ -390,15 +517,18 @@ class JiraProjectSyncer {
       if (nextPageToken === null && startAt === 0) break;
     }
 
-    return { items, cursor: newestUpdate ?? nowIso() };
+    this.workitemsCursor = newestUpdate ?? nowIso();
   }
 
   /**
-   * Writes one work item with its labels, links, attachments, comments and the
-   * complete history. Shared by the search walk and by a targeted sync, so both
-   * store exactly the same rows.
+   * Writes everything the search response carries for one work item: the item,
+   * its labels, links and attachments, and its comments and history when the
+   * response holds them in full.
+   *
+   * Where it was truncated the key is remembered instead, so the request that
+   * completes it is made in the detail phase with the other per item requests.
    */
-  private async writeWorkitemPayload(raw: JsonObject): Promise<string | null> {
+  private writeWorkitemRow(raw: JsonObject): string | null {
     const { sync } = this.target;
     const workitem = { id: str(raw, 'id') ?? '', key: str(raw, 'key') ?? '' };
     const syncedAt = nowIso();
@@ -417,12 +547,41 @@ class JiraProjectSyncer {
         this.write('jira_attachments', row);
       }
     }
-    if (sync.comments) await this.syncComments(raw, workitem);
-    if (sync.changelog) await this.syncChangelog(raw, workitem);
-    if (sync.worklogs) await this.syncWorklogs(workitem);
+
+    if (sync.comments) {
+      const embedded = (raw['fields'] as JsonObject | undefined)?.['comment'];
+      const comments = arr(embedded, 'comments') as JsonObject[];
+      const total = num(embedded, 'total');
+      if (total !== null && comments.length >= total) this.writeComments(comments, workitem);
+      else this.needComments.push(workitem);
+    }
+
+    if (sync.changelog) {
+      const embedded = raw['changelog'];
+      const histories = arr(embedded, 'histories') as JsonObject[];
+      const total = num(embedded, 'total');
+      if (total !== null && histories.length >= total) this.writeChangelog(histories, workitem);
+      else this.needChangelog.push(workitem);
+    }
+
+    // Worklogs are never embedded, so they always owe a request.
+    if (sync.worklogs) this.needWorklogs.push(workitem);
 
     const updatedAt = str(raw, 'fields', 'updated');
     return updatedAt ? new Date(updatedAt).toISOString() : null;
+  }
+
+  /** The follow up requests the search response left owing. */
+  private async fetchWorkitemDetails(): Promise<void> {
+    for (const workitem of this.needComments) {
+      this.writeComments(await this.client.comments(workitem.key), workitem);
+    }
+    for (const workitem of this.needChangelog) {
+      this.writeChangelog(await this.client.changelog(workitem.key), workitem);
+    }
+    for (const workitem of this.needWorklogs) {
+      await this.syncWorklogs(workitem);
+    }
   }
 
   /**
@@ -452,44 +611,19 @@ class JiraProjectSyncer {
       });
     }
 
-    await this.writeWorkitemPayload(raw);
+    this.writeWorkitemRow(raw);
+    await this.fetchWorkitemDetails();
     this.ctx.progress.recordItems();
   }
 
-  /** Uses the comments embedded in the search response when they are complete. */
-  private async syncComments(
-    raw: JsonObject,
-    workitem: { id: string; key: string },
-  ): Promise<void> {
-    const embedded = (raw['fields'] as JsonObject | undefined)?.['comment'];
-    const embeddedComments = arr(embedded, 'comments') as JsonObject[];
-    const total = num(embedded, 'total');
-
-    const comments =
-      total !== null && embeddedComments.length >= total
-        ? embeddedComments
-        : await this.client.comments(workitem.key);
-
+  private writeComments(comments: JsonObject[], workitem: WorkitemRef): void {
     const syncedAt = nowIso();
     for (const comment of comments) {
       this.write('jira_comments', map.mapComment(comment, this.jiraCtx, workitem, syncedAt));
     }
   }
 
-  /** The search expand carries the first page of the history only. */
-  private async syncChangelog(
-    raw: JsonObject,
-    workitem: { id: string; key: string },
-  ): Promise<void> {
-    const embedded = raw['changelog'];
-    const histories = arr(embedded, 'histories') as JsonObject[];
-    const total = num(embedded, 'total');
-
-    const entries =
-      total !== null && histories.length >= total
-        ? histories
-        : await this.client.changelog(workitem.key);
-
+  private writeChangelog(entries: JsonObject[], workitem: WorkitemRef): void {
     const syncedAt = nowIso();
     for (const entry of entries) {
       for (const row of map.mapChangelogEntry(entry, this.jiraCtx, workitem, syncedAt)) {
@@ -506,12 +640,11 @@ class JiraProjectSyncer {
     }
   }
 
-  /** Boards and sprints of the project, including the sprint membership. */
-  private async syncSprints(): Promise<OperationStats> {
+  /** The boards of the project. One call, or none when they are configured. */
+  private async listBoards(): Promise<void> {
     const syncedAt = nowIso();
-    let items = 0;
-
     const scope = `${this.scopePrefix}:boards`;
+
     let boards: JsonObject[];
     if (this.target.boardIds.length > 0) {
       boards = this.target.boardIds.map((id) => ({ id, name: `board-${id}` }));
@@ -523,8 +656,6 @@ class JiraProjectSyncer {
       boards = await this.client.boards(this.target.projectKey);
     }
 
-    this.ctx.progress.expect(boards.length);
-
     for (const board of boards) {
       const boardId = num(board, 'id') ?? 0;
       if (boardId === 0) continue;
@@ -532,32 +663,46 @@ class JiraProjectSyncer {
         'jira_boards',
         map.mapBoard(board, this.jiraCtx.site, this.target.projectKey, syncedAt),
       );
-      items += 1;
+      this.boardIds.push(boardId);
+      this.sprintItems += 1;
+    }
 
-      if (!this.target.sync.sprints) continue;
+    // One call per board is now exact, where before it was a guess.
+    this.ctx.progress.expectFor(`${this.scopePrefix}:board_sprints`, this.boardIds.length);
+  }
 
+  /** The sprints of every board — a list per item, so the item phase. */
+  private async listSprints(): Promise<void> {
+    const syncedAt = nowIso();
+
+    for (const boardId of this.boardIds) {
       const sprints = await this.client.sprints(boardId);
-      this.ctx.progress.expect(sprints.length);
-
       for (const sprint of sprints) {
         const sprintId = num(sprint, 'id') ?? 0;
         this.write('jira_sprints', map.mapSprint(sprint, this.jiraCtx.site, boardId, syncedAt));
-        items += 1;
+        this.sprintIds.push(sprintId);
+        this.sprintItems += 1;
         this.ctx.progress.recordItems();
-
-        const members = await this.client.sprintIssueKeys(sprintId);
-        for (const member of members) {
-          this.write('jira_sprint_workitems', {
-            site: this.jiraCtx.site,
-            sprint_id: sprintId,
-            workitem_id: member.id,
-            workitem_key: member.key,
-          });
-        }
       }
     }
 
-    return { items, cursor: syncedAt };
+    // And one call per sprint, also exact now that they have all been listed.
+    this.ctx.progress.expectFor(`${this.scopePrefix}:sprint_members`, this.sprintIds.length);
+  }
+
+  /** Which work items are in each sprint. */
+  private async fetchSprintMembership(): Promise<void> {
+    for (const sprintId of this.sprintIds) {
+      const members = await this.client.sprintIssueKeys(sprintId);
+      for (const member of members) {
+        this.write('jira_sprint_workitems', {
+          site: this.jiraCtx.site,
+          sprint_id: sprintId,
+          workitem_id: member.id,
+          workitem_key: member.key,
+        });
+      }
+    }
   }
 
   private resolveSince(scope: string): string | null {

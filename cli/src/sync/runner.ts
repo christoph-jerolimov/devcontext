@@ -18,6 +18,7 @@ import { nowIso } from '../util/time.js';
 import { planGithubRepository, syncGithubItem } from '../sources/github/sync.js';
 import { planJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
 import { ProgressReporter } from './progress.js';
+import { SYNC_PHASES } from './types.js';
 import type { SyncContext, TargetPlan, TargetSyncResult } from './types.js';
 
 export type SyncSource = 'github' | 'jira';
@@ -168,9 +169,39 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       );
     }
 
+    /*
+     * Run the targets phase by phase rather than one target at a time.
+     *
+     * Everything is listed first, for every target, before anything a list only
+     * named is fetched, and before anything hanging off an individual item is
+     * fetched. That is the order the data becomes knowable in: after the lists
+     * the counts are exact, so the two phases that dominate a large sync are
+     * priced rather than guessed.
+     *
+     * A target that fails drops out and the rest carry on, which is the same
+     * isolation running them one after another gave.
+     */
     for (const { plan, announce } of plans) {
       logger.info(announce);
-      results.push(await plan.run());
+      plan.begin();
+    }
+
+    const failures = new Map<TargetPlan, unknown>();
+    for (const phase of SYNC_PHASES) {
+      progress.setPhase(phase);
+      for (const { plan } of plans) {
+        if (failures.has(plan)) continue;
+        try {
+          await plan.runPhase(phase);
+        } catch (error) {
+          failures.set(plan, error);
+          logger.debug(`${plan.label} failed during ${phase}: ${errorMessage(error)}`);
+        }
+      }
+    }
+
+    for (const { plan } of plans) {
+      results.push(plan.finish(failures.get(plan) ?? null));
     }
 
     progress.finish();
