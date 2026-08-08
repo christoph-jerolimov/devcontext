@@ -229,6 +229,7 @@ devcontext github issues [options] [number]
 | `--stale <duration>` | — | — | only items not updated for this long (e.g. 90d) |
 | `--person <id>` | — | — | only items involving this configured person, repeatable |
 | `--team <id>` | — | — | only items involving a member of this team, repeatable |
+| `--me` | — | — | shorthand for --person <the id me: names in devcontext.yaml> |
 | `--no-bots` | — | — | hide items written by a bot |
 | `--bots-only` | — | — | only items written by a bot |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
@@ -273,6 +274,7 @@ devcontext github prs [options] [number]
 | `--stale <duration>` | — | — | only items not updated for this long (e.g. 90d) |
 | `--person <id>` | — | — | only items involving this configured person, repeatable |
 | `--team <id>` | — | — | only items involving a member of this team, repeatable |
+| `--me` | — | — | shorthand for --person <the id me: names in devcontext.yaml> |
 | `--no-bots` | — | — | hide items written by a bot |
 | `--bots-only` | — | — | only items written by a bot |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
@@ -836,6 +838,7 @@ devcontext tickets [options]
 | `--assignee <name>` | — | — | assigned to this person |
 | `--person <id>` | — | — | raised by or assigned to this configured person, repeatable |
 | `--team <id>` | — | — | raised by or assigned to a member of this team, repeatable |
+| `--me` | — | — | shorthand for --person <the id me: names in devcontext.yaml> |
 | `--types` | — | — | list the types present and how many carry each, instead |
 | `--containers` | — | — | list the repositories and projects present, instead |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
@@ -864,6 +867,7 @@ devcontext activity [options]
 | `--by-person` | — | — | who was busy in the window, instead of what happened |
 | `--person <id>` | — | — | only items involving this configured person, repeatable |
 | `--team <id>` | — | — | only items involving a member of this team, repeatable |
+| `--me` | — | — | shorthand for --person <the id me: names in devcontext.yaml> |
 | `--no-bots` | — | — | hide items written by a bot |
 | `--bots-only` | — | — | only items written by a bot |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
@@ -967,7 +971,8 @@ devcontext digest [options]
 | `--until <when>` | — | — | end of the window; defaults to now |
 | `-r, --repo <repo>` | — | — | GitHub repository, repeatable |
 | `-p, --project <key>` | — | — | Jira project key, repeatable |
-| `--person <name>` | — | — | only activity by this person, repeatable |
+| `--person <name>` | — | — | a configured person id, or a raw login / display name, repeatable |
+| `--me` | — | — | shorthand for --person <the id me: names in devcontext.yaml> |
 | `--stale-after <duration>` | — | `30d` | age at which open work counts as stale |
 | `--no-stale` | — | — | skip the stale section |
 | `-n, --limit <count>` | — | `10` | rows per section |

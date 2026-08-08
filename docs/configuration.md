@@ -41,6 +41,7 @@ variable with `tokenEnv` instead.
 | `web`      | object               | see below                   | Defaults for `devcontext serve`.     |
 | `github`   | object               | —                           | GitHub hosts and default sync flags. |
 | `jira`     | object               | —                           | Jira sites and default sync flags.   |
+| `me`       | string               | —                           | Which configured person is you.      |
 | `people`   | array                | `[]`                        | Who the names in the data belong to. |
 | `bots`     | array                | `[]`                        | The same, for automations.           |
 | `teams`    | array                | `[]`                        | Groups of the people above.          |

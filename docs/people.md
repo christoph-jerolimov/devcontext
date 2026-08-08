@@ -81,6 +81,31 @@ An unknown member is an error when the configuration loads. An unknown `--team`
 is an error when the command runs. Both could have been "match nothing", and
 both would then be indistinguishable from a quiet week.
 
+### Which one is you
+
+```yaml
+me: grace
+```
+
+`--me` is then shorthand for `--person grace` everywhere `--person` works, and
+`--person me` means the same thing:
+
+```bash
+devcontext github prs --me --state open
+devcontext digest --me --since 1d
+devcontext activity --me
+```
+
+Two rules, both about not guessing:
+
+- **Without `me:` the word means nothing.** `--me` is an error naming the fix,
+  rather than a filter that quietly picks the first person in the list and
+  reports somebody else's work as yours.
+- **A person actually called `me` keeps the name.** The literal id wins.
+
+`me:` must name a configured person; a typo is refused when the configuration
+loads, for the same reason an unknown `--person` is.
+
 ## Filtering by them
 
 `--person` and `--team` are on `issues`, `prs` and `tickets`, and match the

@@ -57,6 +57,8 @@ export class Directory {
   constructor(
     readonly people: readonly Person[],
     readonly teams: readonly Team[],
+    /** The id `me:` names, or null when the configuration does not say. */
+    readonly meId: string | null = null,
   ) {
     for (const person of people) {
       this.byId.set(person.id.toLowerCase(), person);
@@ -67,7 +69,12 @@ export class Directory {
   }
 
   static from(config: ResolvedConfig): Directory {
-    return new Directory(config.people, config.teams);
+    return new Directory(config.people, config.teams, config.me);
+  }
+
+  /** Whoever `me:` names, or nobody. */
+  get me(): Person | undefined {
+    return this.meId === null ? undefined : this.byId.get(this.meId.toLowerCase());
   }
 
   /** True when the configuration says nothing about people at all. */
@@ -75,8 +82,16 @@ export class Directory {
     return this.people.length === 0 && this.teams.length === 0;
   }
 
+  /**
+   * A person by id, with `me` resolving to whoever the configuration says.
+   *
+   * The literal id wins: somebody actually called `me` is still reachable, and
+   * a configuration that names no `me:` leaves the word meaning nothing rather
+   * than silently matching the first person in the list.
+   */
   person(id: string): Person | undefined {
-    return this.byId.get(id.trim().toLowerCase());
+    const wanted = id.trim().toLowerCase();
+    return this.byId.get(wanted) ?? (wanted === 'me' ? this.me : undefined);
   }
 
   team(id: string): Team | undefined {
@@ -135,6 +150,12 @@ export class Directory {
     for (const id of named) {
       const person = this.person(id);
       if (!person) {
+        // `me` gets its own hint: the fix is a `me:` line, not a different id.
+        if (id.trim().toLowerCase() === 'me') {
+          throw new CliError('devcontext.yaml does not say which of the people is you.', {
+            hint: 'Add `me: <person id>` at the top level — see docs/people.md.',
+          });
+        }
         throw new CliError(`Unknown person "${id}".`, {
           hint: this.people.length
             ? `Known people: ${this.people.map((entry) => entry.id).join(', ')}`
