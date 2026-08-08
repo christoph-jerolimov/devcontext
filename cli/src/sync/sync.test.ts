@@ -4,6 +4,13 @@ import { parseConfig } from '../config/load.js';
 import { nullLogger } from '../util/logger.js';
 import { parseReference } from './runner.js';
 import { positionOf, ProgressReporter } from './progress.js';
+import {
+  BOUND_BY_SINCE,
+  describeLargeCollection,
+  LARGE_COLLECTION,
+  warnIfLarge,
+} from './warnings.js';
+import type { LargeCollection } from './warnings.js';
 import { RateLimiter } from './rateLimiter.js';
 
 function createClock() {
@@ -388,5 +395,41 @@ describe('where a phase has got to', () => {
     progress.setPosition({ index: 3, total: 9 });
 
     expect(progress.snapshot.position).toBe('3 of 9');
+  });
+});
+
+function warningReporter(): { progress: ProgressReporter; warnings: string[] } {
+  const warnings: string[] = [];
+  const logger = { ...nullLogger, warn: (message: string) => warnings.push(message) };
+  return { progress: new ProgressReporter({ enabled: false, logger }), warnings };
+}
+
+function found(count: number): LargeCollection {
+  return { target: 'acme/platform', resource: 'pull requests', count, hint: BOUND_BY_SINCE };
+}
+
+describe('warning about an enormous collection', () => {
+  it('warns above the threshold and says what to do about it', () => {
+    const { progress, warnings } = warningReporter();
+
+    expect(warnIfLarge(progress, found(24_318))).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('acme/platform has 24,318 pull requests');
+    expect(warnings[0]).toContain('`since`');
+  });
+
+  it('says nothing at or below it', () => {
+    // Exactly at the threshold is not "more than", and a warning that fires on
+    // a round number nobody chose is a warning people learn to ignore.
+    const { progress, warnings } = warningReporter();
+
+    expect(warnIfLarge(progress, found(LARGE_COLLECTION))).toBe(false);
+    expect(warnIfLarge(progress, found(0))).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
+  it('groups the digits, because 24318 reads as a typo', () => {
+    expect(describeLargeCollection(found(24_318))).toContain('24,318');
+    expect(describeLargeCollection(found(1_000_001))).toContain('1,000,001');
   });
 });

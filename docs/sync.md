@@ -203,6 +203,27 @@ count, and every follow up call an item implies (comments, timeline, reviews,
 commits, files) is known from the configuration. Jira is easier still: a search
 reports how many work items match the JQL.
 
+### When a collection turns out to be enormous
+
+The sizing pass is also where a sync says so:
+
+```
+warn:  acme/platform has 24,318 pull requests. The first sync will fetch all of
+       them and may take a long time. Bound it with `since` to fetch only
+       recent history.
+```
+
+Above ten thousand items in one collection — issues, pull requests, workflow
+runs, Jira work items — the run warns once and carries on. It is your
+repository and your disk, so it is a warning rather than a refusal; what it
+buys is that nobody discovers the scale by watching a progress bar crawl for an
+hour.
+
+The count is the one that will actually be fetched, so a repository with 40,000
+workflow runs and `maxWorkflowRuns: 250` says nothing. A collection the API
+will not count — no `Link` header, no total — cannot be warned about either,
+and is simply discovered as it is walked.
+
 Two costs cannot be probed at all: how many jobs a workflow run has, and how
 many sprints hang off a board. Neither API answers either question without
 listing them, which is the work itself.

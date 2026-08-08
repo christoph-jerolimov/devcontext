@@ -173,6 +173,13 @@ export class ProgressReporter {
     this.render(true);
   }
 
+  /** The same, at warning level, for something worth stopping to read. */
+  warn(message: string): void {
+    this.clearLine();
+    this.options.logger.warn(message);
+    this.render(true);
+  }
+
   finish(summary?: string): void {
     this.clearLine();
     if (summary) this.options.logger.info(summary);

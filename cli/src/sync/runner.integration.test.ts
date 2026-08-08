@@ -11,6 +11,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import { nullLogger } from '../util/logger.js';
+import type { Logger } from '../util/logger.js';
 import { duplicateEvents, type DuplicateEvent } from '../testing/duplicates.js';
 import { runSync } from './runner.js';
 
@@ -159,6 +160,18 @@ function page(url: URL, all: unknown[]): Response {
  */
 let mergedDuringTheRun = false;
 
+/** When set, the issue count probe answers as a repository with 24,318 of them. */
+let hugeRepository = false;
+
+/** A logger that keeps the warnings, so a test can read what a run said. */
+function capturingLogger(): { logger: Logger; warnings: string[] } {
+  const warnings: string[] = [];
+  return {
+    logger: { ...nullLogger, warn: (message: string) => warnings.push(message) },
+    warnings,
+  };
+}
+
 const LATE_PULL_AS_ISSUE = {
   id: 201,
   number: 43,
@@ -253,6 +266,19 @@ function route(rawUrl: string): Response {
     return json([{ id: 3, number: 1, title: 'v1.0', state: 'open' }]);
   }
   if (path === '/repos/acme/platform/issues') {
+    /*
+     * A repository too big to put in a fixture.
+     *
+     * The count probe asks for one item per page and reads the last page
+     * number out of the Link header, so a repository of any size can be
+     * simulated by answering that one request the way a large one would. The
+     * walk that follows still gets the two real issues.
+     */
+    if (hugeRepository && url.searchParams.get('per_page') === '1') {
+      return json([ISSUE], {
+        link: `<${url.origin}${url.pathname}?per_page=1&page=24318>; rel="last"`,
+      });
+    }
     const all = mergedDuringTheRun
       ? [ISSUE, PULL_AS_ISSUE, LATE_PULL_AS_ISSUE]
       : [ISSUE, PULL_AS_ISSUE];
@@ -566,6 +592,7 @@ beforeEach(() => {
   config = parseConfig(CONFIG_YAML, { configPath: join(workspace, 'devcontext.yaml') });
   requestedUrls.length = 0;
   mergedDuringTheRun = false;
+  hugeRepository = false;
 
   vi.stubGlobal('fetch', async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -1205,6 +1232,46 @@ describe('runSync', () => {
       });
 
       expect(requestedUrls.some((url) => url.includes('/labels'))).toBe(true);
+    });
+  });
+
+  describe('warning about an enormous collection', () => {
+    it('says how big it is before fetching any of it', async () => {
+      /*
+       * The survey already asks how many issues there are, to size the bar.
+       * The same answer is worth saying out loud: forty thousand issues is not
+       * a slow sync, it is a different decision, and the moment to make it is
+       * before the first request rather than an hour in.
+       */
+      hugeRepository = true;
+      const { logger, warnings } = capturingLogger();
+
+      await runSync({
+        config,
+        logger,
+        full: false,
+        dryRun: false,
+        progress: true,
+        writeOutputs: false,
+      });
+
+      expect(warnings.join('\n')).toContain('acme/platform has 24,318 issues');
+      expect(warnings.join('\n')).toContain('`since`');
+    });
+
+    it('says nothing about a repository of an ordinary size', async () => {
+      const { logger, warnings } = capturingLogger();
+
+      await runSync({
+        config,
+        logger,
+        full: false,
+        dryRun: false,
+        progress: true,
+        writeOutputs: false,
+      });
+
+      expect(warnings.filter((line) => line.includes('has'))).toEqual([]);
     });
   });
 
