@@ -51,12 +51,13 @@ jira:
       baseUrl: ${apiUrl}
       email: dev@example.com
       token: fixture-token
-      fields:
-        customfield_10016: storyPoints
-        # Without this the work items have no sprint_id, so nothing is ever a
-        # member of a sprint and the burndown draws an empty one. Mapping it is
-        # what the sprint reports need; see docs/sprints.md.
-        customfield_10020: sprint
+      # Deliberately no fields: mapping.
+      #
+      # Story points and the sprint both live in custom fields whose ids differ
+      # per site, and both are needed — by the work item table and by every
+      # sprint report. They are found from the field catalogue instead, and the
+      # burndown screenshot is what proves it: without detection it is empty.
+      # See the custom fields section of docs/configuration.md.
 
 projects:
   - key: platform

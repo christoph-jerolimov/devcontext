@@ -124,6 +124,10 @@ jira:
       # (no default: no mapping) `devcontext jira fields` lists what your site
       # offers. storyPoints, epicLink and sprint fill dedicated columns; any
       # other name lands in the custom_fields JSON column.
+      #
+      # Those three are detected from the field catalogue when they are not
+      # mapped here, so this is usually empty. An entry always wins over
+      # detection — see configuration.md.
       fields: {}
 
   # Defaults for every Jira project below.
