@@ -12,7 +12,10 @@ export interface NavGroup {
 }
 
 export const NAV: NavGroup[] = [
-  { title: 'Start', ids: ['readme', 'getting-started', 'configuration'] },
+  {
+    title: 'Start',
+    ids: ['readme', 'getting-started', 'configuration', 'configuration-reference'],
+  },
   { title: 'Using it', ids: ['sync', 'cli', 'commands', 'search', 'outputs'] },
   { title: 'Reading the data', ids: ['insights', 'digest', 'links', 'database'] },
   { title: 'Surfaces', ids: ['web', 'mcp', 'agent'] },
@@ -23,6 +26,7 @@ const LABELS: Record<string, string> = {
   readme: 'Overview',
   'getting-started': 'Getting started',
   configuration: 'Configuration',
+  'configuration-reference': 'Every setting',
   sync: 'Sync',
   cli: 'CLI guide',
   commands: 'Command reference',

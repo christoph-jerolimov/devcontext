@@ -46,6 +46,9 @@ variable with `tokenEnv` instead.
 Unknown keys are rejected with an error that names the offending path, so typos
 never fail silently.
 
+For all of this in one annotated file, with every value shown at the default it
+already has, see [Every setting](configuration-reference.md).
+
 ## `sync`
 
 ```yaml
