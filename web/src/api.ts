@@ -91,6 +91,8 @@ export interface BurndownResponse {
   days: BurndownDay[];
   /** False when nothing in the sprint carries an estimate. */
   hasPoints: boolean;
+  /** False on a database whose state history predates the points dimension. */
+  pointsAreHistorical: boolean;
 }
 
 export interface VelocityResponse {
@@ -109,6 +111,7 @@ export interface VelocityResponse {
   }>;
   average: { items: number; points: number };
   hasPoints: boolean;
+  pointsAreHistorical: boolean;
 }
 
 export interface PersonOption {

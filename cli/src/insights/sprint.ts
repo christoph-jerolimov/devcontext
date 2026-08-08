@@ -90,6 +90,13 @@ export interface SprintBurndown {
    * which reads as a bug rather than as a choice they made.
    */
   hasPoints: boolean;
+  /**
+   * True when the estimates come from the history rather than from today.
+   *
+   * False only on a database written before the `points` dimension existed and
+   * not yet rebuilt. The next sync rebuilds it; `history --rebuild` does it now.
+   */
+  pointsAreHistorical: boolean;
 }
 
 export interface VelocitySprint {
@@ -112,6 +119,8 @@ export interface Velocity {
   /** Mean completed items and points over the sprints listed. */
   average: { items: number; points: number };
   hasPoints: boolean;
+  /** See `SprintBurndown.pointsAreHistorical`. */
+  pointsAreHistorical: boolean;
 }
 
 interface Transition {
@@ -175,28 +184,93 @@ function sprintMeta(db: Database, sprintId: number): SprintMeta | null {
   };
 }
 
+/** One ±1 row of the points dimension: which estimate an item held, and when. */
+interface PointsTransition {
+  ref: string;
+  value: string;
+  at: string;
+  delta: number;
+}
+
 /**
- * Story points per work item, as they stand today.
+ * Every estimate change, or nothing when the history has none.
  *
- * Deliberately not historical, and the one number here that is not: the
- * changelog records an estimate being changed, but nothing joins that record
- * to a burndown without a fourth dimension in `state_changes`. So a story
- * re-estimated from three to eight is drawn as eight for every day of the
- * sprint, including the days it was a three. It is stated here, and in
- * docs/sprints.md, rather than left for someone to discover from a line that
- * does not match their memory.
+ * `points` is a dimension like the others — an item is a member of exactly one
+ * estimate at a time — so what an item was worth on a given day is the same
+ * prefix sum every other figure here is.
  */
-function pointsByKey(db: Database): Map<string, number> {
+function pointsHistory(db: Database): PointsTransition[] {
+  return db.all<PointsTransition>(
+    `SELECT ref, value, at, delta FROM state_changes
+      WHERE source = 'jira' AND dimension = 'points'
+      ORDER BY at, seq`,
+  );
+}
+
+/** Today's estimates, for a database whose history has not been rebuilt yet. */
+function currentPoints(db: Database): Map<string, number> {
   const rows = db.all<{ key: string; story_points: number | null }>(
     'SELECT key, story_points FROM jira_workitems WHERE story_points IS NOT NULL',
   );
   return new Map(rows.map((row) => [row.key, row.story_points ?? 0]));
 }
 
-function sumPoints(refs: Iterable<string>, points: Map<string, number>): number {
-  let total = 0;
-  for (const ref of refs) total += points.get(ref) ?? 0;
-  return total;
+/**
+ * What each item was estimated at, at one instant.
+ *
+ * Falls back to today's estimates when the history has no points rows at all,
+ * which is a database written before the dimension existed and not yet rebuilt.
+ * The alternative is a burndown of zeroes, and a wrong number told confidently
+ * is worse than an old one told plainly — so the report carries
+ * `pointsAreHistorical: false` and every surface says which it got.
+ */
+class Points {
+  private readonly fallback: Map<string, number>;
+
+  constructor(
+    private readonly rows: readonly PointsTransition[],
+    fallback: Map<string, number>,
+  ) {
+    this.fallback = fallback;
+  }
+
+  static from(db: Database): Points {
+    return new Points(pointsHistory(db), currentPoints(db));
+  }
+
+  get historical(): boolean {
+    return this.rows.length > 0;
+  }
+
+  /** Whether anything at all carries an estimate. */
+  get any(): boolean {
+    return this.rows.length > 0 || this.fallback.size > 0;
+  }
+
+  at(refs: Iterable<string>, when: string): number {
+    if (!this.historical) {
+      let total = 0;
+      for (const ref of refs) total += this.fallback.get(ref) ?? 0;
+      return total;
+    }
+
+    const wanted = new Set(refs);
+    const sums = new Map<string, number>();
+    for (const row of this.rows) {
+      if (row.at > when) break;
+      if (!wanted.has(row.ref)) continue;
+      const key = `${row.ref} ${row.value}`;
+      sums.set(key, (sums.get(key) ?? 0) + row.delta);
+    }
+
+    let total = 0;
+    for (const [key, sum] of sums) {
+      if (sum <= 0) continue;
+      const value = Number(key.slice(key.indexOf(' ') + 1));
+      if (Number.isFinite(value)) total += value;
+    }
+    return total;
+  }
 }
 
 /** One decimal place, because a mean of whole items is not a whole number. */
@@ -231,7 +305,7 @@ export function sprintBurndown(
   const now = options.now ?? new Date().toISOString();
   const membership = transitions(db, 'sprint', String(sprintId));
   const openness = transitions(db, 'state', 'open');
-  const points = pointsByKey(db);
+  const points = Points.from(db);
 
   /*
    * The window.
@@ -258,6 +332,7 @@ export function sprintBurndown(
       scope: { added: 0, removed: 0, changes: [] },
       days: [],
       hasPoints: false,
+      pointsAreHistorical: points.historical,
     };
   }
 
@@ -268,7 +343,7 @@ export function sprintBurndown(
   const today = now.slice(0, 10);
   // Whether the ideal line can be drawn at all, and over which days.
   const idealDays = sprint.startDate && plannedEnd ? grid.length : 0;
-  const committedPoints = sumPoints(committedRefs, points);
+  const committedPoints = points.at(committedRefs, startedAt);
 
   const days: BurndownDay[] = grid.map((day, index) => {
     const endOfDay = `${day}T23:59:59.999Z`;
@@ -296,8 +371,8 @@ export function sprintBurndown(
       inSprint: inSprint.size,
       remaining: remaining.size,
       done: done.size,
-      remainingPoints: sumPoints(remaining, points),
-      donePoints: sumPoints(done, points),
+      remainingPoints: points.at(remaining, endOfDay),
+      donePoints: points.at(done, endOfDay),
       added,
       removed,
       ideal: slope === null ? null : Math.round(committedRefs.size * slope * 100) / 100,
@@ -317,22 +392,23 @@ export function sprintBurndown(
       key: row.ref,
       at: row.at,
       direction: row.delta > 0 ? ('added' as const) : ('removed' as const),
-      points: points.get(row.ref) ?? 0,
+      points: points.at([row.ref], row.at),
     }));
 
   return {
     kind: 'burndown',
     sprint,
     committed: { items: committedRefs.size, points: committedPoints },
-    finalScope: { items: finalRefs.size, points: sumPoints(finalRefs, points) },
-    completed: { items: completedRefs.size, points: sumPoints(completedRefs, points) },
+    finalScope: { items: finalRefs.size, points: points.at(finalRefs, endInstant) },
+    completed: { items: completedRefs.size, points: points.at(completedRefs, endInstant) },
     scope: {
       added: changes.filter((change) => change.direction === 'added').length,
       removed: changes.filter((change) => change.direction === 'removed').length,
       changes,
     },
     days,
-    hasPoints: [...finalRefs, ...committedRefs].some((ref) => points.has(ref)),
+    hasPoints: points.at(new Set([...finalRefs, ...committedRefs]), endInstant) > 0,
+    pointsAreHistorical: points.historical,
   };
 }
 
@@ -369,7 +445,7 @@ export function sprintVelocity(
   );
 
   const openness = transitions(db, 'state', 'open');
-  const points = pointsByKey(db);
+  const points = Points.from(db);
 
   const sprints: VelocitySprint[] = rows.map((row) => {
     const membership = transitions(db, 'sprint', String(row.id));
@@ -388,8 +464,8 @@ export function sprintVelocity(
       state: row.state,
       startDate: row.start_date,
       endDate: row.end_date,
-      committed: { items: committed.size, points: sumPoints(committed, points) },
-      completed: { items: completed.size, points: sumPoints(completed, points) },
+      committed: { items: committed.size, points: points.at(committed, startedAt) },
+      completed: { items: completed.size, points: points.at(completed, endInstant) },
       added: changes.filter((change) => change.delta > 0).length,
       removed: changes.filter((change) => change.delta < 0).length,
       ratio: committed.size > 0 ? Math.round((completed.size / committed.size) * 100) / 100 : null,
@@ -407,5 +483,6 @@ export function sprintVelocity(
       points: mean(sprints.map((sprint) => sprint.completed.points)),
     },
     hasPoints: sprints.some((sprint) => sprint.completed.points > 0 || sprint.committed.points > 0),
+    pointsAreHistorical: points.historical,
   };
 }

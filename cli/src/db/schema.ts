@@ -634,8 +634,8 @@ CREATE TABLE IF NOT EXISTS state_changes (
   ref        TEXT NOT NULL,       -- acme/platform#42 | PLAT-7
   kind       TEXT NOT NULL,       -- issue | pull_request | workitem
   container  TEXT NOT NULL,       -- acme/platform | PLAT
-  dimension  TEXT NOT NULL,       -- state | assignee | sprint
-  value      TEXT NOT NULL,       -- open | alice | 33
+  dimension  TEXT NOT NULL,       -- state | assignee | sprint | points
+  value      TEXT NOT NULL,       -- open | alice | 33 | 5
   at         TEXT NOT NULL,       -- ISO 8601, when the transition happened
   delta      INTEGER NOT NULL,    -- +1 entering, -1 leaving
   -- Two transitions can share a timestamp; the order they were replayed in
