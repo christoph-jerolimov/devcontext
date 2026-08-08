@@ -71,8 +71,35 @@ The list is also the cheap half. A repository with 20,000 issues is 200 list
 pages against 40,000 comment and timeline calls, so a complete walk costs about
 half a percent more and the run gets no slower.
 
-`--full` ignores the stored cursors and downloads everything a second time.
-Use it after changing the sync flags of a repository, or when you suspect a gap.
+### How an item is judged worth a request
+
+Inside that window, each listed item is compared against the copy already
+stored. It is fetched again when one of these is true:
+
+- it has **never been stored**, or the details phase never reached it (an
+  interrupted run leaves the row without them);
+- its `updated_at` is **newer** than the stored one — it genuinely moved;
+- it is **missing a resource that is wanted now**.
+
+The last one is why the database records which per-item resources each item has.
+Turning on a resource that was off — `issueTimeline: false` to `true` — leaves
+every item that has not been touched since looking perfectly current, and
+without that record none of them would ever get a timeline. Not on the next
+sync, not ever, and nothing would say so: the run reports success, the rows are
+all there, and only the history built from those timelines is quietly flat.
+
+Every one of those tests errs towards fetching, because the two mistakes are
+not equally bad. Fetching something already current costs one request. Skipping
+something stale leaves a wrong answer in the database with nothing to indicate
+it.
+
+Upgrading an existing database does not trigger a re-download: what was already
+fetched is inferred per repository from what the tables hold, so only genuinely
+missing resources are collected.
+
+`--full` ignores all of this and downloads everything a second time. It used to
+be the only way out of the situation above; it is now a blunt instrument for
+when you suspect a gap the rules cannot see.
 
 ## What is stored
 

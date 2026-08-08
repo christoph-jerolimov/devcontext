@@ -12,6 +12,8 @@ import { nowIso } from '../../util/time.js';
 import { jobsPerWorkflowRun } from '../../sync/estimates.js';
 import { GithubClient } from './client.js';
 import * as map from './map.js';
+import { needsDetails, withinWindow } from './refresh.js';
+import type { DetailPart, StoredItem } from './refresh.js';
 import type { RepoRef, Row } from './map.js';
 
 interface OperationStats {
@@ -695,9 +697,18 @@ class GithubRepoSyncer {
    */
   private async listIssues(): Promise<void> {
     const scope = `${this.scopePrefix}:issues`;
-    const detailsSince = this.resolveSince(scope);
+    /*
+     * The configured window, not the cursor.
+     *
+     * `since` is the operator saying "I do not care about anything older than
+     * this", and that answer does not move as syncs go by. Whether an item
+     * inside the window is worth a request is a separate question, answered
+     * per item against the copy already stored — see refresh.ts.
+     */
+    const window = this.target.since;
+    const stored = this.storedItems();
 
-    let newestUpdate = detailsSince;
+    let newestUpdate = this.resolveSince(scope);
     let pages = 0;
 
     /*
@@ -723,13 +734,20 @@ class GithubRepoSyncer {
 
       for (const raw of page) {
         const issueNumber = num(raw, 'number') ?? 0;
-        this.writeIssueRow(raw);
         const updatedAt = str(raw, 'updated_at');
-        const stale = detailsSince !== null && updatedAt !== null && updatedAt < detailsSince;
+        const isPull = map.isPullRequest(raw);
+        // Read before the row is overwritten: what is stored now is what the
+        // decision compares against.
+        const before = stored.get(issueNumber);
+        this.writeIssueRow(raw);
 
-        if (!stale) {
+        const wanted = isPull ? this.wantedPullParts() : this.wantedIssueParts();
+        if (
+          withinWindow({ updated_at: updatedAt }, window) &&
+          (this.ctx.full || needsDetails({ updated_at: updatedAt }, before, wanted))
+        ) {
           this.issueRefs.push({ id: num(raw, 'id') ?? 0, number: issueNumber });
-          if (map.isPullRequest(raw)) this.pullRequestNumbers.push(issueNumber);
+          if (isPull) this.pullRequestNumbers.push(issueNumber);
         }
 
         if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
@@ -744,17 +762,29 @@ class GithubRepoSyncer {
     this.issuesCursor = newestUpdate ?? nowIso();
   }
 
-  /** The pull requests the skipped issue walk would have queued. */
+  /**
+   * The pull requests the skipped issue walk would have queued.
+   *
+   * The same two tests the walk applies, run against the stored rows instead
+   * of the listed ones — which is exactly right here, because the stored row
+   * *is* what the completed issues operation left behind. Written twice would
+   * mean a resumed run queueing a different set from the one it was resuming.
+   */
   private recoverPullRequestNumbers(): void {
-    const since = this.resolveSince(`${this.scopePrefix}:issues`);
-    const rows = this.ctx.db.all<{ number: number }>(
-      `SELECT number FROM gh_issues
+    const window = this.target.since;
+    const wanted = this.wantedPullParts();
+    const rows = this.ctx.db.all<{ number: number } & StoredItem>(
+      `SELECT number, updated_at, details_parts, details_synced_at FROM gh_issues
         WHERE host = ? AND repo_full_name = ? AND is_pull_request = 1
-          AND (? IS NULL OR updated_at >= ?)
         ORDER BY number`,
-      [this.target.host.name, this.target.fullName, since, since],
+      [this.target.host.name, this.target.fullName],
     );
-    for (const row of rows) this.pullRequestNumbers.push(row.number);
+
+    for (const row of rows) {
+      if (!withinWindow(row, window)) continue;
+      if (!this.ctx.full && !needsDetails(row, row, wanted)) continue;
+      this.pullRequestNumbers.push(row.number);
+    }
     this.ctx.logger.debug(
       `Resuming ${this.target.fullName}: recovered ${String(rows.length)} pull request(s) from the database.`,
     );
@@ -763,6 +793,65 @@ class GithubRepoSyncer {
   private perIssueCalls(): number {
     const { sync } = this.target;
     return (sync.issueComments ? 1 : 0) + (sync.issueTimeline ? 1 : 0);
+  }
+
+  /** The per-item resources this configuration wants for a plain issue. */
+  private wantedIssueParts(): DetailPart[] {
+    const { sync } = this.target;
+    const parts: DetailPart[] = [];
+    if (sync.issueComments) parts.push('comments');
+    if (sync.issueTimeline) parts.push('timeline');
+    return parts;
+  }
+
+  /**
+   * And for a pull request, which wants everything an issue does and more.
+   *
+   * GitHub models a pull request as an issue, so the sync fetches its comments
+   * and timeline through the issue path and its reviews, commits and files
+   * through the pull request path. Both have to be present for it to count as
+   * fetched, or turning on `pullRequestFiles` alone would leave the pull
+   * requests looking settled.
+   */
+  private wantedPullParts(): DetailPart[] {
+    const { sync } = this.target;
+    const parts = this.wantedIssueParts();
+    if (sync.pullRequestReviews) parts.push('reviews');
+    if (sync.pullRequestComments) parts.push('review_comments');
+    if (sync.pullRequestCommits) parts.push('commits');
+    if (sync.pullRequestFiles) parts.push('files');
+    return parts;
+  }
+
+  /**
+   * What is already stored for this repository, keyed by issue number.
+   *
+   * Read once before the walk rather than per item: a repository with 20,000
+   * issues is one query here against 20,000 otherwise, and the walk is the
+   * part that has to stay cheap.
+   */
+  private storedItems(): Map<number, StoredItem> {
+    const rows = this.ctx.db.all<{ number: number } & StoredItem>(
+      `SELECT number, updated_at, details_parts, details_synced_at
+         FROM gh_issues WHERE host = ? AND repo_full_name = ?`,
+      [this.target.host.name, this.target.fullName],
+    );
+    return new Map(rows.map((row) => [row.number, row]));
+  }
+
+  /**
+   * Records which resources have just been fetched for an item.
+   *
+   * Written after the requests rather than before, so an interrupted sync
+   * leaves the row unstamped and the next run fetches it again. The whole
+   * point is that "we have this" is only ever claimed once it is true.
+   */
+  private stampDetails(number: number, parts: readonly DetailPart[]): void {
+    this.ctx.db.run(
+      `UPDATE gh_issues SET details_parts = ?, details_synced_at = ?
+        WHERE host = ? AND repo_full_name = ? AND number = ?`,
+      [JSON.stringify(parts), nowIso(), this.target.host.name, this.target.fullName, number],
+    );
   }
 
   /** The parts of an issue that arrive with the list page, for free. */
@@ -818,6 +907,14 @@ class GithubRepoSyncer {
         this.write('gh_events', map.mapTimelineEvent(event, this.ref, issue, index, syncedAt));
       });
     }
+
+    /*
+     * A pull request passes through here too and is stamped again, with the
+     * larger set, once its own resources are in. If the run stops in between,
+     * what is recorded is the issue half alone — which is true, and makes the
+     * next run fetch the rest rather than assume it has them.
+     */
+    this.stampDetails(issue.number, this.wantedIssueParts());
   }
 
   /**
@@ -910,6 +1007,9 @@ class GithubRepoSyncer {
         this.write('gh_pull_request_files', map.mapPullRequestFile(file, this.ref, pr, nowIso()));
       }
     }
+
+    // The larger set now that its own resources are in; see writeIssueDetails.
+    this.stampDetails(number, this.wantedPullParts());
   }
 
   /**

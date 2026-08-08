@@ -244,7 +244,10 @@ SELECT number, json_extract(raw, '$.reactions.total_count') AS reactions
 ## Schema changes
 
 The schema is versioned in `meta.schema_version` and created idempotently on
-every start, so opening an older database upgrades it in place. A database
+every start, so opening an older database upgrades it in place.
+`CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so a
+new **column** needs an explicit step — those live in `cli/src/db/migrations.ts`
+and every one is written to be safe to run twice. A database
 written by a _newer_ devcontext is refused with a clear error instead of being
 corrupted.
 
@@ -256,3 +259,14 @@ falls back to scanning — see [search.md](search.md).
 Version 2 added `search_index` and the `synced_at` indexes it needs. Upgrading
 is automatic; the index itself fills in on the next sync, and searching scans
 until it does.
+
+Version 4 added `details_parts` and `details_synced_at` to `gh_issues`, which
+record which per-item resources have been fetched for each item and are what
+decides whether the next sync spends a request on it — see
+[Sync](sync.md#how-an-item-is-judged-worth-a-request). Upgrading backfills them
+rather than leaving them empty: an empty column would mean the first sync after
+upgrading refetched the comments and timeline of every issue in the window. What
+was already fetched is inferred **per repository** from whether the tables hold
+anything for it, because these are repository-level settings — inferring per
+item would be wrong in the obvious way, since an issue nobody ever commented on
+has no comment rows and never will.

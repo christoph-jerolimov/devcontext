@@ -9,7 +9,7 @@
  *    GitHub Enterprise servers or Jira sites can live in the same database;
  *  - `synced_at` records when devcontext last wrote the row.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS meta (
@@ -248,6 +248,18 @@ CREATE TABLE IF NOT EXISTS gh_issues (
   closed_at        TEXT,
   closed_by        TEXT,
   html_url         TEXT,
+  -- Which per-item resources have been fetched for this row, and when.
+  --
+  -- What decides whether the next sync spends a request on it. Comparing the
+  -- listed updated_at against the stored one says whether the item moved; this
+  -- says whether a resource that was switched on since is still missing, which
+  -- a timestamp cannot. See sources/github/refresh.ts.
+  --
+  -- Kept here for pull requests too: GitHub models them as issues and the sync
+  -- walks the issue endpoint, so every pull request has a row in this table and
+  -- one place to look beats two that can disagree.
+  details_parts    TEXT,                -- JSON array: comments, timeline, ...
+  details_synced_at TEXT,
   synced_at        TEXT NOT NULL,
   raw              TEXT NOT NULL,
   PRIMARY KEY (host, id)
