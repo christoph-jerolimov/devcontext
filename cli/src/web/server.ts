@@ -10,6 +10,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
+import * as historyQueries from '../db/queries/history.js';
 import * as ticketQueries from '../db/queries/tickets.js';
 import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
@@ -206,6 +207,36 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       default:
         return undefined;
     }
+  }
+
+  if (area === 'history') {
+    /*
+     * How many items were open per day, which no other endpoint can answer:
+     * the current tables know where an item ended up, not the shape it took
+     * getting there. See docs/history.md.
+     */
+    const to = query.get('to') ?? new Date().toISOString();
+    const from = query.get('from') ?? new Date(Date.now() - 29 * 86_400_000).toISOString();
+
+    return {
+      from,
+      to,
+      days: historyQueries.openByDay(db, {
+        from,
+        to,
+        source: query.get('source') ?? undefined,
+        container: query.get('container') ?? undefined,
+        kind: query.get('kind') ?? undefined,
+        assignee: query.get('assignee') ?? undefined,
+        sprint: query.get('sprint') ?? undefined,
+      }),
+      byAssignee: historyQueries.openByAssignee(db, {
+        at: to,
+        source: query.get('source') ?? undefined,
+        container: query.get('container') ?? undefined,
+        kind: query.get('kind') ?? undefined,
+      }),
+    };
   }
 
   if (area === 'tickets') {

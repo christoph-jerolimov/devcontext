@@ -141,6 +141,20 @@ export interface TicketContainer {
   count: number;
 }
 
+export interface OpenOnDay {
+  day: string;
+  open: number;
+  opened: number;
+  closed: number;
+}
+
+export interface HistoryResponse {
+  from: string;
+  to: string;
+  days: OpenOnDay[];
+  byAssignee: Array<{ assignee: string; open: number }>;
+}
+
 export interface Sprint {
   id: number;
   name: string | null;
@@ -369,6 +383,8 @@ export const api = {
   workflowRuns: (params: Record<string, string | undefined>) =>
     request<WorkflowRun[]>('/api/github/runs', params),
   workflowRun: (id: number) => request<IssueDocument>(`/api/github/runs/${id}`),
+  history: (params: Record<string, string | undefined>) =>
+    request<HistoryResponse>('/api/history', params),
   tickets: (params: Record<string, string | undefined>) =>
     request<TicketsResponse>('/api/tickets', params),
   ticketTypes: (params: Record<string, string | undefined>) =>

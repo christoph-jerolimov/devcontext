@@ -782,3 +782,62 @@ a {
     width: auto;
   }
 }
+
+/* --- charts ------------------------------------------------------------- */
+
+/* No fixed width: the svg carries a viewBox and scales to the panel, so a
+   resize needs no listener and no re-render. */
+.chart svg {
+  width: 100%;
+  height: 200px;
+  display: block;
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chart-area {
+  fill: var(--accent);
+  opacity: 0.12;
+  stroke: none;
+}
+
+/* Invisible, but it is what the native tooltip hangs off. */
+.chart-hit {
+  fill: transparent;
+}
+
+.chart-hit:hover {
+  fill: var(--accent);
+  opacity: 0.08;
+}
+
+.meter {
+  display: inline-block;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-soft);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
