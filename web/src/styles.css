@@ -841,3 +841,69 @@ a {
   height: 100%;
   background: var(--accent);
 }
+
+/*
+ * The activity feed.
+ *
+ * A list rather than a table: the rows are sentences of very different lengths
+ * — a one word status change beside a paragraph of review — and a table would
+ * either clip the long ones or leave the short ones swimming in white space.
+ */
+.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.feed > li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.feed > li:last-child {
+  border-bottom: none;
+}
+
+.feed-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* Pushed to the far end, so the times line up down the right of the feed. */
+.feed-when {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.feed-detail {
+  margin: 4px 0 0;
+  padding-left: 2px;
+  /* Two lines of a comment is enough to know whether to open it. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The same words keep the same colours they have in the other views. */
+.feed-action.is-open {
+  color: var(--open);
+}
+
+.feed-action.is-merged {
+  color: var(--closed);
+}
+
+.feed-action.is-closed {
+  color: var(--failure);
+}
+
+.feed-action.is-warning {
+  color: var(--warning, #9a6700);
+}
+
+.feed-action.is-muted {
+  color: var(--muted);
+}

@@ -59,6 +59,7 @@ devcontext [options] <command>
   - [`projects`, `project`](#devcontext-jira-projects) — list the Jira projects that have been synced
   - [`fields`, `field`](#devcontext-jira-fields) — list Jira fields and the friendly names configured for them
 - [`tickets`, `ticket`](#devcontext-tickets) — GitHub issues and Jira work items as one list
+- [`activity`, `feed`, `changes`](#devcontext-activity) — status changes, comments and reviews across GitHub and Jira, newest first
 - [`people`, `person`](#devcontext-people) — the configured people and bots, with their GitHub and Jira identities
 - [`teams`, `team`](#devcontext-teams) — the configured teams and their members
 - [`serve`, `web`](#devcontext-serve) — serve the React viewer and a JSON API for the local database
@@ -837,6 +838,34 @@ devcontext tickets [options]
 | `--team <id>` | — | — | raised by or assigned to a member of this team, repeatable |
 | `--types` | — | — | list the types present and how many carry each, instead |
 | `--containers` | — | — | list the repositories and projects present, instead |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+| `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
+| `--offset <count>` | — | — | skip this many rows |
+| `--search <text>` | — | — | match text in the title / summary / body |
+
+## `devcontext activity`
+
+Aliases: `feed`, `changes`
+
+Status changes, comments and reviews across GitHub and Jira, newest first
+
+```
+devcontext activity [options]
+```
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `--since <when>` | — | `14d` | events at or after this point (7d, 6w, 2024-01-31) |
+| `--until <when>` | — | — | events before this point |
+| `--source <source>` | — | — | github or jira, repeatable |
+| `-c, --container <name>` | — | — | repository (acme/platform) or Jira project (PLAT), repeatable |
+| `-k, --kind <kind>` | — | — | status, comment or review, repeatable |
+| `--by-person` | — | — | who was busy in the window, instead of what happened |
+| `--person <id>` | — | — | only items involving this configured person, repeatable |
+| `--team <id>` | — | — | only items involving a member of this team, repeatable |
+| `--no-bots` | — | — | hide items written by a bot |
+| `--bots-only` | — | — | only items written by a bot |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |

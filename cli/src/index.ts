@@ -11,6 +11,7 @@ export * as jiraQueries from './db/queries/jira.js';
 export * as historyQueries from './db/queries/history.js';
 export * as ticketQueries from './db/queries/tickets.js';
 export * as peopleQueries from './db/queries/people.js';
+export * as activityQueries from './db/queries/activity.js';
 export { Directory, looksLikeBot } from './people/directory.js';
 export type { PersonSelection } from './people/directory.js';
 export * as insights from './insights/index.js';

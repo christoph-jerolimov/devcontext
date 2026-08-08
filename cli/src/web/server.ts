@@ -13,6 +13,7 @@ import * as crossLinks from '../db/queries/links.js';
 import * as historyQueries from '../db/queries/history.js';
 import * as ticketQueries from '../db/queries/tickets.js';
 import * as peopleQueries from '../db/queries/people.js';
+import * as activityQueries from '../db/queries/activity.js';
 import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
 import { Directory } from '../people/directory.js';
@@ -174,6 +175,43 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
     }
     if (resource !== undefined) return undefined;
     return { people: directory.people, teams: directory.teams };
+  }
+
+  if (area === 'activity') {
+    /*
+     * What people did, as opposed to what the state of things is. The two
+     * cannot be derived from each other: an issue opened, argued over and
+     * closed looks, in the issue list, exactly like one nobody touched.
+     */
+    const filter: activityQueries.ActivityFilter = {
+      since: query.get('since') ?? new Date(Date.now() - 14 * 86_400_000).toISOString(),
+      until: query.get('until') ?? undefined,
+      sources: listParam(query, 'source'),
+      containers: listParam(query, 'container'),
+      kinds: listParam(query, 'kind'),
+      excludeBots: query.get('bots') === 'false',
+      onlyBots: query.get('bots') === 'only',
+      bots: directory.botIdentities(),
+      limit,
+      offset,
+      ...(selection ? { people: { github: selection.github, jira: selection.jira } } : {}),
+    };
+
+    if (resource === 'people') return activityQueries.activityByActor(db, filter);
+    if (resource !== undefined) return undefined;
+
+    return {
+      // The person is resolved here rather than in the viewer, which has the
+      // names but not the identities behind them.
+      events: activityQueries.listActivity(db, filter).map((event) => {
+        const person = directory.identify(event.source, event.actor);
+        return Object.assign(event, {
+          person: person ? { id: person.id, name: person.name, kind: person.kind } : null,
+        });
+      }),
+      total: activityQueries.countActivity(db, filter),
+      kinds: [...activityQueries.ACTIVITY_KINDS],
+    };
   }
 
   if (area === 'status') {

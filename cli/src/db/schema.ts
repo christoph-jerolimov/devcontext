@@ -868,6 +868,16 @@ CREATE INDEX IF NOT EXISTS idx_gh_pull_requests_synced ON gh_pull_requests (sync
 CREATE INDEX IF NOT EXISTS idx_gh_reviews_synced ON gh_reviews (synced_at);
 CREATE INDEX IF NOT EXISTS idx_jira_workitems_synced ON jira_workitems (synced_at);
 CREATE INDEX IF NOT EXISTS idx_jira_comments_synced ON jira_comments (synced_at);
+
+-- The activity feed unions eight tables and orders the result by time, so each
+-- of them is asked for its newest rows. gh_events and jira_changelog already
+-- have an index leading with the column they are filtered on.
+CREATE INDEX IF NOT EXISTS idx_gh_issues_created ON gh_issues (created_at);
+CREATE INDEX IF NOT EXISTS idx_gh_comments_created ON gh_comments (created_at);
+CREATE INDEX IF NOT EXISTS idx_gh_review_comments_created ON gh_review_comments (created_at);
+CREATE INDEX IF NOT EXISTS idx_gh_reviews_submitted ON gh_reviews (submitted_at);
+CREATE INDEX IF NOT EXISTS idx_jira_workitems_created ON jira_workitems (created_at);
+CREATE INDEX IF NOT EXISTS idx_jira_comments_created ON jira_comments (created_at);
 `;
 
 /**

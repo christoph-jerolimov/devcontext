@@ -36,6 +36,7 @@ suite('every list shows every state by default', () => {
 suite('the command surface', () => {
   it('registers every command', () => {
     expect(commandNames().toSorted()).toEqual([
+      'activity',
       'agent',
       'audit',
       'digest',
