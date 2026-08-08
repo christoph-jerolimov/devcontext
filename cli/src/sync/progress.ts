@@ -3,6 +3,8 @@ import { formatDuration } from '../util/time.js';
 
 export interface ProgressSnapshot {
   phase: string;
+  /** `#4021, 5 of 231`, or empty when the phase is not walking a list. */
+  position: string;
   apiCalls: number;
   apiCallsExpected: number;
   items: number;
@@ -26,8 +28,29 @@ export interface ProgressOptions {
  * and calls `expect(240)`, so the percentage stays honest instead of jumping
  * back and forth between phases.
  */
+/** Where a phase has got to, when it is walking a list one item at a time. */
+export interface ProgressPosition {
+  /** The item's own name — `#4021`, `PLAT-7`. Omitted when it has none. */
+  label?: string | undefined;
+  /** One based, so the first item reads "1 of 231" rather than "0 of 231". */
+  index: number;
+  total: number;
+}
+
+/**
+ * A loop index turned into the position a person reads.
+ *
+ * Zero based going in, one based coming out: the first item of a walk is being
+ * fetched, not yet to be fetched, and "0 of 231" says the opposite. Shared by
+ * both syncers so the two cannot disagree about it.
+ */
+export function positionOf(label: string, index: number, total: number): ProgressPosition {
+  return { label, index: index + 1, total };
+}
+
 export class ProgressReporter {
   private phase = '';
+  private position: ProgressPosition | null = null;
   private apiCalls = 0;
   private apiCallsExpected = 0;
   /** Per-slice expectations, set by the survey and revised by the syncers. */
@@ -50,6 +73,7 @@ export class ProgressReporter {
     const elapsedMs = Date.now() - this.startedAt;
     return {
       phase: this.phase,
+      position: this.formatPosition(),
       apiCalls: this.apiCalls,
       apiCallsExpected: this.expectedApiCallCount,
       items: this.items,
@@ -76,9 +100,30 @@ export class ProgressReporter {
     return this.items;
   }
 
+  /**
+   * Starts a phase. Clears any position, because the old one belongs to the
+   * list the previous phase was walking.
+   */
   setPhase(phase: string): void {
     this.phase = phase;
+    this.position = null;
     this.render(true);
+  }
+
+  /**
+   * Says which item of the current list is being fetched.
+   *
+   * The percentage and the estimate already say how much is left overall, and
+   * on a repository with two thousand pull requests they say it in a number
+   * that barely moves for twenty minutes. This is the other half: something
+   * that visibly ticks, and names the thing being waited on.
+   *
+   * Cheap by construction — `render` is throttled, and the string is only
+   * built when a line is actually drawn.
+   */
+  setPosition(position: ProgressPosition | null): void {
+    this.position = position;
+    this.render();
   }
 
   /**
@@ -186,8 +231,18 @@ export class ProgressReporter {
       `${formatDuration(elapsedMs)} elapsed`,
     ];
     if (etaMs !== null && etaMs > 0) parts.push(`~${formatDuration(etaMs)} left`);
-    if (this.phase) parts.push(this.phase);
+    if (this.phase) {
+      const position = this.formatPosition();
+      parts.push(position ? `${this.phase} (currently on ${position})` : this.phase);
+    }
     return parts.join(' | ');
+  }
+
+  private formatPosition(): string {
+    if (!this.position || this.position.total <= 0) return '';
+    const { label, index, total } = this.position;
+    const counted = `${String(index)} of ${String(total)}`;
+    return label ? `${label}, ${counted}` : counted;
   }
 
   private clearLine(): void {

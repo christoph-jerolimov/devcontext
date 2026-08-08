@@ -175,8 +175,19 @@ rate limit headers.
 ## Progress
 
 ```
-[##########--------------]  42% | 615/1442 calls | 388 items | 3m 12s elapsed | ~4m 20s left | acme/platform: pull requests
+[##########--------------]  42% | 615/1442 calls | 388 items | 3m 12s elapsed | ~4m 20s left | acme/platform: pull requests (currently on #4021, 132 of 231)
 ```
+
+The part in brackets is there because the percentage alone is not much comfort
+on a large repository. Two thousand pull requests is twenty minutes in which
+the bar moves a few characters, and a line that says only "pull requests" is
+indistinguishable from one that has hung. The position ticks per item and names
+the one being fetched, so a slow phase looks slow rather than stuck.
+
+It appears on every phase that walks a list one item at a time — the pull
+requests, the comments and timelines, the workflow jobs, the Jira comments and
+history, the sprint membership. A phase walking pages rather than items has no
+position and simply does not show one.
 
 The total is worked out **before anything is fetched**. Every target is sized
 first, in a planning pass that logs what it found:

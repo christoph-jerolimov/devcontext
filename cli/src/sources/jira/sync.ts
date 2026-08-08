@@ -3,6 +3,7 @@ import type { SyncMode } from '../../db/journal.js';
 import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import { CliError, errorMessage } from '../../util/errors.js';
+import { positionOf } from '../../sync/progress.js';
 import { isSyncStopped } from '../../sync/stop.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
@@ -419,6 +420,11 @@ class JiraProjectSyncer {
     this.ctx.progress.setPhase(`${this.targetName}: ${what}`);
   }
 
+  /** Which item of the current list is being fetched; see the GitHub syncer. */
+  private at(label: string, index: number, total: number): void {
+    this.ctx.progress.setPosition(positionOf(label, index, total));
+  }
+
   /** Whether a resource finished in the run being resumed. See the GitHub twin. */
   private done(resource: string): boolean {
     return this.ctx.alreadyDone?.has(resource) === true;
@@ -639,13 +645,16 @@ class JiraProjectSyncer {
 
   /** The follow up requests the search response left owing. */
   private async fetchWorkitemDetails(): Promise<void> {
-    for (const workitem of this.needComments) {
+    for (const [index, workitem] of this.needComments.entries()) {
+      this.at(workitem.key, index, this.needComments.length);
       this.writeComments(await this.client.comments(workitem.key), workitem);
     }
-    for (const workitem of this.needChangelog) {
+    for (const [index, workitem] of this.needChangelog.entries()) {
+      this.at(workitem.key, index, this.needChangelog.length);
       this.writeChangelog(await this.client.changelog(workitem.key), workitem);
     }
-    for (const workitem of this.needWorklogs) {
+    for (const [index, workitem] of this.needWorklogs.entries()) {
+      this.at(workitem.key, index, this.needWorklogs.length);
       await this.syncWorklogs(workitem);
     }
   }
@@ -758,7 +767,8 @@ class JiraProjectSyncer {
 
   /** Which work items are in each sprint. */
   private async fetchSprintMembership(): Promise<void> {
-    for (const sprintId of this.sprintIds) {
+    for (const [index, sprintId] of this.sprintIds.entries()) {
+      this.at(`sprint ${String(sprintId)}`, index, this.sprintIds.length);
       const members = await this.client.sprintIssueKeys(sprintId);
       for (const member of members) {
         this.write('jira_sprint_workitems', {
