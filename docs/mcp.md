@@ -58,6 +58,7 @@ that has a `devcontext.yaml`; `--db` points at a database directly.
 | `list_tickets` / `ticket_types`           | Issues and work items as one list across both trackers, and the type breakdown                                                 |
 | `list_activity` / `activity_by_person`    | Status changes, comments and reviews as one feed, and who did how much of what                                                 |
 | `list_people`                             | The configured people, bots and teams, and which id is `me`                                                                    |
+| `contributors`                            | Who worked on an item and in what capacity; `rollup` reaches everything under an epic                                          |
 | `open_items_history`                      | How many items were open on each day                                                                                           |
 | `cumulative_flow` / `status_times`        | Which status the work sat in day by day, and how long a stay in each one lasts                                                 |
 | `sprint_burndown` / `sprint_velocity`     | Remaining work through a sprint, and completed points across recent sprints                                                    |
@@ -89,6 +90,10 @@ sees and what you see can never drift apart.
 - "Where is work piling up?" (`cumulative_flow` shows the band that swells,
   `status_times` says how long a stay there lasts)
 - "Is this sprint going to land?" (`sprint_burndown` against `sprint_velocity`)
+- "Who should I ask about this ticket?" (`contributors` — the author is often
+  the wrong answer; the person who reviewed it twice is usually the right one)
+- "Who worked on this epic?" (`contributors` with `rollup: true`, which reaches
+  through the child items to the pull requests that implemented them)
 
 ## Implementation notes
 

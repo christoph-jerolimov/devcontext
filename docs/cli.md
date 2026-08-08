@@ -461,6 +461,81 @@ Grouped per **identity**, not per person, for the same reason
 it into Grace would hide exactly the thing worth seeing. See
 [People](people.md).
 
+## `devcontext contributors <ref>` (aliases `who`, `contributor`)
+
+Who worked on an issue, pull request or work item — and, for each of them, what
+they actually did.
+
+The author has always been one column away. Everybody else was four joins away,
+so in practice "who worked on this" got answered with the author alone — which
+names the one person guaranteed not to have reviewed it.
+
+| Option          | Description                                                              |
+| --------------- | ------------------------------------------------------------------------ |
+| `--rollup`      | Include everything beneath it: child work items and linked pull requests |
+| `--role <role>` | Only this capacity                                                       |
+| `--by-item`     | One row per contribution rather than one per person                      |
+| `--rebuild`     | Recompute the table from the synced rows before listing                  |
+
+```bash
+devcontext contributors PLAT-7
+devcontext contributors acme/platform#42
+devcontext contributors PLAT-100 --rollup        # an epic, and everything under it
+devcontext contributors PLAT-7 --role reviewer
+```
+
+```
+WHO           DID                          TIMES  LAST
+Ada Lovelace  author, committer                9  2026-08-04
+Grace Hopper  reviewer, commenter              4  2026-08-05
+Linus         commenter                        1  2026-08-03
+```
+
+### The capacities
+
+| Role               | What it means                                       |
+| ------------------ | --------------------------------------------------- |
+| `author`           | Opened it (a GitHub author, a Jira creator)         |
+| `reporter`         | Reported it on somebody else's behalf               |
+| `assignee`         | It was assigned to them                             |
+| `committer`        | Wrote commits on it                                 |
+| `worked`           | Logged work against it                              |
+| `reviewer`         | Reviewed it                                         |
+| `review_requested` | Was asked to review it, and has not yet             |
+| `commenter`        | Commented on it, in the conversation or on the diff |
+| `merged_by`        | Merged it                                           |
+
+The capacity is the whole point. "Involved" flattens the person who wrote it,
+the person who reviewed it and the person who left one drive-by comment into
+the same word, and no decision anybody makes from this list treats those the
+same. Each row also carries a count — the difference between having been
+present and having carried it.
+
+Two distinctions worth knowing:
+
+- **`review_requested` is not `reviewer`.** GitHub drops a login from the
+  requested list the moment they submit, so what remains is the outstanding
+  asks. Recording it as a review would say somebody looked at a pull request
+  they have not opened.
+- **`reporter` appears only when it differs from the creator.** Jira sets both
+  to the same person on most tickets, and a role that repeats the author on
+  every row says nothing. When they differ it says something real.
+
+### `--rollup`
+
+Nobody contributes to an epic, because an epic is a heading. Asked plainly it
+answers with whoever created the heading, which is true and useless — so the
+command says how many items sit beneath it and offers the rollup.
+
+The rollup takes two hops: **down** the Jira parent links, so a feature reaches
+its stories and an epic reaches everything under both, and **across** the
+[cross references](#devcontext-links-alias-link), so a story reaches the pull
+requests that implemented it. The second hop is the only route from a Jira key
+to the people who wrote and reviewed the code.
+
+The table is derived from rows already synced — no API call adds it — and is
+rebuilt on every sync, so an existing database gets it without fetching a byte.
+
 ## `devcontext people` (alias `person`)
 
 The configured people and bots, with the GitHub and Jira identities each of

@@ -6,9 +6,11 @@ import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
 import * as ticketQueries from '../db/queries/tickets.js';
 import * as activityQueries from '../db/queries/activity.js';
+import * as contributorQueries from '../db/queries/contributors.js';
 import * as historyQueries from '../db/queries/history.js';
 import * as insights from '../insights/index.js';
 import { buildDigest } from '../insights/digest.js';
+import { ROLE_DESCRIPTIONS } from '../contributors/build.js';
 import { Directory } from '../people/directory.js';
 import {
   buildIssueDocument,
@@ -589,6 +591,51 @@ export const TOOLS: Tool[] = [
     run: (args, { db }) => {
       const ref = requiredStr(args, 'ref');
       return { ref: crossLinks.normaliseRef(ref), links: crossLinks.linksFor(db, ref) };
+    },
+  },
+
+  {
+    definition: {
+      name: 'contributors',
+      title: 'Who worked on an item, and in what capacity',
+      description:
+        'The people on one issue, pull request or work item, each with what they actually did — wrote it, reviewed it, committed to it, commented on it, merged it. The author field alone names the one person guaranteed not to have reviewed it. Use rollup on an epic: nobody contributes to a heading, so without it the answer is whoever created the heading.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ref: {
+            type: 'string',
+            description: 'A GitHub reference (owner/repo#42) or a Jira key (PLAT-7).',
+          },
+          rollup: {
+            type: 'boolean',
+            description:
+              'Include everything beneath it: child work items, and the pull requests linked to any of them. The only route from a Jira key to the people who wrote the code.',
+          },
+          role: { type: 'string', description: 'Only this capacity.' },
+        },
+        required: ['ref'],
+      },
+    },
+    run: (args, ctx) => {
+      const ref = requiredStr(args, 'ref');
+      const refs = args['rollup'] === true ? contributorQueries.descendantsOf(ctx.db, ref) : [ref];
+      const role = str(args, 'role');
+      const directory = Directory.from(ctx.config);
+
+      return {
+        ref,
+        covers: refs,
+        people: contributorQueries
+          .contributorsOf(ctx.db, refs)
+          .filter((person) => role === undefined || person.roles.includes(role))
+          .map((person) =>
+            Object.assign(person, {
+              person: directory.identify(person.source, person.identity)?.name ?? null,
+            }),
+          ),
+        roles: ROLE_DESCRIPTIONS,
+      };
     },
   },
 
