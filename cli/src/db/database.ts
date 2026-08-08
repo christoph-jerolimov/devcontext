@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { CliError } from '../util/errors.js';
 import { nowIso } from '../util/time.js';
+import { migrateFrom } from './migrations.js';
 import { SCHEMA_SQL, SCHEMA_VERSION, SEARCH_SCHEMA_SQL } from './schema.js';
 
 export type SqlValue = string | number | bigint | null | Uint8Array;
@@ -96,7 +97,9 @@ export class Database {
         { hint: 'Update the CLI or delete the database and sync again.' },
       );
     } else if (Number(current) < SCHEMA_VERSION) {
-      // Future migrations get applied here; the schema itself is idempotent.
+      // The schema itself is idempotent, but CREATE TABLE IF NOT EXISTS does
+      // nothing to a table that already exists — a new column needs a step.
+      migrateFrom(this, Number(current));
       this.setMeta('schema_version', String(SCHEMA_VERSION));
     }
     this.setMeta('updated_at', nowIso());

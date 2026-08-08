@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { SCHEMA_VERSION } from './schema.js';
 import { Database } from './database.js';
 import { SyncJournal } from './journal.js';
 import * as gh from './queries/github.js';
@@ -72,7 +73,7 @@ describe('schema', () => {
   });
 
   it('records the schema version', () => {
-    expect(db.getMeta('schema_version')).toBe('3');
+    expect(db.getMeta('schema_version')).toBe(String(SCHEMA_VERSION));
   });
 });
 

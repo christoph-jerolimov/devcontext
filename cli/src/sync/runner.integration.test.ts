@@ -801,24 +801,67 @@ describe('runSync', () => {
     expect(issueRequests.every((url) => !url.includes('since='))).toBe(true);
 
     /*
-     * What the cursor bounds instead is the request per item, which is where
-     * the cost of a sync actually is.
+     * What is bounded instead is the request per item, which is where the cost
+     * of a sync actually is — and the bound is now per item rather than a
+     * watermark.
      *
-     * Issue 12 last changed on 2024-02-01 and the cursor stands at 2024-03-01,
-     * so the second run listed it and asked nothing further about it. Pull
-     * request 42 sits exactly on the cursor and is fetched again — the
-     * boundary item always is, so that nothing can fall through it, and
-     * writing it a second time changes nothing because every write is an
-     * upsert.
+     * Nothing in the fixture changed between the two runs, so the second run
+     * asks nothing further about anything. Under the old watermark the item
+     * sitting exactly on the cursor was fetched again every time, because
+     * "at or after the cursor" cannot tell "changed" from "changed last time";
+     * comparing each item against the copy already stored can.
      */
     const perItem = requestedUrls.filter((url) =>
       /\/(comments|timeline|reviews|commits|files)(\?|$)/.test(url),
     );
-    expect(perItem.some((url) => url.includes('/issues/12/'))).toBe(false);
-    expect(perItem.some((url) => url.includes('/42/'))).toBe(true);
+    expect(perItem).toEqual([]);
 
     const jqlRequest = requestedUrls.find((url) => url.includes('/search/jql'));
     expect(jqlRequest).toBeDefined();
+  });
+
+  it('fetches a resource that was switched on after the first sync', async () => {
+    /*
+     * The hole a watermark could not see, and the reason this is worth a test
+     * at the sync level rather than only on the decision function.
+     *
+     * Sync once with `issueTimeline: false`, then turn it on. Every item is
+     * older than the cursor, so a watermark skipped all of them — for ever.
+     * Nothing indicated it: the run reported success, the rows were all there,
+     * and only the state history built from those timelines was quietly flat.
+     */
+    const withoutTimeline = parseConfig(
+      CONFIG_YAML.replace(
+        '          workflowLogs: true',
+        '          workflowLogs: true\n          issueTimeline: false',
+      ),
+      { configPath: join(workspace, 'devcontext.yaml') },
+    );
+
+    await runSync({
+      config: withoutTimeline,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    expect(snapshot().events).toBe(0);
+    requestedUrls.length = 0;
+
+    // The same database, the same unchanged items, one setting turned on.
+    await runSync({
+      config,
+      logger: nullLogger,
+      full: false,
+      dryRun: false,
+      progress: false,
+      writeOutputs: false,
+    });
+
+    expect(requestedUrls.some((url) => /\/timeline(\?|$)/.test(url))).toBe(true);
+    expect(snapshot().events).toBeGreaterThan(0);
   });
 
   it('keeps everything exactly once when a pull request lands between two runs', async () => {
