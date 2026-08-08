@@ -3,6 +3,7 @@ import type { SyncMode } from '../../db/journal.js';
 import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import { CliError, errorMessage } from '../../util/errors.js';
+import { isSyncStopped } from '../../sync/stop.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
 import { nowIso } from '../../util/time.js';
@@ -28,6 +29,7 @@ export function planJiraProject(target: JiraProjectTarget, ctx: SyncContext): Ta
     settings: ctx.config.sync,
     progress: ctx.progress,
     logger: ctx.logger,
+    ...(ctx.signal ? { signal: ctx.signal } : {}),
   });
 
   const targetName = `${target.site.name}/${target.projectKey}`;
@@ -66,16 +68,19 @@ export function planJiraProject(target: JiraProjectTarget, ctx: SyncContext): Ta
 
       if (error !== null) {
         const message = errorMessage(error);
-        syncer.abandonOpenOperations(error);
+        // A stop is recorded as interrupted, not failed: nothing went wrong,
+        // and the distinction is what --resume reads to decide what to skip.
+        const status = isSyncStopped(error) ? 'interrupted' : 'failed';
+        syncer.abandonOpenOperations(error, status);
         ctx.journal.finishRun(runId, {
-          status: 'failed',
+          status,
           apiCalls: base.apiCalls,
           apiCallsExpected: ctx.progress.expectedApiCallCount,
           itemsSynced: base.items,
           error: message,
           details: syncer.summary,
         });
-        return { ...base, status: 'failed', error: message };
+        return { ...base, status, error: message };
       }
 
       ctx.journal.finishRun(runId, {
@@ -119,6 +124,7 @@ export async function syncJiraWorkitem(
     settings: ctx.config.sync,
     progress: ctx.progress,
     logger: ctx.logger,
+    ...(ctx.signal ? { signal: ctx.signal } : {}),
   });
 
   const targetName = `${target.site.name}/${target.projectKey}`;
@@ -367,13 +373,13 @@ class JiraProjectSyncer {
     await this.slice('project', () => this.syncProject());
     await this.slice('project', () => this.syncFields());
 
-    if (sync.workitems) {
+    if (sync.workitems && !this.done('workitems')) {
       this.announce('workitems');
       this.beginOperation('workitems');
       await this.slice('workitems', () => this.listWorkitems());
     }
 
-    if (sync.boards || sync.sprints) {
+    if ((sync.boards || sync.sprints) && !this.done('sprints')) {
       this.announce('boards');
       this.beginOperation('sprints');
       await this.slice('sprints', () => this.listBoards());
@@ -382,7 +388,7 @@ class JiraProjectSyncer {
 
   /** Phase two: the sprints hanging off each board the listing named. */
   private async fetchNamedItems(): Promise<void> {
-    if (!this.target.sync.sprints || this.boardIds.length === 0) return;
+    if (!this.target.sync.sprints || this.done('sprints') || this.boardIds.length === 0) return;
     this.announce('sprints');
     await this.slice('sprints', () => this.listSprints());
   }
@@ -391,7 +397,7 @@ class JiraProjectSyncer {
   private async fetchItemDetails(): Promise<void> {
     const { sync } = this.target;
 
-    if (sync.workitems) {
+    if (sync.workitems && !this.done('workitems')) {
       this.announce('comments and history');
       await this.slice('workitems', () => this.fetchWorkitemDetails());
       this.endOperation('workitems', {
@@ -400,7 +406,7 @@ class JiraProjectSyncer {
       });
     }
 
-    if (sync.boards || sync.sprints) {
+    if ((sync.boards || sync.sprints) && !this.done('sprints')) {
       if (sync.sprints) {
         this.announce('sprint membership');
         await this.slice('sprints', () => this.fetchSprintMembership());
@@ -411,6 +417,11 @@ class JiraProjectSyncer {
 
   private announce(what: string): void {
     this.ctx.progress.setPhase(`${this.targetName}: ${what}`);
+  }
+
+  /** Whether a resource finished in the run being resumed. See the GitHub twin. */
+  private done(resource: string): boolean {
+    return this.ctx.alreadyDone?.has(resource) === true;
   }
 
   /** Runs a slice of one resource's work, billing it to that resource. */
@@ -473,11 +484,11 @@ class JiraProjectSyncer {
   }
 
   /** Marks whatever was still in flight as failed, without moving its cursor. */
-  abandonOpenOperations(error: unknown): void {
+  abandonOpenOperations(error: unknown, status: 'failed' | 'interrupted' = 'failed'): void {
     const message = errorMessage(error);
     for (const open of this.openOperations.values()) {
       this.ctx.journal.finishOperation(open.id, {
-        status: 'failed',
+        status,
         apiCalls: open.calls,
         itemsSynced: 0,
         error: message,

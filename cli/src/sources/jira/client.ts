@@ -12,6 +12,8 @@ export interface JiraClientOptions {
   settings: SyncSettings;
   progress: ProgressReporter;
   logger: Logger;
+  /** Aborts requests when the person asks the sync to stop. */
+  signal?: AbortSignal;
 }
 
 export interface JiraSearchPage {
@@ -67,6 +69,7 @@ export class JiraClient {
       retryBaseMs: options.settings.retryBaseMs,
       timeoutMs: options.settings.requestTimeoutMs,
       label: `Jira (${options.site.name})`,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
   }
 

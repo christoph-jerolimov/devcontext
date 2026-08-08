@@ -103,6 +103,7 @@ devcontext sync [options]
 | `--only <ref>` | — | — | sync just this item first: owner/name#42, 42 or PLAT-42, repeatable |
 | `--only-targeted` | — | — | stop after the --only items instead of continuing with the rest |
 | `--full` | — | — | ignore stored cursors and download everything again |
+| `--resume` | — | — | skip what the last failed or interrupted run already finished |
 | `--dry-run` | — | — | fetch from the APIs without writing anything |
 | `--no-progress` | — | — | do not render the progress indicator |
 | `--no-outputs` | — | — | skip the yaml / markdown / json outputs |

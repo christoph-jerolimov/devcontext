@@ -208,6 +208,33 @@ export class SyncJournal {
     );
   }
 
+  /**
+   * The resources a target finished in its last run, when that run did not.
+   *
+   * This is what `--resume` skips. A resource appears only when its operation
+   * completed, and an operation only completes where its cursor is written —
+   * so anything listed here is genuinely done and re-running it could only
+   * cost time.
+   *
+   * An empty set when the last run succeeded, because there is then nothing to
+   * resume and the ordinary incremental sync is the right thing.
+   */
+  resumableResources(source: string, target: string): Set<string> {
+    const run = this.db.get<{ id: number; status: SyncStatus }>(
+      `SELECT id, status FROM sync_runs
+        WHERE source = ? AND target = ?
+        ORDER BY started_at DESC, id DESC LIMIT 1`,
+      [source, target],
+    );
+    if (!run || (run.status !== 'failed' && run.status !== 'interrupted')) return new Set();
+
+    const rows = this.db.all<{ resource: string }>(
+      `SELECT resource FROM sync_operations WHERE run_id = ? AND status = 'completed'`,
+      [run.id],
+    );
+    return new Set(rows.map((row) => row.resource));
+  }
+
   listRuns(options: { limit?: number; source?: string; target?: string } = {}): SyncRunRow[] {
     const where: string[] = [];
     const params: Array<string | number> = [];
