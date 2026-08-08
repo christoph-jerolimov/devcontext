@@ -21,3 +21,4 @@ devcontext.local.yaml
 .vscode/*
 !.vscode/extensions.json
 *.log
+tui/dist
