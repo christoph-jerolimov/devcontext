@@ -649,6 +649,48 @@ CREATE INDEX IF NOT EXISTS idx_state_changes_item ON state_changes (source, ref)
 CREATE INDEX IF NOT EXISTS idx_state_changes_container ON state_changes (container, dimension, at);
 
 -- ---------------------------------------------------------------------------
+-- Who worked on what
+-- ---------------------------------------------------------------------------
+
+-- Who touched an item, and in what capacity.
+--
+-- "Who worked on this" is a question the stored rows can nearly answer and
+-- never quite do: the author is a column on the item, the reviewers are rows in
+-- another table, the commenters in a third, and the people who actually wrote
+-- the commits in a fourth. Answering it meant a join nobody wants to write
+-- twice, so in practice it was answered with the author column alone — which
+-- names the one person guaranteed not to have done the reviewing.
+--
+-- One row per (item, person, capacity). The capacity is the point: "involved"
+-- flattens the person who wrote it, the person who reviewed it and the person
+-- who left one drive-by comment into the same word, and they are not the same
+-- contribution.
+--
+-- Derived from tables already synced, and rebuilt on every sync like the cross
+-- references and the state history, so it never needs migrating and an existing
+-- database gets it without fetching anything.
+CREATE TABLE IF NOT EXISTS contributors (
+  source    TEXT NOT NULL,        -- github | jira
+  ref       TEXT NOT NULL,        -- acme/platform#42 | PLAT-7
+  kind      TEXT NOT NULL,        -- issue | pull_request | workitem
+  container TEXT NOT NULL,        -- acme/platform | PLAT
+  identity  TEXT NOT NULL,        -- the login or display name as stored
+  -- author | reporter | assignee | committer | reviewer | review_requested |
+  -- commenter | merged_by | worked
+  role      TEXT NOT NULL,
+  -- How many times: 1 for an author, 9 for somebody who commented nine times.
+  -- The difference between having been present and having carried it.
+  events    INTEGER NOT NULL,
+  first_at  TEXT,
+  last_at   TEXT,
+  PRIMARY KEY (source, ref, identity, role)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contributors_item ON contributors (source, ref);
+CREATE INDEX IF NOT EXISTS idx_contributors_identity ON contributors (source, identity, role);
+CREATE INDEX IF NOT EXISTS idx_contributors_container ON contributors (container, role);
+
+-- ---------------------------------------------------------------------------
 -- Jira
 -- ---------------------------------------------------------------------------
 

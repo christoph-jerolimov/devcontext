@@ -162,6 +162,29 @@ describe.skipIf(!enabled)('github end to end sync', () => {
         expect(events.every((event) => event.event.length > 0)).toBe(true);
       }
 
+      // --- who worked on it ----------------------------------------------
+      /*
+       * Derived at the end of the sync, from rows the sync just wrote. Against
+       * a real repository the useful assertion is not a name but a shape: the
+       * author of a pull request must never be recorded as having reviewed it,
+       * which is the mistake a flat "involved" list makes and the reason the
+       * capacity exists at all.
+       */
+      const contributions = db.all<{ ref: string; identity: string; role: string }>(
+        'SELECT ref, identity, role FROM contributors',
+      );
+      expect(contributions.length).toBeGreaterThan(0);
+      expect(new Set(contributions.map((row) => row.role))).toContain('author');
+
+      for (const pullRequest of pullRequests) {
+        const ref = `${repo}#${pullRequest.number}`;
+        const reviewedByAuthor = contributions.some(
+          (row) =>
+            row.ref === ref && row.role === 'reviewer' && row.identity === pullRequest.author,
+        );
+        expect([ref, reviewedByAuthor]).toEqual([ref, false]);
+      }
+
       // --- bookkeeping ---------------------------------------------------
       const journal = new SyncJournal(db);
       const cursor = journal.getCursor(`github:github.com/${repo}:issues`);

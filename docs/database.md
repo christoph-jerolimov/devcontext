@@ -35,6 +35,7 @@ no native dependency to compile.
 | `sync_operations`             | One row per resource inside a run, with the cursor before and after                                  |
 | `sync_state`                  | Where the next incremental sync continues, per scope                                                 |
 | `cross_links`                 | Rebuilt after every sync from the references found in the synced text                                |
+| `contributors`                | Who touched each item and in what capacity; rebuilt after every sync — see below                     |
 | `search_index`                | FTS5 index behind `devcontext search`; one row per item, comments folded in                          |
 
 ## GitHub tables
@@ -128,6 +129,32 @@ SELECT p.author AS pr_author, r.author AS reviewer, COUNT(*) AS reviews
  WHERE r.submitted_at >= datetime('now', '-90 days')
  GROUP BY pr_author, reviewer
  ORDER BY reviews DESC;
+```
+
+### Everyone who touched one ticket, and what they did
+
+`contributors` is the table that saves this join from being written by hand.
+The `role` is the point: without it the person who wrote the code and the
+person who left one comment are the same row.
+
+```sql
+SELECT identity, role, events, last_at
+  FROM contributors
+ WHERE ref = 'PLAT-7'
+ ORDER BY events DESC;
+```
+
+### Who has an outstanding review request
+
+The only capacity that means "has not done it yet" — GitHub drops a login from
+the requested list the moment they submit.
+
+```sql
+SELECT identity, COUNT(*) AS waiting
+  FROM contributors
+ WHERE role = 'review_requested'
+ GROUP BY identity
+ ORDER BY waiting DESC;
 ```
 
 ### When was a label added, and by whom

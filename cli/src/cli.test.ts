@@ -39,6 +39,7 @@ suite('the command surface', () => {
       'activity',
       'agent',
       'audit',
+      'contributors',
       'digest',
       'export',
       'github',

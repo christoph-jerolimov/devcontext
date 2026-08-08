@@ -8,6 +8,8 @@ import { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import { exportOutputs } from '../exporters/index.js';
 import type { ExportSummary } from '../exporters/index.js';
+import { buildContributors } from '../contributors/build.js';
+import type { ContributorStats } from '../contributors/build.js';
 import { buildStateHistory } from '../history/build.js';
 import type { StateHistoryStats } from '../history/build.js';
 import { buildCrossLinks } from '../links/build.js';
@@ -64,6 +66,7 @@ export interface SyncSummary {
   links?: BuildLinksResult;
   search?: SearchIndexStats;
   history?: StateHistoryStats;
+  contributors?: ContributorStats;
   export?: ExportSummary;
 }
 
@@ -284,6 +287,16 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       if (summary.history.changes > 0) {
         logger.debug(
           `Tracked ${summary.history.changes} state change(s) across ${summary.history.items} item(s).`,
+        );
+      }
+
+      // After the cross references, because an epic reaches the pull requests
+      // that implemented it through them — a Jira key has no other route to
+      // the people who wrote the code.
+      summary.contributors = buildContributors(db);
+      if (summary.contributors.contributions > 0) {
+        logger.debug(
+          `Recorded ${summary.contributors.contributions} contribution(s) across ${summary.contributors.items} item(s).`,
         );
       }
     }

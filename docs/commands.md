@@ -66,6 +66,7 @@ devcontext [options] <command>
 - [`insights`, `report`, `stats`](#devcontext-insights) — cycle time, review latency, work in progress, stale items, flaky steps, sprints
 - [`digest`, `standup`, `summary`](#devcontext-digest) — what happened in a window: shipped, started, reviewed, and still stuck
 - [`links`, `link`](#devcontext-links) — cross references between GitHub issues/pull requests and Jira work items
+- [`contributors`, `who`, `contributor`](#devcontext-contributors) — who worked on an issue, pull request or work item, and what they did
 - [`history`](#devcontext-history) — how many issues, pull requests or work items were open over time
 - [`audit`](#devcontext-audit) — what is stored locally, who is in it, and what a sync would fetch
 - [`mcp`](#devcontext-mcp) — serve the local database over the Model Context Protocol (stdio)
@@ -1000,6 +1001,32 @@ devcontext links [options] [ref]
 | `--high` | — | — | only high confidence links (branch names, titles, Jira fields) |
 | `--from <source>` | — | — | github or jira |
 | `--to <source>` | — | — | github or jira |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+| `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
+| `--offset <count>` | — | — | skip this many rows |
+| `--search <text>` | — | — | match text in the title / summary / body |
+
+## `devcontext contributors`
+
+Aliases: `who`, `contributor`
+
+Who worked on an issue, pull request or work item, and what they did
+
+```
+devcontext contributors [options] [ref]
+```
+
+| Argument | Required | Description |
+| -------- | -------- | ----------- |
+| `ref` | no | a reference (acme/platform#42 or PLAT-7) |
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `--rollup` | — | — | include everything beneath it: child work items and linked pull requests |
+| `--role <role>` | — | — | only this capacity (author, reviewer, commenter, ...) |
+| `--by-item` | — | — | one row per contribution rather than one per person |
+| `--rebuild` | — | — | recompute the table from the synced rows before listing |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
