@@ -3,6 +3,7 @@ import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import type { SyncMode } from '../../db/journal.js';
 import { errorMessage } from '../../util/errors.js';
+import { isSyncStopped } from '../../sync/stop.js';
 import { num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
 import { nowIso } from '../../util/time.js';
@@ -28,6 +29,7 @@ export function planGithubRepository(target: GithubRepoTarget, ctx: SyncContext)
     settings: ctx.config.sync,
     progress: ctx.progress,
     logger: ctx.logger,
+    ...(ctx.signal ? { signal: ctx.signal } : {}),
   });
 
   const scopePrefix = `github:${target.host.name}/${target.fullName}`;
@@ -65,16 +67,19 @@ export function planGithubRepository(target: GithubRepoTarget, ctx: SyncContext)
 
       if (error !== null) {
         const message = errorMessage(error);
-        syncer.abandonOpenOperations(error);
+        // A stop is recorded as interrupted, not failed: nothing went wrong,
+        // and the distinction is what --resume reads to decide what to skip.
+        const status = isSyncStopped(error) ? 'interrupted' : 'failed';
+        syncer.abandonOpenOperations(error, status);
         ctx.journal.finishRun(runId, {
-          status: 'failed',
+          status,
           apiCalls: base.apiCalls,
           apiCallsExpected: ctx.progress.expectedApiCallCount,
           itemsSynced: base.items,
           error: message,
           details: syncer.summary,
         });
-        return { ...base, status: 'failed', error: message };
+        return { ...base, status, error: message };
       }
 
       ctx.journal.finishRun(runId, {
@@ -124,6 +129,7 @@ export async function syncGithubItem(
     settings: ctx.config.sync,
     progress: ctx.progress,
     logger: ctx.logger,
+    ...(ctx.signal ? { signal: ctx.signal } : {}),
   });
 
   const runId = ctx.journal.startRun({
@@ -407,18 +413,26 @@ class GithubRepoSyncer {
     this.announce('repository');
     await this.slice('repository', () => this.syncRepository());
 
-    if (sync.labels) await this.wholeOperation('labels', () => this.syncLabels());
-    if (sync.milestones) await this.wholeOperation('milestones', () => this.syncMilestones());
-    if (sync.releases) await this.wholeOperation('releases', () => this.syncReleases());
-    if (sync.workflows) await this.wholeOperation('workflows', () => this.syncWorkflows());
+    if (sync.labels && !this.done('labels')) {
+      await this.wholeOperation('labels', () => this.syncLabels());
+    }
+    if (sync.milestones && !this.done('milestones')) {
+      await this.wholeOperation('milestones', () => this.syncMilestones());
+    }
+    if (sync.releases && !this.done('releases')) {
+      await this.wholeOperation('releases', () => this.syncReleases());
+    }
+    if (sync.workflows && !this.done('workflows')) {
+      await this.wholeOperation('workflows', () => this.syncWorkflows());
+    }
 
-    if (sync.issues) {
+    if (sync.issues && !this.done('issues')) {
       this.announce('issues');
       this.beginOperation('issues');
       await this.slice('issues', () => this.listIssues());
     }
 
-    if (sync.workflowRuns) {
+    if (sync.workflowRuns && !this.done('workflow_runs')) {
       this.announce('workflow runs');
       this.beginOperation('workflow_runs');
       await this.slice('workflow_runs', () => this.listWorkflowRuns());
@@ -427,7 +441,18 @@ class GithubRepoSyncer {
 
   /** Phase two: the individual things the lists only named. */
   private async fetchNamedItems(): Promise<void> {
-    if (!this.target.sync.pullRequests) return;
+    if (!this.target.sync.pullRequests || this.done('pull_requests')) return;
+
+    /*
+     * A resume that skipped the issue walk has no list of pull requests, since
+     * that is what the walk produces. The database has it: the issues
+     * operation completed, so every issue of this repository is stored, and
+     * the ones the walk would have queued are exactly the pull requests newer
+     * than the cursor. Reading them back beats re-walking every page.
+     */
+    if (this.done('issues') && this.pullRequestNumbers.length === 0) {
+      this.recoverPullRequestNumbers();
+    }
 
     this.announce('pull requests');
     this.beginOperation('pull_requests');
@@ -438,13 +463,13 @@ class GithubRepoSyncer {
   private async fetchItemDetails(): Promise<void> {
     const { sync } = this.target;
 
-    if (sync.issues) {
+    if (sync.issues && !this.done('issues')) {
       this.announce('comments and timelines');
       await this.slice('issues', () => this.fetchIssueDetails());
       this.endOperation('issues', { items: this.issueRefs.length, cursor: this.issuesCursor });
     }
 
-    if (sync.pullRequests) {
+    if (sync.pullRequests && !this.done('pull_requests')) {
       this.announce('reviews, commits and files');
       await this.slice('pull_requests', () => this.fetchPullRequestDetails());
       this.endOperation('pull_requests', {
@@ -453,7 +478,7 @@ class GithubRepoSyncer {
       });
     }
 
-    if (sync.workflowRuns) {
+    if (sync.workflowRuns && !this.done('workflow_runs')) {
       if (sync.workflowJobs) {
         this.announce('workflow jobs');
         await this.slice('workflow_runs', () => this.fetchWorkflowJobs());
@@ -467,6 +492,17 @@ class GithubRepoSyncer {
 
   private announce(what: string): void {
     this.ctx.progress.setPhase(`${this.target.fullName}: ${what}`);
+  }
+
+  /**
+   * Whether a resource finished in the run being resumed.
+   *
+   * Only ever true under `--resume`, and only for resources whose operation
+   * completed — which is where their cursor was written, so skipping one
+   * cannot leave a gap behind it.
+   */
+  private done(resource: string): boolean {
+    return this.ctx.alreadyDone?.has(resource) === true;
   }
 
   /**
@@ -555,11 +591,11 @@ class GithubRepoSyncer {
    * A phase now throws out to the runner rather than being caught here, so this
    * is what keeps a half finished resource from being recorded as complete.
    */
-  abandonOpenOperations(error: unknown): void {
+  abandonOpenOperations(error: unknown, status: 'failed' | 'interrupted' = 'failed'): void {
     const message = errorMessage(error);
     for (const open of this.openOperations.values()) {
       this.ctx.journal.finishOperation(open.id, {
-        status: 'failed',
+        status,
         apiCalls: open.calls,
         itemsSynced: 0,
         error: message,
@@ -677,6 +713,22 @@ class GithubRepoSyncer {
     }
 
     this.issuesCursor = newestUpdate ?? nowIso();
+  }
+
+  /** The pull requests the skipped issue walk would have queued. */
+  private recoverPullRequestNumbers(): void {
+    const since = this.resolveSince(`${this.scopePrefix}:issues`);
+    const rows = this.ctx.db.all<{ number: number }>(
+      `SELECT number FROM gh_issues
+        WHERE host = ? AND repo_full_name = ? AND is_pull_request = 1
+          AND (? IS NULL OR updated_at >= ?)
+        ORDER BY number`,
+      [this.target.host.name, this.target.fullName, since, since],
+    );
+    for (const row of rows) this.pullRequestNumbers.push(row.number);
+    this.ctx.logger.debug(
+      `Resuming ${this.target.fullName}: recovered ${String(rows.length)} pull request(s) from the database.`,
+    );
   }
 
   private perIssueCalls(): number {

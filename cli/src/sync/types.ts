@@ -59,6 +59,16 @@ export interface SyncContext {
   /** Fetch from the APIs but do not write to the database or the outputs. */
   dryRun: boolean;
   projectKey: string;
+  /** Aborts the work in flight when the person asks the sync to stop. */
+  signal?: AbortSignal;
+  /**
+   * Resources this target already finished in the run being resumed.
+   *
+   * Empty unless `--resume` was asked for. A resource is only listed when its
+   * operation completed, which is also when its cursor moved — so skipping it
+   * cannot lose anything.
+   */
+  alreadyDone?: ReadonlySet<string>;
 }
 
 export interface TargetSyncResult {

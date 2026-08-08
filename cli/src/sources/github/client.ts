@@ -13,6 +13,8 @@ export interface GithubClientOptions {
   settings: SyncSettings;
   progress: ProgressReporter;
   logger: Logger;
+  /** Aborts requests when the person asks the sync to stop. */
+  signal?: AbortSignal;
 }
 
 export interface RateLimitInfo {
@@ -62,6 +64,7 @@ export class GithubClient {
       retryBaseMs: options.settings.retryBaseMs,
       timeoutMs: options.settings.requestTimeoutMs,
       label: `GitHub (${options.host.name})`,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
   }
 

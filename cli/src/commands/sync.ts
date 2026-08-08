@@ -2,6 +2,7 @@ import { Command } from 'commander';
 
 import { loadConfig } from '../config/load.js';
 import { runSync } from '../sync/runner.js';
+import { installStopHandler } from '../sync/stop.js';
 import type { SyncSource } from '../sync/runner.js';
 import type { TargetSyncResult } from '../sync/types.js';
 import { CliError } from '../util/errors.js';
@@ -29,6 +30,7 @@ export function createSyncCommand(): Command {
     )
     .option('--only-targeted', 'stop after the --only items instead of continuing with the rest')
     .option('--full', 'ignore stored cursors and download everything again')
+    .option('--resume', 'skip what the last failed or interrupted run already finished')
     .option('--dry-run', 'fetch from the APIs without writing anything')
     .option('--no-progress', 'do not render the progress indicator')
     .option('--no-outputs', 'skip the yaml / markdown / json outputs')
@@ -56,17 +58,42 @@ export function createSyncCommand(): Command {
       logger.info(`Using configuration ${config.configPath}`);
       logger.info(`Database ${config.databasePath}`);
 
-      const summary = await runSync({
-        config,
-        logger,
-        projects: options['project'] as string[],
-        sources,
-        targets: options['target'] as string[],
-        full: Boolean(options['full']),
-        dryRun: Boolean(options['dryRun']),
-        progress: options['progress'] !== false,
-        writeOutputs: options['outputs'] !== false,
+      /*
+       * Ctrl-C asks the sync to stop rather than killing it.
+       *
+       * Nothing was ever lost by killing it — every write is an upsert and
+       * cursors only move when a resource finishes — but the run was left
+       * looking like it was still going, and the person was told nothing about
+       * what had been done. A second press exits at once, because somebody who
+       * has decided it should end now should not wait on a slow API.
+       */
+      const controller = new AbortController();
+      const release = installStopHandler({
+        onStop: () => {
+          controller.abort();
+          logger.warn('Stopping after the requests in flight. Press Ctrl-C again to quit now.');
+        },
+        onSecond: () => process.exit(130),
       });
+
+      let summary;
+      try {
+        summary = await runSync({
+          config,
+          logger,
+          projects: options['project'] as string[],
+          sources,
+          targets: options['target'] as string[],
+          full: Boolean(options['full']),
+          resume: Boolean(options['resume']),
+          signal: controller.signal,
+          dryRun: Boolean(options['dryRun']),
+          progress: options['progress'] !== false,
+          writeOutputs: options['outputs'] !== false,
+        });
+      } finally {
+        release();
+      }
 
       const format = globals.output === undefined ? 'default' : globals.output;
 
@@ -93,7 +120,8 @@ export function createSyncCommand(): Command {
           ),
         );
         logger.info(
-          `Done in ${formatDuration(summary.durationMs)} with ${summary.apiCalls} API call(s) and ${summary.items} item(s).` +
+          `${summary.stopped === true ? 'Stopped' : 'Done'} in ${formatDuration(summary.durationMs)} ` +
+            `with ${summary.apiCalls} API call(s) and ${summary.items} item(s).` +
             (summary.export ? ` Wrote ${summary.export.files} output file(s).` : ''),
         );
       }

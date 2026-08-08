@@ -3,6 +3,7 @@ import type { Logger } from '../util/logger.js';
 import { formatDuration, sleep } from '../util/time.js';
 import type { ProgressReporter } from './progress.js';
 import type { RateLimiter } from './rateLimiter.js';
+import { SyncStopped } from './stop.js';
 
 export interface HttpClientOptions {
   baseUrl: string;
@@ -15,6 +16,14 @@ export interface HttpClientOptions {
   timeoutMs: number;
   /** Label used in error messages, e.g. "GitHub" or "Jira (acme)". */
   label: string;
+  /**
+   * Aborts the sync when the person asks it to stop.
+   *
+   * Checked here rather than in every walk and every item loop, because every
+   * unit of work in a sync is a request: one check covers all of them, and it
+   * covers loops nobody has written yet.
+   */
+  signal?: AbortSignal;
 }
 
 export interface RequestOptions {
@@ -67,6 +76,7 @@ export class HttpClient {
 
     let attempt = 0;
     for (;;) {
+      if (this.options.signal?.aborted === true) throw new SyncStopped();
       await this.options.rateLimiter.acquire();
       this.options.progress.recordApiCall();
       this.options.logger.debug(`${method} ${url}`);
@@ -146,6 +156,10 @@ export class HttpClient {
   ): Promise<Response> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
+    // A stop asked for mid flight aborts the request rather than waiting for a
+    // slow API to answer something nobody is going to use.
+    const stop = (): void => void controller.abort();
+    this.options.signal?.addEventListener('abort', stop, { once: true });
     try {
       const headers: Record<string, string> = {
         ...this.options.headers,
@@ -165,6 +179,7 @@ export class HttpClient {
       });
     } finally {
       clearTimeout(timeout);
+      this.options.signal?.removeEventListener('abort', stop);
     }
   }
 

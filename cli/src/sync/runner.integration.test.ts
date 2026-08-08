@@ -1079,6 +1079,135 @@ describe('runSync', () => {
     expect(requestedUrls.every((url) => !url.includes('api.github.com'))).toBe(true);
   });
 
+  describe('stopping and resuming', () => {
+    /** Aborts once the given request has been seen. */
+    function stopAfter(match: string): { signal: AbortSignal; seen: () => number } {
+      const controller = new AbortController();
+      let count = 0;
+      vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        requestedUrls.push(url);
+        if (url.includes(match)) {
+          count += 1;
+          controller.abort();
+        }
+        return route(url);
+      });
+      return { signal: controller.signal, seen: () => count };
+    }
+
+    it('stops at the next request and records the run as interrupted', async () => {
+      const { signal } = stopAfter('/issues/12/comments');
+
+      const summary = await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        signal,
+      });
+
+      expect(summary.stopped).toBe(true);
+      // Interrupted, not failed. Nothing went wrong; somebody pressed a key.
+      expect(summary.results.every((result) => result.status === 'interrupted')).toBe(true);
+    });
+
+    it('leaves every cursor of the unfinished resource alone', async () => {
+      const { signal } = stopAfter('/issues/12/comments');
+
+      await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        signal,
+      });
+
+      /*
+       * The issue list had been walked and its rows written when the stop
+       * landed, but the comments of issue 12 had not. A cursor written here
+       * would claim otherwise and nothing would ever go back for them.
+       */
+      const cursors = readCursors();
+      expect(cursors['github:github.com/acme/platform:issues']).toBeUndefined();
+      expect(cursors['github:github.com/acme/platform:pull_requests']).toBeUndefined();
+    });
+
+    it('resumes without redoing what the interrupted run finished', async () => {
+      const { signal } = stopAfter('/issues/12/comments');
+      await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        signal,
+      });
+
+      // Labels and milestones completed before the stop; they are the ones a
+      // resume should not pay for again.
+      const before = readCursors();
+      expect(before['github:github.com/acme/platform:labels']).toBeDefined();
+
+      vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        requestedUrls.push(url);
+        return route(url);
+      });
+      requestedUrls.length = 0;
+
+      const summary = await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        resume: true,
+      });
+
+      expect(summary.results.every((result) => result.status === 'completed')).toBe(true);
+      // The finished resources were not fetched a second time...
+      expect(requestedUrls.some((url) => url.endsWith('/labels?per_page=100'))).toBe(false);
+      expect(requestedUrls.some((url) => url.includes('/milestones'))).toBe(false);
+      // ...and the unfinished one was.
+      expect(requestedUrls.some((url) => url.includes('/issues/12/comments'))).toBe(true);
+      // Everything ends up synced either way.
+      expect(readCursors()['github:github.com/acme/platform:issues']).toBeDefined();
+    });
+
+    it('does not skip anything when the last run succeeded', async () => {
+      await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+      });
+      requestedUrls.length = 0;
+
+      // --resume after a clean run is an ordinary incremental sync: there is
+      // nothing to resume, and quietly skipping resources would be wrong.
+      await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+        resume: true,
+      });
+
+      expect(requestedUrls.some((url) => url.includes('/labels'))).toBe(true);
+    });
+  });
+
   describe('the three phases', () => {
     const TWO_REPOSITORIES = CONFIG_YAML.replace(
       '      - repo: acme/platform\n',

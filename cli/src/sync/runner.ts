@@ -20,6 +20,7 @@ import { nowIso } from '../util/time.js';
 import { planGithubRepository, syncGithubItem } from '../sources/github/sync.js';
 import { planJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
 import { ProgressReporter } from './progress.js';
+import { isSyncStopped, SyncStopped } from './stop.js';
 import { SYNC_PHASES } from './types.js';
 import type { SyncContext, TargetPlan, TargetSyncResult } from './types.js';
 
@@ -36,6 +37,10 @@ export interface RunSyncOptions {
   full: boolean;
   dryRun: boolean;
   progress: boolean;
+  /** Skip the resources a failed or interrupted run already finished. */
+  resume?: boolean;
+  /** Stops the sync at the next request when it fires. */
+  signal?: AbortSignal;
   /** Write the yaml / markdown / json outputs after syncing. */
   writeOutputs: boolean;
   /**
@@ -50,6 +55,8 @@ export interface RunSyncOptions {
 
 export interface SyncSummary {
   results: TargetSyncResult[];
+  /** True when the sync ended because it was asked to, not because it finished. */
+  stopped?: boolean;
   apiCalls: number;
   items: number;
   durationMs: number;
@@ -107,7 +114,13 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
     for (const project of projects) {
       if (!options.dryRun) storeProject(db, project);
 
-      const ctx: SyncContext = {
+      /**
+       * The context for one target.
+       *
+       * `alreadyDone` is looked up per target because resuming is per target:
+       * one repository may have finished while the next never started.
+       */
+      const contextFor = (source: SyncSource, target: string): SyncContext => ({
         db,
         journal,
         progress,
@@ -116,13 +129,17 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
         full: options.full,
         dryRun: options.dryRun,
         projectKey: project.key,
-      };
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.resume === true
+          ? { alreadyDone: journal.resumableResources(source, target) }
+          : {}),
+      });
 
       if (sources.includes('github')) {
         for (const target of project.github) {
           if (!matchesTarget(options.targets, [target.fullName, target.repo])) continue;
           plans.push({
-            plan: planGithubRepository(target, ctx),
+            plan: planGithubRepository(target, contextFor('github', target.fullName)),
             announce: `Syncing GitHub repository ${target.fullName} (project ${project.key}).`,
           });
         }
@@ -138,8 +155,9 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
           ) {
             continue;
           }
+          const targetName = `${target.site.name}/${target.projectKey}`;
           plans.push({
-            plan: planJiraProject(target, ctx),
+            plan: planJiraProject(target, contextFor('jira', targetName)),
             announce: `Syncing Jira project ${target.projectKey} (project ${project.key}).`,
           });
         }
@@ -190,7 +208,10 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
     }
 
     const failures = new Map<TargetPlan, unknown>();
+    let stopped = false;
+
     for (const phase of SYNC_PHASES) {
+      if (stopped) break;
       progress.setPhase(phase);
       for (const { plan } of plans) {
         if (failures.has(plan)) continue;
@@ -198,19 +219,37 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
           await plan.runPhase(phase);
         } catch (error) {
           failures.set(plan, error);
+          /*
+           * A stop is not a failure. The first target to notice ends the whole
+           * run rather than only itself, because the person asked for the sync
+           * to end, not for this repository to be skipped.
+           */
+          if (isSyncStopped(error)) {
+            stopped = true;
+            break;
+          }
           logger.debug(`${plan.label} failed during ${phase}: ${errorMessage(error)}`);
         }
       }
     }
 
     for (const { plan } of plans) {
-      results.push(plan.finish(failures.get(plan) ?? null));
+      // Targets that never reached the failure are marked interrupted too:
+      // their work is genuinely unfinished, and saying "completed" would let
+      // the next --resume skip resources that never ran.
+      const outcome = failures.get(plan) ?? (stopped ? new SyncStopped() : null);
+      results.push(plan.finish(outcome));
+    }
+
+    if (stopped) {
+      logger.warn('Stopped. Nothing was lost — run "devcontext sync --resume" to carry on.');
     }
 
     progress.finish();
 
     const summary: SyncSummary = {
       results,
+      ...(stopped ? { stopped: true } : {}),
       apiCalls: progress.apiCallCount,
       items: progress.itemCount,
       durationMs: Date.now() - startedAt,

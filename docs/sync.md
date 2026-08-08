@@ -121,6 +121,39 @@ Two passes run over what was just written, both entirely local:
   rebuilds it; an incremental sync only reindexes the items it wrote, so a
   three ticket sync stays fast on a large database.
 
+## Stopping and resuming
+
+Ctrl-C asks the sync to stop rather than killing it. The requests in flight
+finish, the run is recorded as **interrupted**, and you are told what was done.
+A second Ctrl-C exits immediately — a slow API should not be able to hold you
+there.
+
+Nothing is lost either way: every write is an upsert, and a cursor only moves
+when a resource finishes. Stopping in the middle of the comments of one issue
+leaves the issue cursor exactly where it was, so the next run covers the whole
+window again.
+
+```bash
+devcontext sync --resume
+```
+
+`--resume` skips what the last **failed or interrupted** run finished. A
+resource is skipped only when its operation completed, which is also where its
+cursor was written — so a skip can never leave a gap. After a run that
+succeeded there is nothing to resume, and `--resume` behaves as an ordinary
+incremental sync rather than quietly skipping anything.
+
+This is worth having because the list phase is now unconditional (see above): a
+repository whose issue list completed before the interruption does not walk
+every page a second time.
+
+One case is worth knowing about. Pull requests are named by the issue walk, so
+resuming a run where the issues finished but the pull requests did not would
+normally mean re-walking the list just to learn which numbers are pull
+requests. It reads them back out of the database instead — the issues operation
+completed, so every issue is already stored, and the ones the walk would have
+queued are exactly the pull requests newer than the cursor.
+
 ## Rate limits and pacing
 
 Every API call goes through a rate limiter that
