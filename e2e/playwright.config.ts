@@ -28,14 +28,21 @@ export default defineConfig({
   expect: {
     toHaveScreenshot: {
       /*
-       * Tight on purpose. Most of a table row is background, so an entire
-       * extra row only changes the pixels its glyphs cover — at 2% this check
-       * happily accepted a pull request list that had gained a row, which is
-       * exactly the kind of change it exists to catch. 0.1% of a 1280x720 page
-       * is about 900 pixels: enough to absorb antialiasing along a few glyph
-       * edges, not enough to hide a line of text.
+       * An absolute count, not a ratio, and a small one.
+       *
+       * A ratio scales with the page while the signal does not: most of a
+       * table row is background, so a whole extra row of text moves only the
+       * pixels its glyphs cover. At 2% this check accepted a pull request
+       * list that had gained a row; at 0.1% — about 900 pixels on a 1280x720
+       * page — it still accepted a workflow run list that had gained one,
+       * because that row sorted to the bottom and nothing else moved.
+       *
+       * Rendering is deterministic on a given machine, so the real noise
+       * floor is zero; 50 leaves room for a stray edge pixel without leaving
+       * room for a line of text. CI does not compare at all (see the workflow),
+       * so this only has to hold where the environment is fixed.
        */
-      maxDiffPixelRatio: 0.001,
+      maxDiffPixels: 50,
       animations: 'disabled',
     },
   },

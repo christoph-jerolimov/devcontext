@@ -19,6 +19,63 @@ const COLUMNS: Column<Row>[] = [
   { header: 'COUNT', value: (row) => row.count, align: 'right' },
 ];
 
+/** Runs `run` with colour forced on or off, and puts the terminal back. */
+function withColour<T>(enabled: boolean, run: () => T): T {
+  const wasTty = process.stdout.isTTY;
+  process.stdout.isTTY = enabled;
+  if (enabled) delete process.env['NO_COLOR'];
+  try {
+    return run();
+  } finally {
+    process.stdout.isTTY = wasTty;
+  }
+}
+
+describe('a styled column', () => {
+  /*
+   * Colour is applied after padding, on purpose. An escape sequence is
+   * characters that occupy no width, so measuring a styled cell counts them
+   * and throws every column to its right out of line.
+   */
+  const STYLED: Column<Row>[] = [
+    { header: 'KEY', value: (row) => row.key, style: (row) => `[35m${row.key}[0m` },
+    { header: 'COUNT', value: (row) => row.count, align: 'right' },
+  ];
+
+  it('leaves the columns exactly where they were', () => {
+    const plain = renderTable(ROWS, COLUMNS, { format: 'default', width: 80 });
+    const styled = withColour(true, () =>
+      renderTable(ROWS, STYLED, { format: 'default', width: 80 }),
+    );
+
+    // Same output once the escapes are taken back out.
+    // oxlint-disable-next-line no-control-regex
+    expect(styled.replace(/\[\d+m/g, '')).toBe(plain);
+    expect(styled).toContain('[35mPLAT-1[0m ');
+  });
+
+  it('emits nothing extra when colour is off', () => {
+    const plain = renderTable(ROWS, COLUMNS, { format: 'default', width: 80 });
+    expect(
+      withColour(false, () => renderTable(ROWS, STYLED, { format: 'default', width: 80 })),
+    ).toBe(plain);
+  });
+
+  it('never reaches the machine readable formats', () => {
+    // `value` is the source of truth; a json consumer must not receive escapes.
+    for (const format of ['json', 'markdown', 'plain'] as const) {
+      const output = withColour(true, () => renderTable(ROWS, STYLED, { format }));
+      expect(output).not.toContain('');
+      expect(output).toBe(renderTable(ROWS, COLUMNS, { format }));
+    }
+
+    const list = withColour(true, () =>
+      renderTable(ROWS, STYLED, { format: 'default', list: true }),
+    );
+    expect(list).toBe('PLAT-1\nPLAT-22');
+  });
+});
+
 describe('renderTable', () => {
   it('aligns the default output', () => {
     const output = renderTable(ROWS, COLUMNS, { format: 'default', width: 80 });

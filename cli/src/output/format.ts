@@ -15,6 +15,15 @@ export interface Column<T> {
   /** Column header, also used as the key in markdown tables. */
   header: string;
   value: (row: T) => string | number | null | undefined;
+  /**
+   * The same text, coloured, for the default format only.
+   *
+   * `value` stays the plain source of truth: json, markdown, plain and
+   * `--list` use it, and so does the column width. This must therefore render
+   * the *same characters* as `value` and differ only in escapes, or the
+   * columns stop lining up.
+   */
+  style?: (row: T) => string;
   align?: 'left' | 'right';
   /** Columns marked as optional are dropped first when the terminal is narrow. */
   optional?: boolean;
@@ -107,13 +116,38 @@ function renderPrettyTable<T>(rows: T[], columns: Column<T>[], options: TableOpt
     ),
   );
 
-  for (const row of cells) {
-    const line = visible
+  rows.forEach((source, rowIndex) => {
+    const row = cells[rowIndex] ?? [];
+
+    /*
+     * Padded from the plain text, then the escapes are wrapped around the
+     * result. Measuring a styled cell would count the escape characters and
+     * throw every column out of line.
+     */
+    const cell = (index: number): string => {
+      const text = row[index] ?? '';
+      const plain = pad(text, widths[index] ?? 0, columns[index]!.align);
+      const styled = columns[index]?.style?.(source);
+      // An empty cell has nothing to colour, and `replace('')` would splice
+      // the escapes in at the start of the padding.
+      if (text === '' || styled === undefined || !colorEnabled()) return plain;
+      return plain.replace(text, styled);
+    };
+
+    const plainLine = visible
       .map((index) => pad(row[index] ?? '', widths[index] ?? 0, columns[index]!.align))
       .join('  ')
       .trimEnd();
-    lines.push(line.length > width ? `${line.slice(0, Math.max(0, width - 1))}…` : line);
-  }
+
+    // Cutting a styled line would slice through an escape sequence and leak
+    // the rest of it onto the terminal, so an over-long line goes out plain.
+    if (plainLine.length > width) {
+      lines.push(`${plainLine.slice(0, Math.max(0, width - 1))}…`);
+      return;
+    }
+
+    lines.push(visible.map(cell).join('  ').trimEnd());
+  });
 
   return lines.join('\n');
 }
@@ -174,6 +208,27 @@ export function dim(value: string): string {
 
 export function bold(value: string): string {
   return colorEnabled() ? `\u001b[1m${value}\u001b[0m` : value;
+}
+
+/**
+ * The named terminal colours, rather than fixed RGB.
+ *
+ * A terminal maps these to its own palette, so the output stays readable on a
+ * light background and on a dark one. Hardcoding hex values would look right
+ * on whichever theme it was written against and wrong on the other.
+ */
+const COLOURS = {
+  green: 32,
+  red: 31,
+  purple: 35,
+  yellow: 33,
+  gray: 90,
+} as const;
+
+export type Colour = keyof typeof COLOURS;
+
+export function colour(value: string, name: Colour): string {
+  return colorEnabled() ? `\u001b[${String(COLOURS[name])}m${value}\u001b[0m` : value;
 }
 
 /** Writes a rendered block to stdout, adding exactly one trailing newline. */
