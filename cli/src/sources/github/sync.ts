@@ -4,6 +4,7 @@ import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../..
 import type { SyncMode } from '../../db/journal.js';
 import { errorMessage } from '../../util/errors.js';
 import { positionOf } from '../../sync/progress.js';
+import { BOUND_BY_RUNS, BOUND_BY_SINCE, warnIfLarge } from '../../sync/warnings.js';
 import { isSyncStopped } from '../../sync/stop.js';
 import { num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
@@ -308,6 +309,7 @@ class GithubRepoSyncer {
 
       if (listed !== null && total !== null) {
         this.seed(key('issues'), this.issueCalls(listed, total, pageSize));
+        this.warnIfLarge('issues', listed, BOUND_BY_SINCE);
 
         if (sync.pullRequests) {
           /*
@@ -323,6 +325,7 @@ class GithubRepoSyncer {
           });
           if (pulls !== null) {
             this.seed(key('pull_requests'), this.pullRequestCalls(Math.min(total, pulls)));
+            this.warnIfLarge('pull requests', pulls, BOUND_BY_SINCE);
           }
         }
       }
@@ -334,6 +337,9 @@ class GithubRepoSyncer {
         // `null` is no cap, so the size of the work is the repository's own.
         const cap = this.target.maxWorkflowRuns;
         const runs = cap === null ? total : Math.min(total, cap);
+        // The count that matters is what will actually be fetched: a
+        // repository with 40,000 runs and a cap of 250 is not a large sync.
+        this.warnIfLarge('workflow runs', runs, BOUND_BY_RUNS);
         /*
          * List pages, one jobs call per run, and — when logs are on — one log
          * call per *job*.
@@ -353,6 +359,15 @@ class GithubRepoSyncer {
         );
       }
     }
+  }
+
+  private warnIfLarge(resource: string, count: number, hint: string): void {
+    warnIfLarge(this.ctx.progress, {
+      target: this.target.fullName,
+      resource,
+      count,
+      hint,
+    });
   }
 
   /** Jobs per run as the last sync saw it, or one when there is no history. */

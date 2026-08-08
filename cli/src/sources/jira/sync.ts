@@ -4,6 +4,7 @@ import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import { CliError, errorMessage } from '../../util/errors.js';
 import { positionOf } from '../../sync/progress.js';
+import { BOUND_BY_FILTER, warnIfLarge } from '../../sync/warnings.js';
 import { isSyncStopped } from '../../sync/stop.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
@@ -297,6 +298,13 @@ class JiraProjectSyncer {
       detailsSince === null
         ? listed
         : ((await this.client.count(this.buildJql(detailsSince))) ?? listed);
+
+    warnIfLarge(this.ctx.progress, {
+      target: this.targetName,
+      resource: 'work items',
+      count: listed,
+      hint: BOUND_BY_FILTER,
+    });
 
     // Kept so the walk does not pay for the same count a second time.
     this.surveyed = { jql, total: listed };
