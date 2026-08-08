@@ -756,8 +756,36 @@ describe('runSync', () => {
 
     expect(summary.results.map((result) => result.mode)).toEqual(['incremental', 'incremental']);
 
-    const issueRequest = requestedUrls.find((url) => url.includes('/issues?'));
-    expect(issueRequest).toContain('since=2024-03-01T00%3A00%3A00Z');
+    /*
+     * The cursor no longer bounds the *list*. Every issue is listed on every
+     * run, because how many were open on a past day cannot be answered from
+     * the ones that changed since — the balance carried in from before is the
+     * part that would be missing, and no later sync recovers it.
+     */
+    // The size probes are excluded: one of them deliberately asks with the
+    // cursor, because pricing the follow ups needs the count of what changed.
+    const issueRequests = requestedUrls.filter(
+      (url) => /\/issues\?/.test(url) && !/[?&]per_page=1(&|$)/.test(url),
+    );
+    expect(issueRequests.length).toBeGreaterThan(0);
+    expect(issueRequests.every((url) => !url.includes('since='))).toBe(true);
+
+    /*
+     * What the cursor bounds instead is the request per item, which is where
+     * the cost of a sync actually is.
+     *
+     * Issue 12 last changed on 2024-02-01 and the cursor stands at 2024-03-01,
+     * so the second run listed it and asked nothing further about it. Pull
+     * request 42 sits exactly on the cursor and is fetched again — the
+     * boundary item always is, so that nothing can fall through it, and
+     * writing it a second time changes nothing because every write is an
+     * upsert.
+     */
+    const perItem = requestedUrls.filter((url) =>
+      /\/(comments|timeline|reviews|commits|files)(\?|$)/.test(url),
+    );
+    expect(perItem.some((url) => url.includes('/issues/12/'))).toBe(false);
+    expect(perItem.some((url) => url.includes('/42/'))).toBe(true);
 
     const jqlRequest = requestedUrls.find((url) => url.includes('/search/jql'));
     expect(jqlRequest).toBeDefined();

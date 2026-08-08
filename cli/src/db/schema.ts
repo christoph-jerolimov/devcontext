@@ -557,6 +557,42 @@ CREATE INDEX IF NOT EXISTS idx_cross_links_to ON cross_links (to_ref);
 CREATE INDEX IF NOT EXISTS idx_cross_links_sources ON cross_links (from_source, to_source);
 
 -- ---------------------------------------------------------------------------
+-- State over time
+-- ---------------------------------------------------------------------------
+
+-- How many issues were open last Tuesday, how many were assigned to somebody
+-- in a given sprint, how the backlog moved over a month — none of it can be
+-- read off the current state of a row, because an item can be closed,
+-- reopened, reassigned and moved between sprints any number of times and the
+-- row only remembers where it ended up.
+--
+-- So each of those histories is stored as the changes that produced it: one
+-- row per transition, +1 when the item enters a state and -1 when it leaves.
+-- The count at any moment is then the sum of every delta up to that moment,
+-- and two dimensions intersect by summing each and joining on the item.
+--
+-- Rebuilt from the timelines and changelogs already synced, so like the cross
+-- references it is derived and never needs to be migrated.
+CREATE TABLE IF NOT EXISTS state_changes (
+  source     TEXT NOT NULL,       -- github | jira
+  ref        TEXT NOT NULL,       -- acme/platform#42 | PLAT-7
+  kind       TEXT NOT NULL,       -- issue | pull_request | workitem
+  container  TEXT NOT NULL,       -- acme/platform | PLAT
+  dimension  TEXT NOT NULL,       -- state | assignee | sprint
+  value      TEXT NOT NULL,       -- open | alice | 33
+  at         TEXT NOT NULL,       -- ISO 8601, when the transition happened
+  delta      INTEGER NOT NULL,    -- +1 entering, -1 leaving
+  -- Two transitions can share a timestamp; the order they were replayed in
+  -- keeps them distinct and keeps the primary key honest.
+  seq        INTEGER NOT NULL,
+  PRIMARY KEY (source, ref, dimension, value, at, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_state_changes_when ON state_changes (dimension, at);
+CREATE INDEX IF NOT EXISTS idx_state_changes_item ON state_changes (source, ref);
+CREATE INDEX IF NOT EXISTS idx_state_changes_container ON state_changes (container, dimension, at);
+
+-- ---------------------------------------------------------------------------
 -- Jira
 -- ---------------------------------------------------------------------------
 

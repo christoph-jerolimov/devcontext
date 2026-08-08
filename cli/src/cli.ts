@@ -8,6 +8,7 @@ import { createGithubCommand } from './commands/github.js';
 import { createInitCommand } from './commands/init.js';
 import { createInsightsCommand } from './commands/insights.js';
 import { createJiraCommand } from './commands/jira.js';
+import { createHistoryCommand } from './commands/history.js';
 import { createLinksCommand } from './commands/links.js';
 import { createMcpCommand } from './commands/mcp.js';
 import { createSearchCommand } from './commands/search.js';
@@ -41,6 +42,7 @@ export function createProgram(): Command {
   program.addCommand(createInsightsCommand());
   program.addCommand(createDigestCommand());
   program.addCommand(createLinksCommand());
+  program.addCommand(createHistoryCommand());
   program.addCommand(createAuditCommand());
   program.addCommand(createMcpCommand());
   program.addCommand(createAgentCommand());

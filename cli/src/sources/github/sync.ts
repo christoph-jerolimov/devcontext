@@ -290,12 +290,17 @@ class GithubRepoSyncer {
 
     if (sync.issues) {
       const since = this.resolveSince(key('issues'));
-      const total = await probe(`/repos/${this.target.owner}/${this.target.repo}/issues`, {
-        state: 'all',
-        ...(since ? { since } : {}),
-      });
-      if (total !== null) {
-        this.seed(key('issues'), this.issueCalls(total, pageSize));
+      const path = `/repos/${this.target.owner}/${this.target.repo}/issues`;
+
+      // Two counts, because the walk and the follow ups are now bounded
+      // differently: every issue is listed, and only the ones that changed cost
+      // a request each. With no `since` they are the same number and the second
+      // probe is skipped.
+      const listed = await probe(path, { state: 'all' });
+      const total = since === null ? listed : await probe(path, { state: 'all', since });
+
+      if (listed !== null && total !== null) {
+        this.seed(key('issues'), this.issueCalls(listed, total, pageSize));
 
         if (sync.pullRequests) {
           /*
@@ -364,11 +369,13 @@ class GithubRepoSyncer {
     this.ctx.progress.expectFor(key, Math.max(calls, this.surveyed.get(key) ?? 0));
   }
 
-  /** List pages plus the comments and timeline of every issue. */
-  private issueCalls(total: number, pageSize: number): number {
-    const { sync } = this.target;
-    const perItem = (sync.issueComments ? 1 : 0) + (sync.issueTimeline ? 1 : 0);
-    return Math.max(1, Math.ceil(total / pageSize)) + total * perItem;
+  /**
+   * The pages needed to list `listed` issues, plus the comments and timeline of
+   * the `changed` ones — which since `since` stopped bounding the walk are two
+   * different populations.
+   */
+  private issueCalls(listed: number, changed: number, pageSize: number): number {
+    return Math.max(1, Math.ceil(listed / pageSize)) + changed * this.perIssueCalls();
   }
 
   private pullRequestCalls(total: number): number {
@@ -623,13 +630,27 @@ class GithubRepoSyncer {
    */
   private async listIssues(): Promise<void> {
     const scope = `${this.scopePrefix}:issues`;
-    const since = this.resolveSince(scope);
+    const detailsSince = this.resolveSince(scope);
 
-    let newestUpdate = since;
+    let newestUpdate = detailsSince;
     let pages = 0;
 
+    /*
+     * Deliberately unfiltered: every issue and pull request, every time.
+     *
+     * `since` used to bound this walk, which made the list cheap and the
+     * database wrong for any question about a past moment. How many issues
+     * were open in March cannot be answered from the ones that changed since
+     * March — the balance carried in from before is exactly what is missing,
+     * and no amount of later syncing recovers it.
+     *
+     * So the list is always complete and `since` now decides something else:
+     * which of those items are worth spending a request each on. That is where
+     * the cost actually is — a repository with 20,000 issues is 200 list pages
+     * against 40,000 comment and timeline calls — so the walk gets more
+     * thorough and the run gets no more expensive.
+     */
     for await (const page of this.client.issues(this.target.owner, this.target.repo, {
-      since,
       state: 'all',
     })) {
       pages += 1;
@@ -638,10 +659,14 @@ class GithubRepoSyncer {
       for (const raw of page) {
         const issueNumber = num(raw, 'number') ?? 0;
         this.writeIssueRow(raw);
-        this.issueRefs.push({ id: num(raw, 'id') ?? 0, number: issueNumber });
-        if (map.isPullRequest(raw)) this.pullRequestNumbers.push(issueNumber);
-
         const updatedAt = str(raw, 'updated_at');
+        const stale = detailsSince !== null && updatedAt !== null && updatedAt < detailsSince;
+
+        if (!stale) {
+          this.issueRefs.push({ id: num(raw, 'id') ?? 0, number: issueNumber });
+          if (map.isPullRequest(raw)) this.pullRequestNumbers.push(issueNumber);
+        }
+
         if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
         this.countItem();
       }

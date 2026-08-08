@@ -278,13 +278,22 @@ class JiraProjectSyncer {
     if (!sync.workitems) return;
 
     const scope = `${this.scopePrefix}:workitems`;
-    const jql = this.buildJql(this.resolveSince(scope));
-    const total = await this.client.count(jql);
-    if (total === null) return;
+    // Two counts, because the search and the follow ups are bounded
+    // differently now: every work item is listed, and only the ones that
+    // changed can owe a request. Without a `since` the second is free.
+    const jql = this.buildJql(null);
+    const listed = await this.client.count(jql);
+    if (listed === null) return;
+
+    const detailsSince = this.resolveSince(scope);
+    const changed =
+      detailsSince === null
+        ? listed
+        : ((await this.client.count(this.buildJql(detailsSince))) ?? listed);
 
     // Kept so the walk does not pay for the same count a second time.
-    this.surveyed = { jql, total };
-    this.ctx.progress.expectFor(scope, this.workitemCalls(total));
+    this.surveyed = { jql, total: listed };
+    this.ctx.progress.expectFor(scope, this.workitemCalls(listed, changed));
   }
 
   /**
@@ -321,15 +330,18 @@ class JiraProjectSyncer {
   private async countForSync(jql: string, scope: string): Promise<number | null> {
     this.ctx.progress.expect(1);
     const total = await this.client.count(jql);
-    if (total !== null) this.ctx.progress.expectFor(scope, this.workitemCalls(total));
+    if (total !== null) this.ctx.progress.expectFor(scope, this.workitemCalls(total, total));
     return total;
   }
 
-  /** The count call, the pages it implies, and the follow ups per work item. */
-  private workitemCalls(total: number): number {
+  /**
+   * The count call, the pages it implies for `listed` work items, and the
+   * follow ups the `changed` ones can owe.
+   */
+  private workitemCalls(listed: number, changed: number): number {
     const { sync } = this.target;
     const perItem = (sync.comments ? 1 : 0) + (sync.changelog ? 1 : 0) + (sync.worklogs ? 1 : 0);
-    return 1 + Math.max(1, Math.ceil(total / this.ctx.config.sync.pageSize)) + total * perItem;
+    return 1 + Math.max(1, Math.ceil(listed / this.ctx.config.sync.pageSize)) + changed * perItem;
   }
 
   async runPhase(phase: SyncPhase): Promise<void> {
@@ -507,8 +519,17 @@ class JiraProjectSyncer {
 
   private async listWorkitems(): Promise<void> {
     const scope = `${this.scopePrefix}:workitems`;
-    const since = this.resolveSince(scope);
-    const jql = this.buildJql(since);
+    /*
+     * Bounds the follow up requests, not the search.
+     *
+     * Every work item is listed every time, because how many were open on a
+     * past day cannot be answered from the ones that changed since — the
+     * balance carried in from before is exactly what would be missing. A Jira
+     * search returns the item in full anyway, so listing all of them costs
+     * pages rather than requests per item.
+     */
+    const detailsSince = this.resolveSince(scope);
+    const jql = this.buildJql(null);
 
     this.ctx.progress.log(`JQL: ${jql}`);
 
@@ -521,7 +542,7 @@ class JiraProjectSyncer {
       this.ctx.progress.log(`${total} work item(s) match in ${this.target.projectKey}.`);
     }
 
-    let newestUpdate = since;
+    let newestUpdate = detailsSince;
     let nextPageToken: string | null = null;
     let startAt = 0;
 
@@ -536,7 +557,7 @@ class JiraProjectSyncer {
       });
 
       for (const raw of page.issues) {
-        const updatedAt = this.writeWorkitemRow(raw);
+        const updatedAt = this.writeWorkitemRow(raw, detailsSince);
         if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
         this.workitemCount += 1;
         this.ctx.progress.recordItems();
@@ -559,10 +580,14 @@ class JiraProjectSyncer {
    * Where it was truncated the key is remembered instead, so the request that
    * completes it is made in the detail phase with the other per item requests.
    */
-  private writeWorkitemRow(raw: JsonObject): string | null {
+  private writeWorkitemRow(raw: JsonObject, detailsSince: string | null = null): string | null {
     const { sync } = this.target;
     const workitem = { id: str(raw, 'id') ?? '', key: str(raw, 'key') ?? '' };
     const syncedAt = nowIso();
+    const updated = str(raw, 'fields', 'updated');
+    const updatedAt = updated ? new Date(updated).toISOString() : null;
+    // Listed either way; only the follow up requests are bounded by `since`.
+    const stale = detailsSince !== null && updatedAt !== null && updatedAt < detailsSince;
 
     this.write('jira_workitems', map.mapWorkitem(raw, this.jiraCtx, syncedAt));
     for (const row of map.workitemLabelRows(raw, this.jiraCtx)) {
@@ -584,7 +609,7 @@ class JiraProjectSyncer {
       const comments = arr(embedded, 'comments') as JsonObject[];
       const total = num(embedded, 'total');
       if (total !== null && comments.length >= total) this.writeComments(comments, workitem);
-      else this.needComments.push(workitem);
+      else if (!stale) this.needComments.push(workitem);
     }
 
     if (sync.changelog) {
@@ -592,14 +617,13 @@ class JiraProjectSyncer {
       const histories = arr(embedded, 'histories') as JsonObject[];
       const total = num(embedded, 'total');
       if (total !== null && histories.length >= total) this.writeChangelog(histories, workitem);
-      else this.needChangelog.push(workitem);
+      else if (!stale) this.needChangelog.push(workitem);
     }
 
     // Worklogs are never embedded, so they always owe a request.
-    if (sync.worklogs) this.needWorklogs.push(workitem);
+    if (sync.worklogs && !stale) this.needWorklogs.push(workitem);
 
-    const updatedAt = str(raw, 'fields', 'updated');
-    return updatedAt ? new Date(updatedAt).toISOString() : null;
+    return updatedAt;
   }
 
   /** The follow up requests the search response left owing. */

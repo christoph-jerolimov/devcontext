@@ -8,6 +8,8 @@ import { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import { exportOutputs } from '../exporters/index.js';
 import type { ExportSummary } from '../exporters/index.js';
+import { buildStateHistory } from '../history/build.js';
+import type { StateHistoryStats } from '../history/build.js';
 import { buildCrossLinks } from '../links/build.js';
 import { buildSearchIndex } from '../search/index.js';
 import type { SearchIndexStats } from '../search/index.js';
@@ -53,6 +55,7 @@ export interface SyncSummary {
   durationMs: number;
   links?: BuildLinksResult;
   search?: SearchIndexStats;
+  history?: StateHistoryStats;
   export?: ExportSummary;
 }
 
@@ -228,6 +231,16 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       summary.search = buildSearchIndex(db, options.full ? {} : { since: startedAtIso });
       if (summary.search.rows > 0) {
         logger.debug(`Indexed ${summary.search.rows} item(s) for search.`);
+      }
+
+      // Rebuilt rather than appended to: it is derived from the timelines and
+      // changelogs, and a sync that filled in history the last one missed has
+      // to change what the earlier days say.
+      summary.history = buildStateHistory(db);
+      if (summary.history.changes > 0) {
+        logger.debug(
+          `Tracked ${summary.history.changes} state change(s) across ${summary.history.items} item(s).`,
+        );
       }
     }
 
