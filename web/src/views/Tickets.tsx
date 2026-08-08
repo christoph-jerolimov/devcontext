@@ -135,11 +135,11 @@ export function TicketsView(): ReactNode {
                   <td className="muted">{ticket.type}</td>
                   <td>{ticket.title}</td>
                   <td>
-                    {/* The word the source uses, coloured by what it means. */}
-                    <Badge
-                      value={ticket.status ?? ticket.state}
-                      kind={ticket.state === 'open' ? undefined : 'done'}
-                    />
+                    {/* The word the source uses, with the same class the
+                        GitHub and Jira views give it — so `closed` and `Done`
+                        look here exactly as they do there, rather than this
+                        view inventing a second colour scheme. */}
+                    <Badge value={ticket.status ?? ticket.state} />
                   </td>
                   <td className="muted">{ticket.assignee}</td>
                   <td className="muted">{formatRelative(ticket.updated_at)}</td>

@@ -12,6 +12,7 @@ const PAGES = [
   { id: 'runs', label: 'Workflow runs' },
   { id: 'workitems', label: 'Jira work items' },
   { id: 'sprints', label: 'Sprints' },
+  { id: 'history', label: 'History' },
   { id: 'insights', label: 'Insights' },
   { id: 'digest', label: 'Digest' },
 ] as const;
@@ -102,6 +103,28 @@ test.describe('the data actually arrived', () => {
 
     await openViewer(page, 'runs');
     await expect(page.locator('.table tbody tr')).toHaveCount(4);
+  });
+
+  test('the history chart is drawn from the state changes, not from today', async ({ page }) => {
+    await openViewer(page, 'history');
+
+    /*
+     * The point of this view: a count for a day in the past, which no other
+     * table can produce. The line has a point per day and the caption states
+     * the balance, so both are checked rather than only that an svg exists.
+     */
+    const chart = page.locator('.chart svg');
+    await expect(chart).toBeVisible();
+    await expect(page.locator('.chart-line')).toHaveCount(1);
+
+    // One hit column per day in the window, each carrying its own tooltip.
+    await expect(page.locator('.chart-hit')).toHaveCount(30);
+    await expect(page.locator('.chart-hit title').first()).toHaveText(
+      /\d{4}-\d{2}-\d{2}: \d+ open/,
+    );
+
+    await expect(page.locator('.chart figcaption')).toContainText('open now');
+    await expect(page.locator('.panel', { hasText: 'Open per person' })).toBeVisible();
   });
 
   test('the ticket list merges both sources and builds its filters from them', async ({ page }) => {

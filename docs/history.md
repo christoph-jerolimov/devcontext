@@ -105,6 +105,13 @@ devcontext history --by-assignee
 devcontext history --kind pull_request --output json
 ```
 
+## Where to see it
+
+- `devcontext history` in the terminal, with a bar per day
+- the **History** page in the [web viewer](web.md), as a line with the daily
+  movement on hover and a per-person snapshot beneath it
+- the **History** view in the [terminal viewer](tui.md)
+
 ## Limits worth knowing
 
 - **Jira "done" is inferred.** The changelog stores status _names_; whether a
@@ -114,6 +121,9 @@ devcontext history --kind pull_request --output json
   names in the changelog and as an id on the item. Names are resolved against
   the synced sprints; one that cannot be resolved is dropped rather than
   guessed at.
+- **A person can appear twice.** GitHub knows them by login and Jira by
+  display name, and nothing reconciles the two, so `grace` and `Grace` are
+  counted as two people holding one item each rather than one holding two.
 - **History only goes back as far as what was synced.** A repository synced
   with `issueTimeline: false` has closes and reopens reconciled from the row,
   so the balance is right today but the shape between is flat.
