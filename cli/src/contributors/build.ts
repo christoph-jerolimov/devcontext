@@ -42,6 +42,7 @@ export interface ContributorStats {
 export const CONTRIBUTOR_ROLES = [
   'author',
   'reporter',
+  'raised',
   'assignee',
   'committer',
   'worked',
@@ -64,6 +65,7 @@ export const ROLE_DESCRIPTIONS: Record<ContributorRole, string> = {
   review_requested: 'was asked to review it, and has not yet',
   commenter: 'commented on it',
   merged_by: 'merged it',
+  raised: 'raised the issue this fixes',
 };
 
 /**
@@ -196,6 +198,39 @@ const SOURCES: ReadonlyArray<{ role: ContributorRole; sql: string }> = [
              1 AS events, merged_at AS first_at, merged_at AS last_at
         FROM gh_pull_requests
        WHERE NULLIF(merged_by, '') IS NOT NULL`,
+  },
+
+  {
+    /*
+     * The person who asked for the work, on the pull request that does it.
+     *
+     * Whoever raised the issue is a contributor to the fix in the way that
+     * matters most for the question this table is asked: who to talk to about
+     * a change. They wrote the problem statement, they are the one who can say
+     * whether it was solved, and until now they appeared nowhere near the pull
+     * request.
+     *
+     * Only through a `closes` link, never a mention. A pull request that says
+     * "see also #12" has not taken on #12's author as a collaborator, and
+     * crediting them would quietly inflate every contributor list on a chatty
+     * repository.
+     */
+    role: 'raised',
+    sql: `
+      SELECT 'github' AS source,
+             l.from_ref AS ref,
+             'pull_request' AS kind,
+             p.repo_full_name AS container,
+             i.author AS identity,
+             1 AS events, i.created_at AS first_at, i.created_at AS last_at
+        FROM cross_links l
+        JOIN gh_issues i
+          ON i.repo_full_name || '#' || i.number = l.to_ref AND i.is_pull_request = 0
+        JOIN gh_pull_requests p
+          ON p.repo_full_name || '#' || p.number = l.from_ref
+       WHERE l.via = 'closes'
+         AND l.from_kind = 'pull_request'
+         AND NULLIF(i.author, '') IS NOT NULL`,
   },
 
   // --- Jira ---------------------------------------------------------------

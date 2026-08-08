@@ -1,5 +1,6 @@
 import type { Database } from '../db/database.js';
 import { nowIso } from '../util/time.js';
+import { extractClosingReferences } from './closing.js';
 import { confidenceFor, extractGithubReferences, extractJiraKeys } from './extract.js';
 
 export interface CrossLinkRow {
@@ -124,6 +125,87 @@ export function buildCrossLinks(db: Database): BuildLinksResult {
     }
   }
 
+  /**
+   * A GitHub item pointing at another GitHub item.
+   *
+   * Kept separate from the Jira side because the failure mode is different:
+   * a Jira key is distinctive enough to spot anywhere, and an issue number is
+   * not, so every one of these has to come from somewhere that means it.
+   */
+  const addGithubTarget = (
+    from: Pick<Candidate, 'fromSource' | 'fromKind' | 'fromRef'>,
+    ref: string,
+    via: string,
+    detail: string,
+  ): void => {
+    if (!knownGithub.has(ref)) {
+      danglingGithub.add(ref);
+      return;
+    }
+    // A pull request that says "fixes" its own number is a typo, not a link,
+    // and one drawn on a diagram is a loop.
+    if (ref === from.fromRef) return;
+
+    const [repo = '', number = ''] = ref.split('#');
+    candidates.push({
+      ...from,
+      toSource: 'github',
+      toKind: guessKind(db, repo, Number(number)),
+      toRef: ref,
+      via,
+      detail,
+    });
+  };
+
+  /*
+   * What a pull request says it fixes.
+   *
+   * The relation the whole feature is about: "fixes #12" means the issue is
+   * finished when this lands, which "mentions #12" does not. Read from the
+   * body with the closing keyword required — see closing.ts for why the bare
+   * form is safe here and refused everywhere else.
+   */
+  for (const pull of pullRequests) {
+    const from = {
+      fromSource: 'github' as const,
+      fromKind: 'pull_request' as const,
+      fromRef: `${pull.repo}#${pull.number}`,
+    };
+    for (const closing of extractClosingReferences(pull.body, pull.repo)) {
+      addGithubTarget(from, `${closing.repo}#${String(closing.number)}`, 'closes', closing.match);
+    }
+  }
+
+  /*
+   * What GitHub itself already worked out.
+   *
+   * A `cross-referenced` timeline event on an issue records that something
+   * mentioned it, with the referring item attached — GitHub resolved the
+   * reference, so there is nothing here to guess at and no bare number to
+   * misread. The payload is already in `gh_events.raw`, synced with the
+   * timeline and until now never read, so this costs no API call.
+   */
+  for (const event of db.all<{ repo: string; number: number; raw: string }>(
+    `SELECT repo_full_name AS repo, issue_number AS number, raw FROM gh_events
+      WHERE event IN ('cross-referenced', 'connected')`,
+  )) {
+    const source = crossReferenceSource(event.raw, event.repo);
+    if (source === null) continue;
+
+    // The event sits on the item that was mentioned, and names the one that
+    // did the mentioning — so the link runs from the source towards this row.
+    addGithubTarget(
+      {
+        fromSource: 'github',
+        fromKind: source.isPullRequest ? 'pull_request' : 'issue',
+        fromRef: source.ref,
+      },
+      `${event.repo}#${String(event.number)}`,
+      'timeline',
+      source.isPullRequest ? 'referenced by a pull request' : 'referenced by an issue',
+    );
+  }
+
   // --- GitHub issues --------------------------------------------------------
   for (const issue of db.all<{
     repo: string;
@@ -229,6 +311,42 @@ export function buildCrossLinks(db: Database): BuildLinksResult {
     danglingJiraKeys: [...danglingJira].toSorted(),
     danglingGithubRefs: [...danglingGithub].toSorted(),
   };
+}
+
+/**
+ * The item that produced a `cross-referenced` timeline event.
+ *
+ * GitHub attaches the referring item under `source.issue`, having already
+ * resolved which repository and which number it is — which is the reason to
+ * prefer this over reading the same reference out of prose. A pull request is
+ * distinguished from an issue by the presence of a `pull_request` object,
+ * exactly as it is everywhere else in this API.
+ *
+ * Returns null rather than guessing when the payload is not the shape
+ * expected: an event whose source cannot be identified is not a link, and
+ * inventing one from half a payload is how a wrong link gets in.
+ */
+export function crossReferenceSource(
+  raw: string,
+  fallbackRepo: string,
+): { ref: string; isPullRequest: boolean } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const source = (parsed as { source?: { issue?: Record<string, unknown> } }).source?.issue;
+  if (!source) return null;
+
+  const number = source['number'];
+  if (typeof number !== 'number' || !Number.isInteger(number) || number <= 0) return null;
+
+  const repository = source['repository'] as { full_name?: unknown } | undefined;
+  const repo = typeof repository?.full_name === 'string' ? repository.full_name : fallbackRepo;
+
+  return { ref: `${repo}#${String(number)}`, isPullRequest: source['pull_request'] !== undefined };
 }
 
 function guessKind(db: Database, repo: string, number: number): 'issue' | 'pull_request' {

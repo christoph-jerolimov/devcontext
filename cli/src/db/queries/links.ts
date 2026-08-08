@@ -58,13 +58,27 @@ export function linksFor(
       confidence: row.confidence,
     };
     const existing = byRef.get(other.ref);
-    // Keep the strongest reason a link exists.
-    if (!existing || (existing.confidence !== 'high' && other.confidence === 'high')) {
+    // Keep the strongest reason a link exists, and the most specific of the
+    // equally strong ones — otherwise which reason gets shown depends on the
+    // order the rows came back in, which is nobody's intent.
+    if (!existing || strength(other) > strength(existing)) {
       byRef.set(other.ref, other);
     }
   }
 
   return [...byRef.values()].toSorted((a, b) => a.ref.localeCompare(b.ref));
+}
+
+/**
+ * How much a row deserves to be the one displayed.
+ *
+ * Confidence first, then how specific the reason is: a pull request found both
+ * by its closing keyword and by GitHub's timeline is one relationship, and
+ * "closes" says more about it than "referenced" does.
+ */
+function strength(link: { via: string; confidence: string }): number {
+  const specificity = link.via === 'closes' ? 2 : link.via === 'timeline' ? 1 : 0;
+  return (link.confidence === 'high' ? 10 : 0) + specificity;
 }
 
 /** Jira keys referenced by a GitHub issue or pull request. */

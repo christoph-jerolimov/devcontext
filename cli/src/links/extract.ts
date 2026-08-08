@@ -106,6 +106,11 @@ export const CONFIDENCE_BY_SOURCE: Record<string, LinkConfidence> = {
   branch: 'high',
   title: 'high',
   'jira-field': 'high',
+  // GitHub resolved this one itself, from its own timeline: there is no
+  // reference to have misread.
+  timeline: 'high',
+  // A closing keyword is the syntax GitHub acts on, not a turn of phrase.
+  closes: 'high',
   body: 'medium',
   commit: 'medium',
   comment: 'medium',

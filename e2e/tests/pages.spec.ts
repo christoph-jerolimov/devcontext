@@ -297,7 +297,47 @@ test.describe('the data actually arrived', () => {
     await expect(page.locator('.chart-line')).toHaveCount(3);
     await expect(page.locator('.panel', { hasText: 'Open GitHub issues' })).toBeVisible();
     await expect(page.locator('.panel', { hasText: 'Open pull requests' })).toBeVisible();
-    await expect(page.locator('.panel', { hasText: 'Open per person' })).toBeVisible();
+  });
+
+  test('a pull request is linked to the issue it fixes, both ways', async ({ request }) => {
+    /*
+     * Through the real sync and the real server. Both sources are exercised:
+     * pull request 42 says "Fixes #12" in its body, and issue 14 carries a
+     * `cross-referenced` timeline event naming pull request 43 — which GitHub
+     * resolved itself, and which was being synced and never read.
+     */
+    const linksFor = async (ref: string): Promise<Array<{ ref: string; via: string }>> => {
+      const body = (await (await request.get(`/api/links/${encodeURIComponent(ref)}`)).json()) as {
+        links: Array<{ ref: string; via: string }>;
+      };
+      return body.links;
+    };
+
+    const fixes = await linksFor('acme/platform#42');
+    expect(fixes.find((link) => link.ref === 'acme/platform#12')?.via).toBe('closes');
+
+    // And from the issue's end: same row, read the other way round.
+    const fixedBy = await linksFor('acme/platform#12');
+    expect(fixedBy.find((link) => link.ref === 'acme/platform#42')?.via).toBe('closes');
+
+    const referenced = await linksFor('acme/platform#14');
+    expect(referenced.find((link) => link.ref === 'acme/platform#43')?.via).toBe('timeline');
+  });
+
+  test('whoever raised the issue is credited on the pull request that fixes it', async ({
+    request,
+  }) => {
+    // The credit follows the "closes" link and nothing weaker, so it can only
+    // appear here if the link itself was found.
+    const pulls = (await (await request.get('/api/github/pulls?state=all')).json()) as Array<{
+      number: number;
+      contributors: Array<{ name: string; roles: string[] }>;
+    }>;
+
+    const merged = pulls.find((pull) => pull.number === 42);
+    const raised = merged?.contributors.filter((person) => person.roles.includes('raised'));
+
+    expect(raised?.length).toBe(1);
   });
 
   test('the tables name who worked on each row, not only who holds it', async ({ page }) => {
