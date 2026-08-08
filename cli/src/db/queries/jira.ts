@@ -394,6 +394,89 @@ export function listJiraFields(
   return db.all(`SELECT * FROM jira_fields ${where.sql} ORDER BY custom DESC, name`, where.values);
 }
 
+/*
+ * The child tables carry a work item key rather than a project, and a key
+ * prefix is not reliably the project key — a project can be renamed and keep
+ * its old prefix. So they are joined back to the work item.
+ */
+const viaWorkitem = (table: string): string =>
+  `SELECT w.project_key AS name, COUNT(*) AS total
+     FROM ${table} t
+     JOIN jira_workitems w ON w.site = t.site AND w.key = t.workitem_key
+    GROUP BY w.project_key`;
+
+/** The same counts as `jiraStats`, split per project. */
+export interface ProjectStats {
+  project: string;
+  workitems: number;
+  openWorkitems: number;
+  comments: number;
+  changelogEntries: number;
+  links: number;
+  attachments: number;
+  boards: number;
+  sprints: number;
+}
+
+export function jiraStatsByProject(db: Database): ProjectStats[] {
+  const rows = new Map<string, ProjectStats>();
+  const forProject = (key: string): ProjectStats => {
+    const existing = rows.get(key);
+    if (existing) return existing;
+    const created: ProjectStats = {
+      project: key,
+      workitems: 0,
+      openWorkitems: 0,
+      comments: 0,
+      changelogEntries: 0,
+      links: 0,
+      attachments: 0,
+      boards: 0,
+      sprints: 0,
+    };
+    rows.set(key, created);
+    return created;
+  };
+
+  for (const project of db.all<{ key: string }>('SELECT key FROM jira_projects ORDER BY key')) {
+    forProject(project.key);
+  }
+
+  const tally = (field: keyof ProjectStats, sql: string): void => {
+    for (const row of db.all<{ name: string; total: number }>(sql)) {
+      if (row.name) (forProject(row.name)[field] as number) = row.total;
+    }
+  };
+
+  tally(
+    'workitems',
+    'SELECT project_key AS name, COUNT(*) AS total FROM jira_workitems GROUP BY project_key',
+  );
+  tally(
+    'openWorkitems',
+    `SELECT project_key AS name, COUNT(*) AS total FROM jira_workitems
+      WHERE resolved_at IS NULL GROUP BY project_key`,
+  );
+  tally('comments', viaWorkitem('jira_comments'));
+  tally('changelogEntries', viaWorkitem('jira_changelog'));
+  tally('links', viaWorkitem('jira_links'));
+  tally('attachments', viaWorkitem('jira_attachments'));
+  tally(
+    'boards',
+    'SELECT project_key AS name, COUNT(*) AS total FROM jira_boards GROUP BY project_key',
+  );
+  // A sprint belongs to a board, and the board to a project.
+  tally(
+    'sprints',
+    `SELECT b.project_key AS name, COUNT(*) AS total
+       FROM jira_sprints s
+       JOIN jira_boards b ON b.site = s.site AND b.id = s.board_id
+      GROUP BY b.project_key`,
+  );
+
+  return [...rows.values()];
+}
+
 export function jiraStats(db: Database): Record<string, number> {
   return {
     projects: db.count('jira_projects'),
