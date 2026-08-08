@@ -28,6 +28,31 @@ export interface StatusResponse {
   state: SyncState[];
 }
 
+/** One thing that happened: a status change, a comment or a review. */
+export interface ActivityEvent {
+  source: 'github' | 'jira';
+  kind: 'status' | 'comment' | 'review';
+  /** `opened`, `closed`, `merged`, `commented`, `approved`, ... */
+  action: string;
+  ref: string;
+  container: string;
+  title: string | null;
+  /** The login or display name as stored. */
+  actor: string | null;
+  at: string;
+  detail: string | null;
+  url: string | null;
+  /** Resolved by the server; null when nobody has mapped this identity. */
+  person: PersonOption | null;
+}
+
+export interface ActivityResponse {
+  events: ActivityEvent[];
+  /** Everything the filters match, which the page usually is not. */
+  total: number;
+  kinds: string[];
+}
+
 export interface PersonOption {
   id: string;
   name: string;
@@ -401,6 +426,8 @@ export const api = {
   workflowRun: (id: number) => request<IssueDocument>(`/api/github/runs/${id}`),
   history: (params: Record<string, string | undefined>) =>
     request<HistoryResponse>('/api/history', params),
+  activity: (params: Record<string, string | undefined>) =>
+    request<ActivityResponse>('/api/activity', params),
   tickets: (params: Record<string, string | undefined>) =>
     request<TicketsResponse>('/api/tickets', params),
   ticketTypes: (params: Record<string, string | undefined>) =>

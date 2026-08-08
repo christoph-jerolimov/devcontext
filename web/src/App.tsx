@@ -5,6 +5,7 @@ import type { Repository, StatusResponse } from './api.ts';
 import { StateMessage, useAsync } from './components/common.tsx';
 import { Palette } from './components/Palette.tsx';
 import { useLocation } from './router.ts';
+import { ActivityView } from './views/Activity.tsx';
 import { DigestView } from './views/Digest.tsx';
 import { IssuesView, PullRequestsView, WorkflowRunsView } from './views/GithubViews.tsx';
 import { InsightsView } from './views/Insights.tsx';
@@ -21,6 +22,7 @@ const ROUTES = [
   { id: 'runs', label: 'Workflow runs' },
   { id: 'workitems', label: 'Jira work items' },
   { id: 'sprints', label: 'Sprints' },
+  { id: 'activity', label: 'Activity' },
   { id: 'history', label: 'History' },
   { id: 'insights', label: 'Insights' },
   { id: 'digest', label: 'Digest' },
@@ -80,6 +82,7 @@ export function App(): ReactNode {
               />
             ) : null}
             {route === 'sprints' ? <SprintsView /> : null}
+            {route === 'activity' ? <ActivityView /> : null}
             {route === 'history' ? <HistoryView /> : null}
             {route === 'insights' ? <InsightsView /> : null}
             {route === 'digest' ? <DigestView /> : null}

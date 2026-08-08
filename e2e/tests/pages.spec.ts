@@ -12,6 +12,7 @@ const PAGES = [
   { id: 'runs', label: 'Workflow runs' },
   { id: 'workitems', label: 'Jira work items' },
   { id: 'sprints', label: 'Sprints' },
+  { id: 'activity', label: 'Activity' },
   { id: 'history', label: 'History' },
   { id: 'insights', label: 'Insights' },
   { id: 'digest', label: 'Digest' },
@@ -196,6 +197,30 @@ test.describe('the data actually arrived', () => {
 
     await openViewer(page, 'runs');
     await expect(page.locator('.table tbody tr')).toHaveCount(4);
+  });
+
+  test('the activity feed carries all three kinds, from both platforms', async ({ request }) => {
+    /*
+     * The screenshot would pass on an empty feed, and would pass again if only
+     * the comments made it through. This asserts the union actually unions:
+     * every kind, and both sources, reached the page.
+     */
+    const feed = (await (
+      await request.get('/api/activity?since=2000-01-01T00:00:00Z&limit=500')
+    ).json()) as {
+      events: Array<{ source: string; kind: string; action: string; title: string | null }>;
+      total: number;
+    };
+
+    expect(feed.events.map((event) => event.kind).toSorted()).toContain('review');
+    expect(new Set(feed.events.map((event) => event.kind))).toEqual(
+      new Set(['status', 'comment', 'review']),
+    );
+    expect(new Set(feed.events.map((event) => event.source))).toEqual(new Set(['github', 'jira']));
+
+    // A row that cannot say what it is about is a row nobody can read.
+    expect(feed.events.every((event) => event.title !== null)).toBe(true);
+    expect(feed.total).toBe(feed.events.length);
   });
 
   test('the history chart is drawn from the state changes, not from today', async ({ page }) => {

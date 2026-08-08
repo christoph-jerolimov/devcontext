@@ -103,9 +103,15 @@ devcontext tickets --person grace --person ada
 devcontext tickets --team platform,infra
 ```
 
-The viewer has the same filter as one dropdown on Issues, Pull requests and
-Tickets, and hides it when nothing is configured. The API takes `?person=` and
-`?team=` on the same lists, and `/api/people` returns the directory.
+The viewer has the same filter as one dropdown on Activity, Issues, Pull
+requests and Tickets, and hides it when nothing is configured. The API takes
+`?person=` and `?team=` on the same lists, and `/api/people` returns the
+directory.
+
+[Activity](cli.md#devcontext-activity-aliases-feed-changes) is where the
+mapping pays off most: a feed of what people did is unreadable when the same
+colleague appears under three names, and `--by-person` over a month is the
+fastest way to notice a fourth.
 
 ### One thing worth knowing
 

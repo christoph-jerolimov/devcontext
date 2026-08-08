@@ -391,6 +391,63 @@ category it belongs to, so a work item counts as closed when its category is
 the status, so the table shows `In Progress` rather than flattening it to
 `open`.
 
+## `devcontext activity` (aliases `feed`, `changes`)
+
+What people did, newest first, across both platforms. Every other list says
+what the _state_ of things is; this one says what _happened_, and the two
+cannot be read off each other — an issue that was opened, argued over for a
+fortnight and closed looks, in the issue list, exactly like one nobody touched.
+
+| Option                   | Description                                           |
+| ------------------------ | ----------------------------------------------------- |
+| `--since <when>`         | Events at or after this point (default `14d`)         |
+| `--until <when>`         | Events before this point                              |
+| `--source <source>`      | `github` or `jira`, repeatable                        |
+| `-c, --container <name>` | Repository (`acme/platform`) or Jira project (`PLAT`) |
+| `-k, --kind <kind>`      | `status`, `comment` or `review`, repeatable           |
+| `--person <id>`          | Only what this configured person did, repeatable      |
+| `--team <id>`            | Only what members of this team did, repeatable        |
+| `--no-bots`              | Hide what bots did                                    |
+| `--bots-only`            | Only what bots did                                    |
+| `--by-person`            | Who was busy in the window, instead of what happened  |
+
+```bash
+devcontext activity --since 7d
+devcontext activity --team platform --kind review
+devcontext activity --no-bots --container acme/platform
+devcontext activity --by-person --since 30d
+```
+
+### The three kinds
+
+| Kind      | What it covers                                                                  |
+| --------- | ------------------------------------------------------------------------------- |
+| `status`  | Opened, closed, reopened, merged; a Jira work item created or moved to a status |
+| `comment` | Issue, pull request and work item comments, plus the inline comments on a diff  |
+| `review`  | A verdict on a pull request: approved, changes requested, commented, dismissed  |
+
+Labels, assignment changes and renames are stored — see
+[Database](database.md) — but they are bookkeeping rather than activity, and a
+feed listing every label a triage bot ever applied buries the four things that
+mattered.
+
+Only the **status** field of the Jira changelog counts as a status change.
+"Changed the description" is a change, but it is not that, and a feed that said
+otherwise would be full of them.
+
+### `--by-person`
+
+```
+SOURCE  ACTOR         PERSON        STATUS  COMMENTS  REVIEWS  TOTAL  LAST
+github  ghopper       Grace Hopper      12        41       27     80  2026-08-06
+github  grace-h                          1         3        0      4  2026-08-02
+```
+
+Grouped per **identity**, not per person, for the same reason
+`people --identities` is: the second row is a login nobody mapped, and rolling
+it into Grace would hide exactly the thing worth seeing. See
+[People](people.md).
+
 ## `devcontext people` (alias `person`)
 
 The configured people and bots, with the GitHub and Jira identities each of
