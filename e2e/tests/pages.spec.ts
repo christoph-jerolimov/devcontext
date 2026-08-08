@@ -29,10 +29,33 @@ async function openViewer(page: Page, hash: string): Promise<void> {
   await page.clock.setFixedTime(new Date(REFERENCE));
   await pinVolatileValues(page);
   await page.goto(`/#/${hash}`);
+  await pinTheMonospaceFont(page);
   // The shell renders before the fetches resolve; waiting on the panel avoids
   // photographing a half loaded page.
   await expect(page.locator('.content .panel, .content .cards').first()).toBeVisible();
   await expect(page.getByText('Loading…')).toHaveCount(0);
+}
+
+/**
+ * Pins the one font the stylesheet never actually names.
+ *
+ * Every monospace rule in the viewer ends in the generic `monospace`, and a
+ * generic family is by definition whatever the machine decides — fontconfig
+ * picks it, and two Linux boxes need not pick the same one. The overview is
+ * the only screenshotted page with any monospace text on it (the configuration
+ * and database paths), and it was the only page that differed between this
+ * machine and the runner, by a few hundred pixels of identical characters.
+ *
+ * The body font is pinned to whatever it already resolves to, because the nine
+ * other pages matching exactly is proof that both environments agree on it.
+ * The cost is that those two paths appear in the body font in the pictures
+ * rather than in a monospace one, which for a screenshot of two invented paths
+ * is not much of a cost at all.
+ */
+async function pinTheMonospaceFont(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `code, pre, .palette-ref, .mono, .tree-key { font-family: inherit; }`,
+  });
 }
 
 /**
@@ -135,21 +158,6 @@ test.describe('the data actually arrived', () => {
    * that the sync put something on each of them. They are about the pipeline —
    * CLI sync, SQLite, JSON API, React — not about layout.
    */
-  // TEMPORARY: prints what the overview actually renders, so a screenshot
-  // difference between this machine and the runner can be read rather than
-  // guessed at. Remove once the overview baseline is stable.
-  test('DEBUG dump the overview text', async ({ page }) => {
-    await openViewer(page, 'overview');
-    const panels = page.locator('.content .panel');
-    const count = await panels.count();
-    for (let index = 0; index < count; index += 1) {
-      const text = (await panels.nth(index).innerText()).replaceAll('\n', ' | ');
-      console.log(`PANEL ${String(index)}: ${text}`);
-    }
-    const cards = await page.locator('.content .cards').innerText();
-    console.log(`CARDS: ${cards.replaceAll('\n', ' | ')}`);
-  });
-
   test('the sync really made the calls the screenshot no longer shows', async ({ request }) => {
     /*
      * The overview screenshot shows pinned call and item counts, so nothing in
