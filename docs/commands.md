@@ -58,6 +58,7 @@ devcontext [options] <command>
   - [`sprints`, `sprint`](#devcontext-jira-sprints) — list sprints, or show one sprint with its work items
   - [`projects`, `project`](#devcontext-jira-projects) — list the Jira projects that have been synced
   - [`fields`, `field`](#devcontext-jira-fields) — list Jira fields and the friendly names configured for them
+- [`tickets`, `ticket`](#devcontext-tickets) — GitHub issues and Jira work items as one list
 - [`serve`, `web`](#devcontext-serve) — serve the React viewer and a JSON API for the local database
 - [`insights`, `report`, `stats`](#devcontext-insights) — cycle time, review latency, work in progress, stale items, flaky steps, sprints
 - [`digest`, `standup`, `summary`](#devcontext-digest) — what happened in a window: shipped, started, reviewed, and still stuck
@@ -798,6 +799,31 @@ devcontext jira fields [options]
 | Option | Values | Default | Description |
 | --- | --- | --- | --- |
 | `--mapped` | — | — | only fields with a configured name |
+| `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
+| `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
+| `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |
+| `--offset <count>` | — | — | skip this many rows |
+| `--search <text>` | — | — | match text in the title / summary / body |
+
+## `devcontext tickets`
+
+Alias: `ticket`
+
+GitHub issues and Jira work items as one list
+
+```
+devcontext tickets [options]
+```
+
+| Option | Values | Default | Description |
+| --- | --- | --- | --- |
+| `--source <source>` | — | — | github or jira, repeatable |
+| `-c, --container <name>` | — | — | repository (acme/platform) or Jira project (PLAT), repeatable |
+| `-t, --type <type>` | — | — | Bug, Story, Issue, ... repeatable |
+| `-s, --state <state>` | — | `all` | open, closed or all |
+| `--assignee <name>` | — | — | assigned to this person |
+| `--types` | — | — | list the types present and how many carry each, instead |
+| `--containers` | — | — | list the repositories and projects present, instead |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |
 | `-n, --limit <count>` | — | `50` | maximum number of rows (0 for no limit) |

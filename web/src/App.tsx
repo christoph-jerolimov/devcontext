@@ -10,9 +10,11 @@ import { IssuesView, PullRequestsView, WorkflowRunsView } from './views/GithubVi
 import { InsightsView } from './views/Insights.tsx';
 import { SprintsView, WorkitemsView } from './views/JiraViews.tsx';
 import { Overview } from './views/Overview.tsx';
+import { TicketsView } from './views/Tickets.tsx';
 
 const ROUTES = [
   { id: 'overview', label: 'Overview' },
+  { id: 'tickets', label: 'Tickets' },
   { id: 'issues', label: 'GitHub issues' },
   { id: 'pulls', label: 'Pull requests' },
   { id: 'runs', label: 'Workflow runs' },
@@ -63,6 +65,7 @@ export function App(): ReactNode {
         {status.data ? (
           <>
             {route === 'overview' ? <Overview status={status.data} /> : null}
+            {route === 'tickets' ? <TicketsView /> : null}
             {route === 'issues' ? <IssuesView repos={repos.data ?? []} /> : null}
             {route === 'pulls' ? <PullRequestsView repos={repos.data ?? []} /> : null}
             {route === 'runs' ? <WorkflowRunsView repos={repos.data ?? []} /> : null}

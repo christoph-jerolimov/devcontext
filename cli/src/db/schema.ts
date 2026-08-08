@@ -210,6 +210,16 @@ CREATE TABLE IF NOT EXISTS gh_issues (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gh_issues_number
   ON gh_issues (host, repo_id, number);
 CREATE INDEX IF NOT EXISTS idx_gh_issues_state ON gh_issues (state, updated_at DESC);
+
+-- GitHub's own issue type ("Bug", "Feature", ...), which only newer
+-- repositories set. It has no column of its own because adding one would need
+-- a migration and a resync to fill it, while the payload it comes from is
+-- already stored on every row. An expression index makes reading it out of
+-- that payload as cheap as a column would be, and CREATE INDEX IF NOT EXISTS
+-- reaches databases synced before this existed, because the schema is applied
+-- on every open.
+CREATE INDEX IF NOT EXISTS idx_gh_issues_type
+  ON gh_issues (json_extract(raw, '$.type.name'));
 CREATE INDEX IF NOT EXISTS idx_gh_issues_repo_updated
   ON gh_issues (repo_full_name, updated_at DESC);
 

@@ -10,6 +10,7 @@ import { SyncJournal } from '../db/journal.js';
 import * as gh from '../db/queries/github.js';
 import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
+import * as ticketQueries from '../db/queries/tickets.js';
 import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
 import { searchAll } from '../search/index.js';
@@ -205,6 +206,36 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       default:
         return undefined;
     }
+  }
+
+  if (area === 'tickets') {
+    /*
+     * GitHub issues and Jira work items as one list, plus the two things a
+     * filter bar needs to describe itself: which types exist and which
+     * repositories and projects exist. Both are read off the data, so a
+     * project that invents a type gets a filter entry without a redeploy.
+     */
+    const filter: ticketQueries.TicketFilter = {
+      sources: listParam(query, 'source'),
+      containers: listParam(query, 'container'),
+      types: listParam(query, 'type'),
+      state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
+      assignee: query.get('assignee') ?? undefined,
+      search,
+      limit,
+      offset,
+    };
+
+    if (resource === 'types') return ticketQueries.ticketTypes(db, filter);
+    if (resource === 'containers') return ticketQueries.ticketContainers(db, filter);
+    if (resource !== undefined) return undefined;
+
+    return {
+      tickets: ticketQueries.listTickets(db, filter),
+      // So the viewer can say "showing 100 of 4,312" rather than implying the
+      // page it got is everything there is.
+      total: ticketQueries.countTickets(db, filter),
+    };
   }
 
   if (area === 'search') {
