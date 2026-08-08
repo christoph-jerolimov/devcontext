@@ -178,7 +178,11 @@ projects:
         # continue from the stored cursor. Omitting it means everything the
         # API returns. Accepts 30d, 6w, 3mo, 2y or an absolute date.
         since: 12mo
-        maxWorkflowRuns: 250 # per sync run, a safety net against huge repos
+        # Per sync run, a safety net against huge repositories. `null` or
+        # "all" removes it entirely and fetches every run the API returns —
+        # which on a busy repository is tens of thousands, so the sync warns
+        # about the size once it knows it.
+        maxWorkflowRuns: 250
         maxLogBytes: 2000000 # job logs are truncated beyond this
         # The same flags as github.sync above; this level wins.
         sync:

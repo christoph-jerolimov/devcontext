@@ -142,6 +142,47 @@ projects:
   });
 });
 
+describe('maxWorkflowRuns', () => {
+  function capOf(value: string): number | null {
+    const config = parseConfig(
+      `
+projects:
+  - key: demo
+    github:
+      - repo: acme/platform
+        ${value}
+`,
+      { configPath: CONFIG_PATH },
+    );
+    return config.projects[0]?.github[0]?.maxWorkflowRuns ?? null;
+  }
+
+  it('caps at 250 when nothing is configured', () => {
+    expect(capOf('')).toBe(250);
+  });
+
+  it('takes a number', () => {
+    expect(capOf('maxWorkflowRuns: 1000')).toBe(1000);
+  });
+
+  it('treats null and "all" as no cap at all', () => {
+    /*
+     * Both spellings, because they answer the question in different words. The
+     * resolver cannot use `?? 250` for this: an explicit null means every run
+     * was asked for, and `??` would quietly hand back the default instead.
+     */
+    expect(capOf('maxWorkflowRuns: null')).toBeNull();
+    expect(capOf('maxWorkflowRuns: all')).toBeNull();
+    expect(capOf('maxWorkflowRuns: "all"')).toBeNull();
+  });
+
+  it('rejects a number that could never fetch anything, and a word it does not know', () => {
+    expect(() => capOf('maxWorkflowRuns: 0')).toThrow(/maxWorkflowRuns/);
+    expect(() => capOf('maxWorkflowRuns: -5')).toThrow(/maxWorkflowRuns/);
+    expect(() => capOf('maxWorkflowRuns: every')).toThrow(/maxWorkflowRuns/);
+  });
+});
+
 describe('expandEnv', () => {
   it('replaces variables and honours fallbacks', () => {
     const result = expandEnv(
