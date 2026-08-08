@@ -376,6 +376,31 @@ jira    Epic         1
 jira    Task         1
 ```
 
+### The PEOPLE column
+
+Both this table and `gh prs` carry the people who touched each row, from
+[contributors](#devcontext-contributors-ref-aliases-who-contributor):
+
+```
+REF               TITLE                                          STATUS       ASSIGNEE  PEOPLE      UPDATED
+PLAT-4            Show the remaining budget in the progress bar   In Progress  Grace     Ada, Grace  2026-02-28
+acme/platform#12  Sync stalls on repositories with many pulls     open         grace     ada, grace  2026-02-27
+```
+
+It is not the assignee column twice. **Assignee answers "whose problem is
+this"; people answers "who would know about it"**, and on anything that has
+been reviewed or argued over they are different names.
+
+Two names and a count of the rest, busiest first — so a truncated cell keeps
+whoever carried the work rather than whoever sorts early. Listing all eight
+people on a busy pull request makes a column nobody reads, and silently showing
+the first two is worse, because it looks like the whole answer; `+6` says there
+were more. In the viewer the hover carries everybody with what each of them
+did.
+
+Names go through the [people mapping](people.md), so one colleague under a
+GitHub login and a Jira display name is one name here rather than two.
+
 ### What a "type" is
 
 Jira has always had one. GitHub only started offering typed issues recently and

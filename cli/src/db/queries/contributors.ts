@@ -105,6 +105,89 @@ export function contributorsOf(db: Database, refs: string[]): ContributorSummary
   );
 }
 
+/**
+ * A cell's worth of names: the ones who carried it, and how many others.
+ *
+ * Deliberately not every name. A busy pull request has eight people on it and
+ * a column that lists all eight is a column nobody reads — but a column that
+ * silently shows the first two is worse, because it looks like the whole
+ * answer. So the rest are counted rather than dropped: "ada, ghopper +6" says
+ * both who mattered and that there were more.
+ *
+ * `resolve` turns a raw identity into the configured person's name where there
+ * is one, and is given rather than looked up here because the directory comes
+ * from the configuration, not the database.
+ */
+export function summariseContributors(
+  people: readonly ContributorSummary[],
+  options: { show?: number; resolve?: (source: string, identity: string) => string } = {},
+): string {
+  const show = options.show ?? 2;
+  const name = options.resolve ?? ((_source: string, identity: string): string => identity);
+
+  // One person under two identities — a GitHub login and a Jira display name —
+  // is one person in this cell, or the count is wrong in the direction that
+  // makes a team look bigger than it is.
+  const names: string[] = [];
+  for (const person of people) {
+    const resolved = name(person.source, person.identity);
+    if (!names.includes(resolved)) names.push(resolved);
+  }
+
+  if (names.length === 0) return '';
+  const shown = names.slice(0, show);
+  const rest = names.length - shown.length;
+  return rest > 0 ? `${shown.join(', ')} +${String(rest)}` : shown.join(', ');
+}
+
+/**
+ * The same summaries, kept apart per item.
+ *
+ * `contributorsOf` folds every ref together, which is what a rollup wants and
+ * exactly wrong for a table: one query for the whole page, but each row has to
+ * get back only its own people. One statement rather than one per row, because
+ * a list of 200 tickets would otherwise be 200 round trips to show a column.
+ */
+export function contributorsByRef(db: Database, refs: string[]): Map<string, ContributorSummary[]> {
+  const out = new Map<string, ContributorSummary[]>();
+  if (refs.length === 0) return out;
+
+  for (const row of contributionsOf(db, refs)) {
+    const forRef = out.get(row.ref);
+    const found = forRef?.find(
+      (entry) =>
+        entry.source === row.source && entry.identity.toLowerCase() === row.identity.toLowerCase(),
+    );
+
+    if (found) {
+      if (!found.roles.includes(row.role)) found.roles.push(row.role);
+      found.events += row.events;
+      found.first_at = earlier(found.first_at, row.first_at);
+      found.last_at = later(found.last_at, row.last_at);
+      continue;
+    }
+
+    const summary: ContributorSummary = {
+      identity: row.identity,
+      source: row.source,
+      roles: [row.role],
+      refs: [row.ref],
+      events: row.events,
+      first_at: row.first_at,
+      last_at: row.last_at,
+    };
+    if (forRef) forRef.push(summary);
+    else out.set(row.ref, [summary]);
+  }
+
+  // Busiest first, so a truncated cell keeps the people who carried the work
+  // rather than whoever happens to sort first alphabetically.
+  for (const people of out.values()) {
+    people.sort((a, b) => b.events - a.events || a.identity.localeCompare(b.identity));
+  }
+  return out;
+}
+
 /** The earlier of two timestamps, either of which may be missing. */
 function earlier(a: string | null, b: string | null): string | null {
   if (a === null) return b;

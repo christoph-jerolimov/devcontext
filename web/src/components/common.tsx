@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 import type { IssueDocument } from '../api.ts';
+import type { Contributor } from '../api.ts';
 import { Markdown } from '../markdown/Markdown.tsx';
 import { useUrlState } from '../router.ts';
 
@@ -151,4 +152,39 @@ export function Labels({ values }: { values: string[] }): ReactNode {
  */
 export function Body({ text }: { text: string | null | undefined }): ReactNode {
   return <Markdown text={text} />;
+}
+
+/**
+ * The people who touched an item, as a table cell.
+ *
+ * Two names and a count of the rest, rather than all of them. A busy pull
+ * request has eight people on it and a column listing all eight is a column
+ * nobody reads — but one that silently shows the first two is worse, because
+ * it looks like the whole answer. The hover carries everybody, with what each
+ * of them did.
+ *
+ * The names arrive resolved: the server has the identities behind them, the
+ * viewer only has the display names. A bare login here is somebody nobody has
+ * mapped yet, which is worth seeing rather than hiding.
+ */
+export function Contributors({
+  people,
+  show = 2,
+}: {
+  people: Contributor[] | undefined;
+  show?: number;
+}): ReactNode {
+  if (!people || people.length === 0) return null;
+
+  const names = people.map((person) => person.name);
+  const shown = names.slice(0, show);
+  const rest = names.length - shown.length;
+  const full = people.map((person) => `${person.name} — ${person.roles.join(', ')}`).join('\n');
+
+  return (
+    <span className="muted" title={full}>
+      {shown.join(', ')}
+      {rest > 0 ? <span className="contributors-rest"> +{rest}</span> : null}
+    </span>
+  );
 }

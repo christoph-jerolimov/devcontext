@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 
 import { parseJsonColumn } from '../db/database.js';
+import { contributorsByRef, summariseContributors } from '../db/queries/contributors.js';
 import * as gh from '../db/queries/github.js';
 import {
   buildIssueDocument,
@@ -233,6 +234,12 @@ function pullRequestsCommand(): Command {
           ...readTimeFilters(options),
         });
 
+        // One query for the page rather than one per row.
+        const contributors = contributorsByRef(
+          ctx.db,
+          rows.map((row) => `${row.repo_full_name}#${String(row.number)}`),
+        );
+
         // Title first, because it is what identifies the row; then how it
         // ended, how big it was, who wrote it and when it last moved.
         const columns: Column<gh.PullRequestRow>[] = [
@@ -253,6 +260,21 @@ function pullRequestsCommand(): Command {
             optional: true,
           },
           { header: 'AUTHOR', value: (row) => row.author, optional: true },
+          {
+            // Everybody who touched it, author included. On a pull request
+            // this is usually the reviewers, which the author column cannot
+            // show and which is what somebody scanning the list wants.
+            header: 'PEOPLE',
+            value: (row) =>
+              summariseContributors(
+                contributors.get(`${row.repo_full_name}#${String(row.number)}`) ?? [],
+                {
+                  resolve: (source, identity) =>
+                    people.directory.identify(source as 'github' | 'jira', identity)?.name ??
+                    identity,
+                },
+              ),
+          },
           { header: 'UPDATED', value: (row) => formatRelative(row.updated_at) },
         ];
 

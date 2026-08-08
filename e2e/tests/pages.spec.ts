@@ -300,6 +300,30 @@ test.describe('the data actually arrived', () => {
     await expect(page.locator('.panel', { hasText: 'Open per person' })).toBeVisible();
   });
 
+  test('the tables name who worked on each row, not only who holds it', async ({ page }) => {
+    /*
+     * An empty People column passes every other test on this page — the table
+     * still renders, the counts are still right, and nobody notices the one
+     * thing it was added for. So the cell is read, and read on a pull request
+     * whose reviewer is somebody other than its author: that name cannot come
+     * from any column the table already had.
+     */
+    await openViewer(page, 'pulls');
+
+    const merged = page.locator('.table tbody tr', { hasText: 'respect the secondary rate limit' });
+    // Repository, #, Title, State, Changes, People, Updated.
+    const people = merged.locator('td').nth(5);
+
+    await expect(people).toContainText('linus');
+    // The hover carries everybody with what they did, which is the part the
+    // truncated cell cannot show.
+    await expect(people.locator('[title]')).toHaveAttribute('title', /linus — .*(review|merge)/);
+
+    await openViewer(page, 'tickets');
+    const ticket = page.locator('.table tbody tr').first();
+    await expect(ticket.locator('td').nth(6)).not.toBeEmpty();
+  });
+
   test('the finished and CI charts count events rather than balances', async ({ page }) => {
     await openViewer(page, 'history');
 

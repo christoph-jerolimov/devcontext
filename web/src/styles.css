@@ -1035,3 +1035,9 @@ a {
 .ratio-short {
   color: var(--warning);
 }
+
+/* The "+6" after a truncated list of contributors: present enough to notice,
+   quiet enough not to compete with the names. */
+.contributors-rest {
+  opacity: 0.7;
+}

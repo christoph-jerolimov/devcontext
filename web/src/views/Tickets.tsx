@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { api, formatRelative } from '../api.ts';
 import type { TicketContainer, TicketType, TicketsResponse } from '../api.ts';
-import { Badge, Panel, StateMessage, useAsync } from '../components/common.tsx';
+import { Badge, Contributors, Panel, StateMessage, useAsync } from '../components/common.tsx';
 import { usePeopleFilter } from '../components/PeopleFilter.tsx';
 import { useUrlState } from '../router.ts';
 
@@ -119,6 +119,7 @@ export function TicketsView(): ReactNode {
                 <th>Title</th>
                 <th>Status</th>
                 <th>Assignee</th>
+                <th>People</th>
                 <th>Updated</th>
               </tr>
             </thead>
@@ -147,6 +148,12 @@ export function TicketsView(): ReactNode {
                     <Badge value={ticket.status ?? ticket.state} />
                   </td>
                   <td className="muted">{ticket.assignee}</td>
+                  {/* Everybody who touched it, not only whoever holds it now.
+                      The assignee column answers "whose problem is this"; this
+                      one answers "who would know about it". */}
+                  <td>
+                    <Contributors people={ticket.contributors} />
+                  </td>
                   <td className="muted">{formatRelative(ticket.updated_at)}</td>
                 </tr>
               ))}

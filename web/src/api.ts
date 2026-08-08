@@ -129,6 +129,14 @@ export interface StatusTimesResponse {
   ongoing: number;
 }
 
+/** Somebody who touched an item, and what they did to it. */
+export interface Contributor {
+  /** The configured person's name where there is one, else the raw identity. */
+  name: string;
+  roles: string[];
+  events: number;
+}
+
 export interface PersonOption {
   id: string;
   name: string;
@@ -184,6 +192,8 @@ export interface Issue {
 }
 
 export interface PullRequest extends Issue {
+  /** Everyone who touched it, busiest first. */
+  contributors?: Contributor[];
   merged: number;
   draft: number;
   head_ref: string | null;
@@ -238,6 +248,8 @@ export interface Ticket {
   updated_at: string | null;
   created_at: string | null;
   url: string | null;
+  /** Everyone who touched it, busiest first. */
+  contributors?: Contributor[];
 }
 
 export interface TicketsResponse {

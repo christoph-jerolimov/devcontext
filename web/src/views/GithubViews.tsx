@@ -4,6 +4,7 @@ import { api, formatRelative, parseList } from '../api.ts';
 import type { Issue, PullRequest, Repository, WorkflowRun } from '../api.ts';
 import {
   Badge,
+  Contributors,
   Labels,
   Panel,
   StateMessage,
@@ -205,6 +206,7 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
                 <th>Title</th>
                 <th>State</th>
                 <th>Changes</th>
+                <th>People</th>
                 <th>Updated</th>
               </tr>
             </thead>
@@ -234,6 +236,12 @@ export function PullRequestsView({ repos }: { repos: Repository[] }): ReactNode 
                     <span className="changes-added">+{pull.additions ?? 0}</span>
                     <span className="muted">/</span>
                     <span className="changes-removed">-{pull.deletions ?? 0}</span>
+                  </td>
+                  {/* Author and reviewers together: on a pull request the
+                      reviewers are usually the names somebody scanning the
+                      list is after, and no other column can show them. */}
+                  <td>
+                    <Contributors people={pull.contributors} />
                   </td>
                   <td className="muted">{formatRelative(pull.updated_at)}</td>
                 </tr>
