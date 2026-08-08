@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { api, formatRelative } from '../api.ts';
-import type { InsightsResponse } from '../api.ts';
+import type { InsightsResponse, StatusTimesResponse } from '../api.ts';
 import { Panel, StateMessage, useAsync } from '../components/common.tsx';
 import { useUrlState } from '../router.ts';
 
@@ -47,6 +47,13 @@ export function InsightsView(): ReactNode {
   const { data, error, loading } = useAsync<InsightsResponse>(
     () => api.insights({ since: daysAgo(days), staleAfter: daysAgo(staleDays), limit: '15' }),
     [days, staleDays],
+  );
+
+  // Its own request: it reads `state_changes` rather than the current tables,
+  // and the overview endpoint has no business growing a section from another.
+  const statusTime = useAsync<StatusTimesResponse>(
+    () => api.statusTimes({ since: daysAgo(days), limit: '15' }),
+    [days],
   );
 
   return (
@@ -198,6 +205,43 @@ export function InsightsView(): ReactNode {
             </table>
             {data.flaky.steps.length === 0 ? (
               <p className="state">No step failed often enough to report.</p>
+            ) : null}
+          </Panel>
+
+          <Panel title="Time in each status">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Category</th>
+                  <th className="right">Stays</th>
+                  <th className="right">Median</th>
+                  <th className="right">P85</th>
+                  <th className="right">Longest</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(statusTime.data?.statuses ?? []).map((entry) => (
+                  <tr key={entry.status}>
+                    <td>{entry.status}</td>
+                    <td className="muted">{entry.category}</td>
+                    <td className="right">{entry.stays}</td>
+                    <td className="right">{formatHours(entry.hours.p50)}</td>
+                    <td className="right">{formatHours(entry.hours.p85)}</td>
+                    <td className="right">{formatHours(entry.hours.max)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {(statusTime.data?.statuses ?? []).length === 0 ? (
+              <p className="state">
+                No completed stay in any status in this window. Jira only; needs the changelog.
+              </p>
+            ) : null}
+            {statusTime.data && statusTime.data.ongoing > 0 ? (
+              <p className="muted small">
+                {`${String(statusTime.data.ongoing)} item(s) are still sitting somewhere and are not counted — a stay that has not ended has an unknown length, not a short one.`}
+              </p>
             ) : null}
           </Panel>
 

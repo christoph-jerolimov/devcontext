@@ -82,3 +82,61 @@ Without `--sprint` the report uses the most recent active sprint.
 
 `-o json` returns every section as structured data, which is the form to feed
 into a dashboard or a scheduled report.
+
+## Where the work sits, and how long it sits there
+
+Two reports read [the state history](history.md) rather than the current
+tables, because the status an item is in _now_ says nothing about Tuesday.
+
+```bash
+devcontext insights flow --since 30d
+devcontext insights status-time --since 90d
+```
+
+### `flow` — a cumulative flow diagram
+
+How many items were in each status on each day.
+
+```
+DAY         TO DO  IN PROGRESS  CODE REVIEW  DONE  TOTAL
+2024-03-03      1            4            1     1      7
+2024-03-04      1            3            2     1      7
+2024-03-05      1            3            2     1      7
+2024-03-06      1            3            1     3      8
+```
+
+`state` only ever knew open and closed, so a backlog of forty and a code review
+queue of forty were the same number — and they call for completely different
+responses. Read left to right: a column that swells before the one after it is
+where work is queuing.
+
+The columns are ordered by Jira's status category, so the diagram reads roughly
+in board order. A status **no item currently sits in** has no known category —
+Jira reports the category on the item and never in the changelog — so it sorts
+after the ones that could be placed rather than being put somewhere plausible
+and wrong.
+
+### `status-time` — how long each stop takes
+
+```
+STATUS       CATEGORY     STAYS  MEDIAN    P85  LONGEST
+Code Review  In Progress     34      3d     6d      11d
+In Progress  In Progress     41   24.0h     3d       8d
+To Do        To Do           38   36.0h     5d      21d
+```
+
+`insights cycle-time` measures the whole journey from in-progress to done. This
+is the same measurement per stop, which is what says _which_ stop is the slow
+one.
+
+A stay is the span between entering a status and leaving it, so work that came
+back to review twice contributes two stays — it really did spend two stretches
+there.
+
+**A stay that has not ended is not counted.** An item sitting in review right
+now has been there for an unknown time, not a short one, and averaging it in as
+"so far" would make a queue look healthier the longer it stalls. They are
+counted separately and reported underneath.
+
+Both are Jira only, and both need `changelog: true` (the default) — the status
+history is what they are built from.

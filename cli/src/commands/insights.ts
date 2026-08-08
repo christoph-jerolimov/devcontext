@@ -19,6 +19,8 @@ const SECTIONS = [
   'sprint',
   'burndown',
   'velocity',
+  'flow',
+  'status-time',
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -303,6 +305,84 @@ function renderSection(
           ],
           { format, emptyMessage: 'The sprint has no work items.' },
         ),
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
+    }
+
+    case 'flow': {
+      const report = insights.cumulativeFlow(ctx.db, {
+        from: filter.since,
+        ...(filter.until === undefined ? {} : { to: filter.until }),
+        ...(filter.projects === undefined ? {} : { containers: filter.projects }),
+      });
+      reports['flow'] = report;
+      if (report.statuses.length === 0) return null;
+
+      const names = report.statuses.map((entry) => entry.status);
+      return [
+        heading('Where the work is sitting'),
+        renderTable(
+          report.days,
+          [
+            { header: 'DAY', value: (row) => row.day },
+            ...names.map((status) => ({
+              header: status.toUpperCase(),
+              value: (row: insights.FlowDay) => row.counts[status] ?? 0,
+              align: 'right' as const,
+            })),
+            { header: 'TOTAL', value: (row) => row.total, align: 'right' },
+          ],
+          {
+            format,
+            list: ctx.list,
+            listValue: (row) => row.day,
+            emptyMessage: 'No status history in this window.',
+          },
+        ),
+        note(
+          'Read left to right: a column that swells before the one after it is where work is queuing.',
+        ),
+      ]
+        .filter((part) => part !== '')
+        .join('\n');
+    }
+
+    case 'status-time': {
+      const report = insights.statusTimes(ctx.db, {
+        from: filter.since,
+        ...(filter.until === undefined ? {} : { to: filter.until }),
+        ...(filter.projects === undefined ? {} : { containers: filter.projects }),
+        limit: filter.limit,
+      });
+      reports['statusTime'] = report;
+      if (report.statuses.length === 0) return null;
+
+      return [
+        heading('Time in each status'),
+        renderTable(
+          report.statuses,
+          [
+            { header: 'STATUS', value: (row) => row.status },
+            { header: 'CATEGORY', value: (row) => row.category ?? '', optional: true },
+            { header: 'STAYS', value: (row) => row.stays, align: 'right' },
+            { header: 'MEDIAN', value: (row) => formatHours(row.hours.p50), align: 'right' },
+            { header: 'P85', value: (row) => formatHours(row.hours.p85), align: 'right' },
+            { header: 'LONGEST', value: (row) => formatHours(row.hours.max), align: 'right' },
+          ],
+          {
+            format,
+            list: ctx.list,
+            listValue: (row) => row.status,
+            emptyMessage: 'No completed stay in any status in this window.',
+          },
+        ),
+        report.ongoing > 0
+          ? note(
+              `${String(report.ongoing)} item(s) are still sitting somewhere and are not counted: ` +
+                'a stay that has not ended has an unknown length, not a short one.',
+            )
+          : '',
       ]
         .filter((part) => part !== '')
         .join('\n');

@@ -288,6 +288,19 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         const id = rest[0] ? Number(rest[0]) : numberParam(query, 'sprint');
         return id === undefined || Number.isNaN(id) ? undefined : insights.sprintBurndown(db, id);
       }
+      case 'flow':
+        return insights.cumulativeFlow(db, {
+          from: since,
+          to: query.get('until') ?? undefined,
+          ...(filter.projects === undefined ? {} : { containers: filter.projects }),
+        });
+      case 'status-time':
+        return insights.statusTimes(db, {
+          from: since,
+          to: query.get('until') ?? undefined,
+          ...(filter.projects === undefined ? {} : { containers: filter.projects }),
+          limit,
+        });
       case 'velocity': {
         const board = numberParam(query, 'board');
         return insights.sprintVelocity(db, {

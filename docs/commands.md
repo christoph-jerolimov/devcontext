@@ -938,7 +938,7 @@ devcontext insights [options] [section]
 
 | Argument | Required | Description |
 | -------- | -------- | ----------- |
-| `section` | no | one of cycle-time, review-latency, wip, stale, flaky, sprint, burndown, velocity; omit for an overview of all of them |
+| `section` | no | one of cycle-time, review-latency, wip, stale, flaky, sprint, burndown, velocity, flow, status-time; omit for an overview of all of them |
 
 | Option | Values | Default | Description |
 | --- | --- | --- | --- |
