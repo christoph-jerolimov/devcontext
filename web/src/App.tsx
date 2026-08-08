@@ -6,6 +6,7 @@ import { StateMessage, useAsync } from './components/common.tsx';
 import { Palette } from './components/Palette.tsx';
 import { useLocation } from './router.ts';
 import { ActivityView } from './views/Activity.tsx';
+import { BurndownView } from './views/Burndown.tsx';
 import { DigestView } from './views/Digest.tsx';
 import { IssuesView, PullRequestsView, WorkflowRunsView } from './views/GithubViews.tsx';
 import { InsightsView } from './views/Insights.tsx';
@@ -24,6 +25,7 @@ const ROUTES = [
   { id: 'sprints', label: 'Sprints' },
   { id: 'activity', label: 'Activity' },
   { id: 'history', label: 'History' },
+  { id: 'burndown', label: 'Burndown' },
   { id: 'insights', label: 'Insights' },
   { id: 'digest', label: 'Digest' },
 ] as const;
@@ -84,6 +86,7 @@ export function App(): ReactNode {
             {route === 'sprints' ? <SprintsView /> : null}
             {route === 'activity' ? <ActivityView /> : null}
             {route === 'history' ? <HistoryView /> : null}
+            {route === 'burndown' ? <BurndownView /> : null}
             {route === 'insights' ? <InsightsView /> : null}
             {route === 'digest' ? <DigestView /> : null}
           </>

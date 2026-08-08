@@ -53,6 +53,10 @@ jira:
       token: fixture-token
       fields:
         customfield_10016: storyPoints
+        # Without this the work items have no sprint_id, so nothing is ever a
+        # member of a sprint and the burndown draws an empty one. Mapping it is
+        # what the sprint reports need; see docs/sprints.md.
+        customfield_10020: sprint
 
 projects:
   - key: platform

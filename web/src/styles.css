@@ -8,6 +8,7 @@
   --open: #1a7f37;
   --closed: #8250df;
   --failure: #cf222e;
+  --warning: #9a6700;
   font-family:
     ui-sans-serif,
     system-ui,
@@ -32,6 +33,7 @@
     --open: #3fb950;
     --closed: #ab7df8;
     --failure: #f85149;
+    --warning: #d29922;
   }
 }
 
@@ -901,9 +903,70 @@ a {
 }
 
 .feed-action.is-warning {
-  color: var(--warning, #9a6700);
+  color: var(--warning);
 }
 
 .feed-action.is-muted {
   color: var(--muted);
+}
+
+/*
+ * Burndown.
+ *
+ * The scope area behind the remaining line is the part that earns its keep: a
+ * flat line alone cannot say whether the team stopped finishing things or had
+ * a fortnight of work added on day four.
+ */
+.burn-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 16px;
+  margin: 0 0 8px;
+}
+
+.burn-scope {
+  color: var(--warning);
+}
+
+.burn-scope-area {
+  opacity: 0.35;
+}
+
+/* Dashed, because it is a target rather than something that happened. */
+.burn-ideal {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.burn-key {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  margin: 0 4px 0 12px;
+  vertical-align: middle;
+}
+
+.burn-key-line {
+  margin-left: 0;
+  background: var(--accent, #0969da);
+}
+
+.burn-key-scope {
+  background: var(--accent, #0969da);
+  opacity: 0.35;
+}
+
+.burn-key-ideal {
+  background: repeating-linear-gradient(to right, var(--muted) 0 4px, transparent 4px 8px);
+}
+
+.ratio-met {
+  color: var(--open);
+}
+
+.ratio-short {
+  color: var(--warning);
 }
