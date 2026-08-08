@@ -137,6 +137,34 @@ jira:
     boards: true
     sprints: true # sprints of those boards, including their membership
 
+# Who the names in the data belong to. Optional, and empty by default: without
+# it a person is whatever string each API returned, so the same colleague is
+# `ghopper` on one side and `Grace Hopper` on the other. See docs/people.md.
+people:
+  - id: grace # (no default) unique, used by --person
+    name: Grace Hopper # defaults to the id
+    email: grace@example.com # (no default) not used for matching
+    bot: false # true moves this entry into the bots, wherever it is written
+    github: [] # every GitHub login this person answers to
+    jira: [] # every Jira display name, account id or email
+
+# Exactly the same shape, with `bot` already answered. A GitHub App whose login
+# ends in [bot] is treated as one without being listed here.
+bots:
+  - id: dependabot
+    name: Dependabot
+    email: bot@example.com # (no default)
+    bot: true # already implied by being here
+    github: []
+    jira: []
+
+# Groups of the people above, so a filter can name the group instead.
+teams:
+  - id: platform # (no default) unique, used by --team
+    name: Platform # defaults to the id
+    description: Keeps the build green. # (no default)
+    members: [] # person ids; an unknown one is an error, not an empty result
+
 # At least one project is required; everything above is optional.
 projects:
   - key: acme-platform # (no default) unique, used by --project

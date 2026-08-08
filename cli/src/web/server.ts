@@ -12,8 +12,10 @@ import * as jira from '../db/queries/jira.js';
 import * as crossLinks from '../db/queries/links.js';
 import * as historyQueries from '../db/queries/history.js';
 import * as ticketQueries from '../db/queries/tickets.js';
+import * as peopleQueries from '../db/queries/people.js';
 import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
+import { Directory } from '../people/directory.js';
 import { searchAll } from '../search/index.js';
 import * as insights from '../insights/index.js';
 import {
@@ -142,6 +144,38 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
 
   const [area, resource, ...rest] = segments;
 
+  /*
+   * `?person=` and `?team=` on any list that has an author.
+   *
+   * Resolved from the configuration on every request rather than cached with
+   * the server, so editing devcontext.yaml and reloading the page is enough —
+   * the viewer never shows a mapping the file no longer contains.
+   */
+  const directory = Directory.from(ctx.config);
+  const selection = directory.select({
+    people: listParam(query, 'person'),
+    teams: listParam(query, 'team'),
+  });
+
+  if (area === 'people') {
+    if (resource === 'teams') {
+      return directory.teams.map((team) => ({
+        ...team,
+        people: directory.membersOf(team).map((person) => person.id),
+      }));
+    }
+    if (resource === 'unmapped') {
+      const mapped = new Set<string>();
+      for (const person of directory.people) {
+        for (const login of person.github) mapped.add(`github:${login.trim().toLowerCase()}`);
+        for (const name of person.jira) mapped.add(`jira:${name.trim().toLowerCase()}`);
+      }
+      return peopleQueries.unmappedIdentities(db, mapped, { limit });
+    }
+    if (resource !== undefined) return undefined;
+    return { people: directory.people, teams: directory.teams };
+  }
+
   if (area === 'status') {
     return {
       config: {
@@ -164,7 +198,18 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       links: crossLinks.linkStats(db),
       // Served rather than duplicated in the viewer, so the dropdown and the
       // grouping that backs it cannot drift apart.
-      filters: { workitemTypes: [...jira.WORKITEM_TYPES] },
+      filters: {
+        workitemTypes: [...jira.WORKITEM_TYPES],
+        // Sent with the status the viewer already fetches, so a person or team
+        // dropdown costs no extra request. Only what a dropdown needs — the
+        // identities behind each entry are the server's business.
+        people: directory.people.map((person) => ({
+          id: person.id,
+          name: person.name,
+          kind: person.kind,
+        })),
+        teams: directory.teams.map((team) => ({ id: team.id, name: team.name })),
+      },
       runs: ctx.journal.listRuns({ limit: 20 }),
       state: ctx.journal.listState(),
     };
@@ -255,6 +300,7 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       search,
       limit,
       offset,
+      ...(selection ? { people: { github: selection.github, jira: selection.jira } } : {}),
     };
 
     if (resource === 'types') return ticketQueries.ticketTypes(db, filter);
@@ -317,6 +363,10 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
           labels: listParam(query, 'label'),
           author: query.get('author') ?? undefined,
           assignee: query.get('assignee') ?? undefined,
+          people: selection?.github,
+          excludeBots: query.get('bots') === 'false',
+          onlyBots: query.get('bots') === 'only',
+          bots: directory.botIdentities('github'),
           search,
           updatedBefore: query.get('updatedBefore') ?? undefined,
           updatedSince: query.get('updatedSince') ?? undefined,
@@ -336,6 +386,10 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
           state: (query.get('state') as 'open' | 'closed' | 'all') ?? 'all',
           labels: listParam(query, 'label'),
           author: query.get('author') ?? undefined,
+          people: selection?.github,
+          excludeBots: query.get('bots') === 'false',
+          onlyBots: query.get('bots') === 'only',
+          bots: directory.botIdentities('github'),
           search,
           limit,
           offset,

@@ -47,10 +47,12 @@ suite('the command surface', () => {
       'jira',
       'links',
       'mcp',
+      'people',
       'search',
       'serve',
       'status',
       'sync',
+      'teams',
       'tickets',
     ]);
   });

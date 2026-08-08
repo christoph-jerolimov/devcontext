@@ -1,6 +1,7 @@
 import type { Database } from '../database.js';
 import { limitClause, orderClause, WhereBuilder } from './filters.js';
 import type { PagingOptions } from './filters.js';
+import { anyPerson, isABot, notABot } from './people.js';
 
 export interface RepositoryRow {
   host: string;
@@ -186,6 +187,21 @@ export interface IssueFilter extends PagingOptions {
   sort?: 'updated' | 'created' | 'number' | undefined;
   order?: 'asc' | 'desc' | undefined;
   numbers?: number[] | undefined;
+  /**
+   * GitHub logins of the selected people or teams, lower cased.
+   *
+   * Matches the author *or* an assignee, because "the platform team's issues"
+   * means both the ones they raised and the ones they were handed, and a filter
+   * that answered only one of those would need the other one named every time.
+   * `author` and `assignee` are still there when only one side is wanted.
+   */
+  people?: string[] | undefined;
+  /** Drop rows written by a bot. */
+  excludeBots?: boolean | undefined;
+  /** Keep only rows written by a bot. */
+  onlyBots?: boolean | undefined;
+  /** Logins configured as bots, lower cased; the `[bot]` suffix is found anyway. */
+  bots?: string[] | undefined;
 }
 
 export interface PullRequestFilter extends IssueFilter {
@@ -239,6 +255,22 @@ function applyIssueFilters(where: WhereBuilder, filter: IssueFilter): WhereBuild
   if (filter.assignee) {
     where.add(`LOWER(assignees) LIKE ?`, `%"${filter.assignee.toLowerCase()}"%`);
   }
+
+  const byPerson = anyPerson(
+    [{ column: 'author' }, { column: 'assignees', json: true }],
+    filter.people,
+  );
+  if (byPerson.sql) where.add(byPerson.sql, ...byPerson.params);
+
+  if (filter.excludeBots === true) {
+    const clause = notABot('author', filter.bots);
+    where.add(clause.sql, ...clause.params);
+  }
+  if (filter.onlyBots === true) {
+    const clause = isABot('author', filter.bots);
+    where.add(clause.sql, ...clause.params);
+  }
+
   for (const label of filter.labels ?? []) {
     where.add('LOWER(labels) LIKE ?', `%"${label.toLowerCase()}"%`);
   }

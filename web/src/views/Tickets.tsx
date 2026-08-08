@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { api, formatRelative } from '../api.ts';
 import type { TicketContainer, TicketType, TicketsResponse } from '../api.ts';
 import { Badge, Panel, StateMessage, useAsync } from '../components/common.tsx';
+import { usePeopleFilter } from '../components/PeopleFilter.tsx';
 import { useUrlState } from '../router.ts';
 
 /**
@@ -18,6 +19,7 @@ export function TicketsView(): ReactNode {
   const [type, setType] = useUrlState('type');
   const [state, setState] = useUrlState('state', 'all');
   const [search, setSearch] = useUrlState('search');
+  const people = usePeopleFilter();
 
   const params = {
     source: source || undefined,
@@ -25,12 +27,13 @@ export function TicketsView(): ReactNode {
     type: type || undefined,
     state,
     search: search || undefined,
+    ...people.params,
     limit: '200',
   };
 
   const list = useAsync<TicketsResponse>(
     () => api.tickets(params),
-    [source, container, type, state, search],
+    [source, container, type, state, search, people.key],
   );
 
   /*
@@ -43,11 +46,11 @@ export function TicketsView(): ReactNode {
    */
   const types = useAsync<TicketType[]>(
     () => api.ticketTypes({ ...params, type: undefined }),
-    [source, container, state, search],
+    [source, container, state, search, people.key],
   );
   const containers = useAsync<TicketContainer[]>(
     () => api.ticketContainers({ ...params, container: undefined }),
-    [source, type, state, search],
+    [source, type, state, search, people.key],
   );
 
   const tickets = list.data?.tickets ?? [];
@@ -86,6 +89,8 @@ export function TicketsView(): ReactNode {
             <option value="open">Open</option>
             <option value="closed">Closed</option>
           </select>
+
+          {people.control}
 
           <input
             type="search"

@@ -25,15 +25,17 @@ no native dependency to compile.
 
 ## Bookkeeping tables
 
-| Table                         | Contents                                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------------- |
-| `meta`                        | Schema version and timestamps                                                             |
-| `projects`, `project_sources` | The configured projects, mirrored so the database is self describing                      |
-| `sync_runs`                   | One row per target per `devcontext sync`: mode, status, API calls, items, duration, error |
-| `sync_operations`             | One row per resource inside a run, with the cursor before and after                       |
-| `sync_state`                  | Where the next incremental sync continues, per scope                                      |
-| `cross_links`                 | Rebuilt after every sync from the references found in the synced text                     |
-| `search_index`                | FTS5 index behind `devcontext search`; one row per item, comments folded in               |
+| Table                         | Contents                                                                                             |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `meta`                        | Schema version and timestamps                                                                        |
+| `projects`, `project_sources` | The configured projects, mirrored so the database is self describing                                 |
+| `people`, `person_identities` | The configured people and every name they answer to, mirrored the same way — see [People](people.md) |
+| `teams`, `team_members`       | The configured teams and who is in them                                                              |
+| `sync_runs`                   | One row per target per `devcontext sync`: mode, status, API calls, items, duration, error            |
+| `sync_operations`             | One row per resource inside a run, with the cursor before and after                                  |
+| `sync_state`                  | Where the next incremental sync continues, per scope                                                 |
+| `cross_links`                 | Rebuilt after every sync from the references found in the synced text                                |
+| `search_index`                | FTS5 index behind `devcontext search`; one row per item, comments folded in                          |
 
 ## GitHub tables
 
@@ -99,6 +101,23 @@ SELECT repo_full_name,
    AND created_at >= datetime('now', '-180 days')
  GROUP BY repo_full_name;
 ```
+
+### Open issues per person, not per login
+
+```sql
+SELECT p.name, COUNT(*) AS open_issues
+  FROM gh_issues i
+  JOIN person_identities pi
+    ON pi.source = 'github' AND pi.identity = LOWER(i.author)
+  JOIN people p ON p.id = pi.person_id
+ WHERE i.state = 'open' AND i.is_pull_request = 0 AND p.kind = 'person'
+ GROUP BY p.id
+ ORDER BY open_issues DESC;
+```
+
+The join is what makes this a question about people. Grouping by `i.author`
+instead answers a question about strings, and counts a colleague who renamed
+their GitHub account as two.
 
 ### Who reviews whom
 

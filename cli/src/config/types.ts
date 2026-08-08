@@ -82,6 +82,34 @@ export interface ProjectConfig {
   jira: JiraProjectTarget[];
 }
 
+export type PersonKind = 'person' | 'bot';
+
+/**
+ * One human or one automation, and every name the sources know them by.
+ *
+ * The database stores whatever string the API returned — a GitHub login in one
+ * table, a Jira display name in another — so without this the same colleague is
+ * two or three different people to every query that counts them.
+ */
+export interface Person {
+  id: string;
+  name: string;
+  email: string | null;
+  kind: PersonKind;
+  /** GitHub logins, as written in the configuration. */
+  github: string[];
+  /** Jira display names, account ids or emails, as written in the configuration. */
+  jira: string[];
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  /** Person ids, in configuration order. */
+  members: string[];
+}
+
 export interface SyncSettings {
   /** Minimum delay between two API calls against the same source, in milliseconds. */
   minDelayMs: number;
@@ -121,5 +149,8 @@ export interface ResolvedConfig {
   web: WebSettings;
   githubHosts: Map<string, GithubHost>;
   jiraSites: Map<string, JiraSite>;
+  /** Humans and bots, in configuration order; humans first when both sections are used. */
+  people: Person[];
+  teams: Team[];
   projects: ProjectConfig[];
 }

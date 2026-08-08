@@ -9,7 +9,7 @@
  *    GitHub Enterprise servers or Jira sites can live in the same database;
  *  - `synced_at` records when devcontext last wrote the row.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS meta (
@@ -35,6 +35,52 @@ CREATE TABLE IF NOT EXISTS project_sources (
   config      TEXT,                     -- resolved target configuration as JSON
   updated_at  TEXT NOT NULL,
   PRIMARY KEY (project_key, source, identifier)
+);
+
+-- ---------------------------------------------------------------------------
+-- People, bots and teams (also a mirror of the configuration)
+--
+-- Every person column elsewhere in this database holds whatever string the API
+-- returned — a GitHub login here, a Jira display name there — and nothing joins
+-- them. These four tables are what does: one row per person, one row per name
+-- they answer to, so a query can ask about the colleague rather than about one
+-- of their spellings.
+--
+-- They are rewritten from devcontext.yaml on every sync and hold nothing that
+-- was fetched, so dropping them loses no synced data.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS people (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  email      TEXT,
+  kind       TEXT NOT NULL,             -- person | bot
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS person_identities (
+  source    TEXT NOT NULL,              -- github | jira
+  identity  TEXT NOT NULL,              -- lower cased, so a join needs no collation
+  display   TEXT NOT NULL,              -- as written in the configuration
+  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  PRIMARY KEY (source, identity)
+);
+
+CREATE INDEX IF NOT EXISTS idx_person_identities_person
+  ON person_identities (person_id, source);
+
+CREATE TABLE IF NOT EXISTS teams (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  description TEXT,
+  updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+  team_id   TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  person_id TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  position  INTEGER NOT NULL,           -- configuration order
+  PRIMARY KEY (team_id, person_id)
 );
 
 -- ---------------------------------------------------------------------------

@@ -18,9 +18,25 @@ export interface StatusResponse {
   githubByRepository: Array<{ repository: string } & Record<string, number>>;
   jiraByProject: Array<{ project: string } & Record<string, number>>;
   /** Choices the server defines, so the viewer does not restate them. */
-  filters: { workitemTypes: string[] };
+  filters: {
+    workitemTypes: string[];
+    /** Configured people and bots; empty when devcontext.yaml names none. */
+    people: PersonOption[];
+    teams: TeamOption[];
+  };
   runs: SyncRun[];
   state: SyncState[];
+}
+
+export interface PersonOption {
+  id: string;
+  name: string;
+  kind: 'person' | 'bot';
+}
+
+export interface TeamOption {
+  id: string;
+  name: string;
 }
 
 export interface SyncRun {

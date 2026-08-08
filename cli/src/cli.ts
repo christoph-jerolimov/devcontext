@@ -15,6 +15,7 @@ import { createSearchCommand } from './commands/search.js';
 import { createServeCommand } from './commands/serve.js';
 import { createStatusCommand } from './commands/status.js';
 import { createSyncCommand } from './commands/sync.js';
+import { createPeopleCommand, createTeamsCommand } from './commands/people.js';
 import { createTicketsCommand } from './commands/tickets.js';
 import { VERSION } from './version.js';
 
@@ -40,6 +41,8 @@ export function createProgram(): Command {
   program.addCommand(createGithubCommand());
   program.addCommand(createJiraCommand());
   program.addCommand(createTicketsCommand());
+  program.addCommand(createPeopleCommand());
+  program.addCommand(createTeamsCommand());
   program.addCommand(createServeCommand());
   program.addCommand(createInsightsCommand());
   program.addCommand(createDigestCommand());

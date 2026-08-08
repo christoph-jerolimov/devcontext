@@ -15,13 +15,16 @@ import { formatDuration, formatRelative } from '../util/time.js';
 import {
   addListOptions,
   addOutputOptions,
+  addPeopleFilterOptions,
   addTimeFilterOptions,
   collect,
   openReadContext,
   parseLimit,
   readOffset,
+  readPeopleFilter,
   readTimeFilters,
 } from './shared.js';
+import type { PeopleFilterOptions } from './shared.js';
 
 const labels = (value: string | null): string => parseJsonColumn<string[]>(value, []).join(', ');
 
@@ -98,6 +101,7 @@ function issuesCommand(): Command {
     .option('--order <direction>', 'asc or desc', 'desc');
 
   addTimeFilterOptions(command);
+  addPeopleFilterOptions(command);
 
   return addListOptions(command).action(
     (number: string | undefined, options: Record<string, unknown>, self: Command) => {
@@ -111,12 +115,18 @@ function issuesCommand(): Command {
           return;
         }
 
+        const people = readPeopleFilter(ctx.config, options as PeopleFilterOptions);
+
         const rows = gh.listIssues(ctx.db, {
           repos: repos.length > 0 ? repos : undefined,
           state: options['state'] as 'open' | 'closed' | 'all',
           labels: options['label'] as string[],
           author: options['author'] as string | undefined,
           assignee: options['assignee'] as string | undefined,
+          people: people.selection?.github,
+          excludeBots: people.excludeBots,
+          onlyBots: people.onlyBots,
+          bots: people.directory.botIdentities('github'),
           milestone: options['milestone'] as string | undefined,
           search: options['search'] as string | undefined,
           sort: options['sort'] as 'updated' | 'created' | 'number',
@@ -175,6 +185,7 @@ function pullRequestsCommand(): Command {
     .option('--order <direction>', 'asc or desc', 'desc');
 
   addTimeFilterOptions(command);
+  addPeopleFilterOptions(command);
 
   return addListOptions(command).action(
     (number: string | undefined, options: Record<string, unknown>, self: Command) => {
@@ -198,12 +209,18 @@ function pullRequestsCommand(): Command {
             ? (options['merged'] as boolean)
             : undefined;
 
+        const people = readPeopleFilter(ctx.config, options as PeopleFilterOptions);
+
         const rows = gh.listPullRequests(ctx.db, {
           repos: repos.length > 0 ? repos : undefined,
           state: options['state'] as 'open' | 'closed' | 'all',
           labels: options['label'] as string[],
           author: options['author'] as string | undefined,
           assignee: options['assignee'] as string | undefined,
+          people: people.selection?.github,
+          excludeBots: people.excludeBots,
+          onlyBots: people.onlyBots,
+          bots: people.directory.botIdentities('github'),
           reviewer: options['reviewer'] as string | undefined,
           baseRef: options['base'] as string | undefined,
           draft,

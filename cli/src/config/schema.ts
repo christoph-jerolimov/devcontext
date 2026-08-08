@@ -90,6 +90,34 @@ const jiraProjectSchema = z
   })
   .strict();
 
+/**
+ * One human or one bot, and every name they answer to.
+ *
+ * The same person is `ghopper` on GitHub and `Grace Hopper` on Jira, and often
+ * more than one of each after a rename or a second account. Listing those names
+ * here is what lets a query about a person mean the person rather than one of
+ * their spellings.
+ */
+const personSchema = z
+  .object({
+    id: z.string().regex(/^[a-zA-Z0-9._-]+$/, 'only letters, digits, ".", "_" and "-" are allowed'),
+    name: z.string().optional(),
+    email: z.string().optional(),
+    bot: z.boolean().optional(),
+    github: z.array(z.string().min(1)).optional(),
+    jira: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+const teamSchema = z
+  .object({
+    id: z.string().regex(/^[a-zA-Z0-9._-]+$/, 'only letters, digits, ".", "_" and "-" are allowed'),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    members: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 const projectSchema = z
   .object({
     key: z
@@ -157,11 +185,19 @@ export const configSchema = z
       })
       .strict()
       .optional(),
+    people: z.array(personSchema).optional(),
+    // The same shape as `people`, with `bot` already answered. A configuration
+    // with four humans and nine automations reads far better split in two than
+    // as one list where every second entry repeats `bot: true`.
+    bots: z.array(personSchema).optional(),
+    teams: z.array(teamSchema).optional(),
     projects: z.array(projectSchema).min(1, 'at least one project is required'),
   })
   .strict();
 
 export type RawConfig = z.infer<typeof configSchema>;
+export type RawPerson = z.infer<typeof personSchema>;
+export type RawTeam = z.infer<typeof teamSchema>;
 export type RawGithubRepo = z.infer<typeof githubRepoSchema>;
 export type RawJiraProject = z.infer<typeof jiraProjectSchema>;
 export type RawGithubSyncOptions = z.infer<typeof githubSyncOptionsSchema>;

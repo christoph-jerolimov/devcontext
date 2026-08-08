@@ -41,10 +41,16 @@ variable with `tokenEnv` instead.
 | `web`      | object               | see below                   | Defaults for `devcontext serve`.     |
 | `github`   | object               | —                           | GitHub hosts and default sync flags. |
 | `jira`     | object               | —                           | Jira sites and default sync flags.   |
+| `people`   | array                | `[]`                        | Who the names in the data belong to. |
+| `bots`     | array                | `[]`                        | The same, for automations.           |
+| `teams`    | array                | `[]`                        | Groups of the people above.          |
 | `projects` | array                | required                    | At least one project.                |
 
 Unknown keys are rejected with an error that names the offending path, so typos
 never fail silently.
+
+`people`, `bots` and `teams` are what let a query mean a colleague rather than
+one of their spellings — see [People](people.md).
 
 For all of this in one annotated file, with every value shown at the default it
 already has, see [Every setting](configuration-reference.md).

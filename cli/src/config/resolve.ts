@@ -2,7 +2,7 @@ import { isAbsolute, resolve as resolvePath } from 'node:path';
 
 import { CliError } from '../util/errors.js';
 import { resolveTimeExpression } from '../util/time.js';
-import type { RawConfig, RawGithubSyncOptions, RawJiraSyncOptions } from './schema.js';
+import type { RawConfig, RawGithubSyncOptions, RawJiraSyncOptions, RawPerson } from './schema.js';
 import type {
   GithubHost,
   GithubRepoSyncOptions,
@@ -11,9 +11,11 @@ import type {
   JiraProjectTarget,
   JiraSite,
   OutputTargets,
+  Person,
   ProjectConfig,
   ResolvedConfig,
   SyncSettings,
+  Team,
 } from './types.js';
 
 export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
@@ -97,6 +99,83 @@ function resolveSince(value: string | undefined, now: Date): string | null {
   return resolveTimeExpression(value, now);
 }
 
+/**
+ * `people` and `bots` into one list, with every identity claimed exactly once.
+ *
+ * Two people claiming the same login is not a preference to resolve silently:
+ * whichever one the lookup happened to return would be wrong half the time, and
+ * the counts either way would look perfectly plausible. So it is an error, and
+ * it names both sides.
+ */
+function resolvePeople(raw: RawConfig): Person[] {
+  const people: Person[] = [];
+  const byId = new Map<string, Person>();
+  const claims = new Map<string, string>();
+
+  const claim = (source: 'github' | 'jira', identity: string, person: Person): void => {
+    const key = `${source}:${identity.toLowerCase()}`;
+    const owner = claims.get(key);
+    if (owner !== undefined && owner !== person.id) {
+      throw new CliError(
+        `The ${source} identity "${identity}" is claimed by both "${owner}" and "${person.id}".`,
+        { hint: 'An identity can belong to one person only; remove it from one of them.' },
+      );
+    }
+    claims.set(key, person.id);
+  };
+
+  const add = (entry: RawPerson, fallbackKind: 'person' | 'bot'): void => {
+    if (byId.has(entry.id)) {
+      throw new CliError(`Duplicate person id "${entry.id}" in the configuration.`);
+    }
+    const person: Person = {
+      id: entry.id,
+      name: entry.name ?? entry.id,
+      email: entry.email ?? null,
+      kind: (entry.bot ?? fallbackKind === 'bot') ? 'bot' : 'person',
+      github: entry.github ?? [],
+      jira: entry.jira ?? [],
+    };
+    for (const login of person.github) claim('github', login, person);
+    for (const name of person.jira) claim('jira', name, person);
+    byId.set(person.id, person);
+    people.push(person);
+  };
+
+  for (const entry of raw.people ?? []) add(entry, 'person');
+  for (const entry of raw.bots ?? []) add(entry, 'bot');
+  return people;
+}
+
+function resolveTeams(raw: RawConfig, people: Person[]): Team[] {
+  const known = new Set(people.map((person) => person.id));
+  const teams: Team[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of raw.teams ?? []) {
+    if (seen.has(entry.id)) {
+      throw new CliError(`Duplicate team id "${entry.id}" in the configuration.`);
+    }
+    seen.add(entry.id);
+
+    for (const member of entry.members ?? []) {
+      if (!known.has(member)) {
+        throw new CliError(`Team "${entry.id}" lists the unknown person "${member}".`, {
+          hint: `Known people: ${[...known].join(', ') || '(none)'}`,
+        });
+      }
+    }
+
+    teams.push({
+      id: entry.id,
+      name: entry.name ?? entry.id,
+      description: entry.description ?? null,
+      members: entry.members ?? [],
+    });
+  }
+  return teams;
+}
+
 /** Applies defaults, resolves paths/tokens and links projects to hosts and sites. */
 export function resolveConfig(
   raw: RawConfig,
@@ -170,6 +249,9 @@ export function resolveConfig(
       fields: site.fields ?? {},
     });
   }
+
+  const people = resolvePeople(raw);
+  const teams = resolveTeams(raw, people);
 
   const projects: ProjectConfig[] = [];
   const seenProjectKeys = new Set<string>();
@@ -264,6 +346,8 @@ export function resolveConfig(
     },
     githubHosts,
     jiraSites,
+    people,
+    teams,
     projects,
   };
 }

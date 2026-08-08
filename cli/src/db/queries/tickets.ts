@@ -11,6 +11,7 @@
  */
 
 import type { Database } from '../database.js';
+import { anyPerson } from './people.js';
 
 export interface Ticket {
   source: 'github' | 'jira';
@@ -41,6 +42,15 @@ export interface TicketFilter {
   state?: 'open' | 'closed' | 'all';
   search?: string;
   assignee?: string;
+  /**
+   * The identities of the selected people or teams, per source.
+   *
+   * Kept split rather than flattened because the two halves of the union look
+   * at different columns and a GitHub login has no business being compared to a
+   * Jira display name. An empty list on one side means the selected people have
+   * no presence there, and that side matches nothing — see `anyPerson`.
+   */
+  people?: { github: string[]; jira: string[] };
   limit?: number;
   offset?: number;
 }
@@ -133,6 +143,15 @@ function halves(filter: TicketFilter): Array<{ source: 'github' | 'jira'; select
       params.push(`%${filter.assignee}%`);
     }
 
+    const person = anyPerson(
+      [{ column: 'author' }, { column: 'assignees', json: true }],
+      filter.people?.github,
+    );
+    if (person.sql) {
+      sql += ` AND ${person.sql}`;
+      params.push(...(person.params as Array<string | number>));
+    }
+
     out.push({ source: 'github', select: { sql, params } });
   }
 
@@ -173,6 +192,12 @@ function halves(filter: TicketFilter): Array<{ source: 'github' | 'jira'; select
     if (filter.assignee) {
       sql += ' AND assignee LIKE ?';
       params.push(`%${filter.assignee}%`);
+    }
+
+    const person = anyPerson([{ column: 'reporter' }, { column: 'assignee' }], filter.people?.jira);
+    if (person.sql) {
+      sql += ` AND ${person.sql}`;
+      params.push(...(person.params as Array<string | number>));
     }
 
     out.push({ source: 'jira', select: { sql, params } });

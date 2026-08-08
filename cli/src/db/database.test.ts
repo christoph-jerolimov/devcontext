@@ -72,7 +72,7 @@ describe('schema', () => {
   });
 
   it('records the schema version', () => {
-    expect(db.getMeta('schema_version')).toBe('2');
+    expect(db.getMeta('schema_version')).toBe('3');
   });
 });
 
