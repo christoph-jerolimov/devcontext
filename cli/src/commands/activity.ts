@@ -5,6 +5,7 @@ import type { ActivityEvent } from '../db/queries/activity.js';
 import { colour, printOutput, renderTable, truncate } from '../output/format.js';
 import type { Colour } from '../output/format.js';
 import type { Directory } from '../people/directory.js';
+import { CliError } from '../util/errors.js';
 import { resolveTimeExpression } from '../util/time.js';
 import {
   addListOptions,
@@ -52,9 +53,9 @@ export function createActivityCommand(): Command {
       const filter: activity.ActivityFilter = {
         since: when(options['since']),
         until: when(options['until']),
-        sources: options['source'] as string[],
+        sources: oneOf('--source', options['source'] as string[], ['github', 'jira']),
         containers: options['container'] as string[],
-        kinds: options['kind'] as string[],
+        kinds: oneOf('--kind', options['kind'] as string[], activity.ACTIVITY_KINDS),
         excludeBots: people.excludeBots,
         onlyBots: people.onlyBots,
         // Both sources, because the feed spans them: a Jira display name
@@ -152,6 +153,23 @@ export function createActivityCommand(): Command {
       ctx.close();
     }
   });
+}
+
+/**
+ * Rejects a value the feed has no name for.
+ *
+ * Without this a typo is a filter nothing satisfies, and an empty feed is
+ * exactly what a quiet fortnight looks like — the mistake is invisible in the
+ * one output that would reveal it. The same reason `--person` refuses an
+ * unknown id.
+ */
+function oneOf(option: string, values: string[], allowed: readonly string[]): string[] {
+  for (const value of values) {
+    if (!allowed.includes(value)) {
+      throw new CliError(`${option} expects one of ${allowed.join(', ')}, got "${value}".`);
+    }
+  }
+  return values;
 }
 
 function when(value: unknown): string | undefined {
