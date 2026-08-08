@@ -13,6 +13,7 @@
     "web",
     "site",
     "eve",
+    "tui",
     "e2e"
   ],
   "scripts": {
@@ -35,7 +36,8 @@
     "agent": "npm run dev --workspace @devcontext/eve",
     "eve": "npm run dev --workspace @devcontext/eve",
     "build:site": "npm run build --workspace @devcontext/site",
-    "dev:site": "npm run dev --workspace @devcontext/site"
+    "dev:site": "npm run dev --workspace @devcontext/site",
+    "tui": "npm run build:cli && npm run build --workspace @devcontext/tui && npm run start --workspace @devcontext/tui"
   },
   "devDependencies": {
     "oxfmt": "^0.62.0",

@@ -25,6 +25,7 @@ assistant on your machine) can grep, diff and read the same data offline.
 | [Cross links](links.md)                     | How GitHub and Jira references are connected                        |
 | [Audit](audit.md)                           | What is stored locally, whose data it is, and what a sync fetches   |
 | [Web viewer](web.md)                        | The React viewer and the JSON API behind it                         |
+| [Terminal viewer](tui.md)                   | The same views in the terminal, with no browser                     |
 | [MCP server](mcp.md)                        | Serving the same data to an AI assistant                            |
 | [Agent (experimental)](agent.md)            | An eve based agent on the same tools, via Anthropic on Vertex AI    |
 | [Development](development.md)               | Monorepo layout, tests, how to extend devcontext                    |
