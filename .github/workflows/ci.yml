@@ -136,14 +136,23 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      # --ignore-snapshots on purpose. The behavioural half of this suite is
-      # environment independent and gates here; the screenshots are not, since
-      # they depend on the exact Chromium build and the fonts installed, and a
-      # baseline recorded on a developer's machine would fail on this runner
-      # for reasons that have nothing to do with the change. They are a review
-      # aid, refreshed with `npm run test:e2e:update`.
+      # The screenshots are compared here, deliberately.
+      #
+      # This step used to pass `--ignore-snapshots`, on the theory that a
+      # baseline recorded on a developer's machine could not survive a
+      # different Chromium build and a different set of fonts. The flag never
+      # reached Playwright — appended to `npm run test:e2e:viewer`, it landed
+      # on the inner `npm run` as an npm option and was dropped — so the
+      # screenshots have been compared on this runner all along, and passing.
+      #
+      # Which settles the question the flag was hedging: they do survive. The
+      # build step and the run are separate so the arguments go where they
+      # look like they go.
+      - name: Build the CLI and the viewer
+        run: npm run build
+
       - name: Sync, serve and drive the viewer
-        run: npm run test:e2e:viewer -- --ignore-snapshots
+        run: npm run e2e --workspace @devcontext/e2e
 
       - name: Upload the report
         if: failure()

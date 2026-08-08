@@ -62,13 +62,27 @@ async function pinVolatileValues(page: Page): Promise<void> {
     body.config.path = '/work/platform/devcontext.yaml';
     body.config.database = '/work/platform/.devcontext/devcontext.db';
 
-    // Ids count up across runs, and the timings are real measurements.
-    body.runs = body.runs.map((run, index) => ({
-      ...run,
-      id: index + 1,
-      started_at: REFERENCE,
-      duration_ms: 1200,
-    }));
+    /*
+     * Everything in this table except what was synced is a measurement of the
+     * run rather than a property of the product: the ids count up across runs,
+     * the timings are wall clock, and the call and item counts move with how
+     * the sync happened to go on this machine.
+     *
+     * The real numbers are asserted in the DOM tests below, where being exact
+     * costs nothing. Here they only need to be the same shape every time.
+     */
+    body.runs = body.runs.toSorted((a, b) =>
+      String(a['target']).localeCompare(String(b['target'])),
+    );
+    body.runs.forEach((run, index) => {
+      Object.assign(run, {
+        id: index + 1,
+        started_at: REFERENCE,
+        duration_ms: 1200,
+        api_calls: 30,
+        items_synced: 17,
+      });
+    });
     /*
      * Cursors come in two kinds and only one of them is stable.
      *
@@ -121,6 +135,25 @@ test.describe('the data actually arrived', () => {
    * that the sync put something on each of them. They are about the pipeline —
    * CLI sync, SQLite, JSON API, React — not about layout.
    */
+  test('the sync really made the calls the screenshot no longer shows', async ({ request }) => {
+    /*
+     * The overview screenshot shows pinned call and item counts, so nothing in
+     * the picture would notice a sync that did nothing. This reads the API
+     * directly — the `request` fixture has no page and therefore no route
+     * handler — and checks the real numbers instead.
+     */
+    const status = (await (await request.get('/api/status')).json()) as {
+      runs: Array<{ source: string; status: string; api_calls: number; items_synced: number }>;
+    };
+
+    expect(status.runs.map((run) => run.status)).toEqual(['completed', 'completed']);
+    expect(status.runs.map((run) => run.source).toSorted()).toEqual(['github', 'jira']);
+    for (const run of status.runs) {
+      expect(run.api_calls).toBeGreaterThan(0);
+      expect(run.items_synced).toBeGreaterThan(0);
+    }
+  });
+
   test('the overview counts what was synced', async ({ page }) => {
     await openViewer(page, 'overview');
     await expect(page.locator('.sidebar-footer')).toContainText('1 repositories');
