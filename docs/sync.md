@@ -9,6 +9,36 @@ GitHub repository and every Jira project. Each of those targets is one _run_ in
 the database, and every resource inside a target (issues, pull requests,
 workflow runs, work items, sprints) is one _operation_.
 
+## The three phases
+
+A run does not finish one repository before starting the next. It goes through
+all of them three times, and every target completes a phase before any target
+begins the next one:
+
+| Phase       | What it fetches                                                                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| **lists**   | Every collection: issue pages, workflow run pages, Jira search pages, labels, milestones, workflows, boards |
+| **items**   | The individual things a list only named: the detailed pull request payload, the sprints of each board       |
+| **details** | What hangs off one item: comments, timelines, reviews, changed files, the jobs of a run, sprint membership  |
+
+The split is by **how the data is reached**, not by what it is. A list page
+already carries the issue itself, its labels and its assignees, so those are
+written in the first phase and cost nothing extra. A Jira search usually
+carries the comments and the history too — the ones it truncates are the only
+ones that owe a request later.
+
+The reason for the order is that **the second and third phases are the
+expensive ones, and only the first can tell you how expensive.** A repository's
+issue count can be probed up front, but how many of those issues are pull
+requests, how many runs survive `maxWorkflowRuns`, and how many sprints hang
+off a board cannot. Once the lists are in, all of that is known exactly, so the
+remaining work is priced rather than guessed and the estimate stops climbing.
+
+Cursors move at the end of the last phase a resource takes part in, never
+earlier. A cursor written after the list phase would claim issues are synced
+whose comments had not been fetched yet, and nothing would ever go back for
+them. A target that fails drops out and the rest carry on.
+
 ## Initial and incremental syncs
 
 The first sync of a target is an **initial sync**: it downloads everything the

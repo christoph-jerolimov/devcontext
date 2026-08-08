@@ -5,6 +5,27 @@ import type { Logger } from '../util/logger.js';
 import type { ProgressReporter } from './progress.js';
 
 /**
+ * The three passes every target makes, in order.
+ *
+ * The split is by how the data is reached, not by what it is:
+ *
+ * - `lists` walks the collections — every page of issues, of workflow runs, of
+ *   work items, for every target — and writes what those pages already carry.
+ * - `items` fetches the individual things a list only named: the detailed pull
+ *   request payload, the sprints hanging off each board.
+ * - `details` fetches what hangs off an individual item: comments, timelines,
+ *   reviews, changed files, the jobs of a run, the membership of a sprint.
+ *
+ * Every target finishes a phase before any target starts the next one. That
+ * ordering is what makes the remaining work knowable: once the lists are in,
+ * the exact number of issues, pull requests and runs is known, so phases two
+ * and three can be priced instead of estimated.
+ */
+export const SYNC_PHASES = ['lists', 'items', 'details'] as const;
+
+export type SyncPhase = (typeof SYNC_PHASES)[number];
+
+/**
  * One target, prepared but not started.
  *
  * Splitting the survey from the run is what lets every target be priced before
@@ -14,7 +35,17 @@ import type { ProgressReporter } from './progress.js';
 export interface TargetPlan {
   label: string;
   survey: () => Promise<void>;
-  run: () => Promise<TargetSyncResult>;
+  /** Opens the journal run. Called once, before the first phase. */
+  begin: () => void;
+  /** Runs one phase. Called in `SYNC_PHASES` order, at most once each. */
+  runPhase: (phase: SyncPhase) => Promise<void>;
+  /**
+   * Closes the journal run and reports what happened.
+   *
+   * Takes the error from whichever phase failed, because the phases are driven
+   * from outside now and the plan no longer sees the throw itself.
+   */
+  finish: (error: unknown | null) => TargetSyncResult;
 }
 
 export interface SyncContext {
