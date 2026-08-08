@@ -272,6 +272,37 @@ export interface HistoryResponse {
   byAssignee: Array<{ assignee: string; open: number }>;
 }
 
+/** Pull requests finished per day. A count of events, not a balance. */
+export interface ClosedOnDay {
+  day: string;
+  total: number;
+  merged: number;
+  /** Closed without merging — work that produced nothing. */
+  discarded: number;
+}
+
+export interface ClosedResponse {
+  from: string;
+  to: string;
+  days: ClosedOnDay[];
+}
+
+export interface RunsOnDay {
+  day: string;
+  total: number;
+  success: number;
+  failure: number;
+  cancelled: number;
+  /** Skipped, timed out, and the ones still running. */
+  other: number;
+}
+
+export interface RunsResponse {
+  from: string;
+  to: string;
+  days: RunsOnDay[];
+}
+
 export interface Sprint {
   id: number;
   name: string | null;
@@ -502,6 +533,10 @@ export const api = {
   workflowRun: (id: number) => request<IssueDocument>(`/api/github/runs/${id}`),
   history: (params: Record<string, string | undefined>) =>
     request<HistoryResponse>('/api/history', params),
+  closedPerDay: (params: Record<string, string | undefined>) =>
+    request<ClosedResponse>('/api/history/closed', params),
+  runsPerDay: (params: Record<string, string | undefined>) =>
+    request<RunsResponse>('/api/history/runs', params),
   activity: (params: Record<string, string | undefined>) =>
     request<ActivityResponse>('/api/activity', params),
   tickets: (params: Record<string, string | undefined>) =>

@@ -1,5 +1,6 @@
 import type { Database } from '../database.js';
 import { limitClause, orderClause, WhereBuilder } from './filters.js';
+import { eachDay } from './history.js';
 import type { PagingOptions } from './filters.js';
 import { anyPerson, isABot, notABot } from './people.js';
 
@@ -439,6 +440,141 @@ export function listWorkflowRuns(db: Database, filter: WorkflowRunFilter = {}): 
   return db.all<WorkflowRunRow>(
     `SELECT * FROM gh_workflow_runs ${where.sql} ${orderClause('created_at', 'desc')}${paging.sql}`,
     [...where.values, ...paging.params],
+  );
+}
+
+export interface ClosedOnDay {
+  day: string;
+  /** Merged plus closed-without-merging. */
+  total: number;
+  merged: number;
+  /** Closed and thrown away — work that produced nothing. */
+  discarded: number;
+}
+
+/**
+ * How many pull requests were finished on each day, and how many of those were
+ * thrown away.
+ *
+ * Read from `closed_at` on the pull request rather than from `state_changes`,
+ * because the two answer different questions. The history table knows how many
+ * were *open* at a moment, which needs the balance carried in from before the
+ * window; this is a count of events inside the window, and it needs the merged
+ * / discarded split that the state dimension flattens into "closed".
+ *
+ * The split is the reason to draw it at all. A team closing twelve pull
+ * requests a week is doing well or wasting its time depending entirely on how
+ * many of them were merged, and one number cannot tell you which.
+ */
+export function closedByDay(
+  db: Database,
+  options: {
+    from: string;
+    to: string;
+    repos?: string[] | undefined;
+    /** GitHub logins, lower cased. Matches the author or an assignee. */
+    people?: string[] | undefined;
+    excludeBots?: boolean | undefined;
+    bots?: string[] | undefined;
+  },
+): ClosedOnDay[] {
+  const where = new WhereBuilder().addIn('repo_full_name', options.repos);
+  where.add('closed_at IS NOT NULL');
+  /*
+   * Compared on the date, not the timestamp.
+   *
+   * `to` is usually a plain date, and "2026-03-03T09:00:00Z" sorts *after*
+   * "2026-03-03" as a string — so a timestamp comparison silently drops
+   * everything that happened on the last day of the window. The bar for today
+   * would have read zero every time, which is indistinguishable from a slow
+   * morning.
+   */
+  where.add('SUBSTR(closed_at, 1, 10) >= SUBSTR(?, 1, 10)', options.from);
+  where.add('SUBSTR(closed_at, 1, 10) <= SUBSTR(?, 1, 10)', options.to);
+
+  // Author or assignee, the same rule every other person filter here uses.
+  const people = anyPerson(
+    [{ column: 'author' }, { column: 'assignees', json: true }],
+    options.people,
+  );
+  if (people.sql !== '') where.add(people.sql, ...people.params);
+
+  if (options.excludeBots === true) {
+    const clause = notABot('author', options.bots);
+    where.add(clause.sql, ...clause.params);
+  }
+
+  const rows = db.all<{ day: string; total: number; merged: number }>(
+    `SELECT SUBSTR(closed_at, 1, 10) AS day,
+            COUNT(*) AS total,
+            COALESCE(SUM(merged = 1), 0) AS merged
+       FROM gh_pull_requests ${where.sql}
+      GROUP BY day
+      ORDER BY day`,
+    where.values,
+  );
+
+  const byDay = new Map(
+    rows.map((row) => [row.day, { ...row, discarded: row.total - row.merged }]),
+  );
+  return eachDay(options.from, options.to).map(
+    (day) => byDay.get(day) ?? { day, total: 0, merged: 0, discarded: 0 },
+  );
+}
+
+export interface RunsOnDay {
+  day: string;
+  total: number;
+  success: number;
+  failure: number;
+  cancelled: number;
+  /** Skipped, timed out, action required — and the ones still running. */
+  other: number;
+}
+
+/**
+ * How many workflow runs started on each day, split by how they ended.
+ *
+ * Deliberately not "how many were in flight". A run is queued, running, then
+ * finished within minutes, so counting the unfinished ones at the end of a day
+ * draws a flat line at zero and answers nothing. What the line is asked to say
+ * is whether CI is getting worse, and that is a failure count per day.
+ *
+ * Grouped by `created_at`, which is exact, rather than by a finish time, which
+ * is not recorded — a run that started before midnight and failed after it
+ * counts on the day the work was pushed, which is the day somebody has to look
+ * at.
+ *
+ * Days with no runs are filled in by the caller: a gap the chart skips over
+ * reads as a quiet week rather than a weekend.
+ */
+export function runsByDay(
+  db: Database,
+  options: { from: string; to: string; repos?: string[] | undefined },
+): RunsOnDay[] {
+  const where = new WhereBuilder().addIn('repo_full_name', options.repos);
+  // On the date rather than the timestamp — see closedByDay: a plain `to`
+  // otherwise drops every run from the last day of the window.
+  where.add('SUBSTR(created_at, 1, 10) >= SUBSTR(?, 1, 10)', options.from);
+  where.add('SUBSTR(created_at, 1, 10) <= SUBSTR(?, 1, 10)', options.to);
+
+  const rows = db.all<RunsOnDay>(
+    `SELECT SUBSTR(created_at, 1, 10) AS day,
+            COUNT(*) AS total,
+            COALESCE(SUM(conclusion = 'success'), 0)   AS success,
+            COALESCE(SUM(conclusion = 'failure'), 0)   AS failure,
+            COALESCE(SUM(conclusion = 'cancelled'), 0) AS cancelled,
+            COALESCE(SUM(conclusion IS NULL
+                     OR conclusion NOT IN ('success', 'failure', 'cancelled')), 0) AS other
+       FROM gh_workflow_runs ${where.sql}
+      GROUP BY day
+      ORDER BY day`,
+    where.values,
+  );
+
+  const byDay = new Map(rows.map((row) => [row.day, row]));
+  return eachDay(options.from, options.to).map(
+    (day) => byDay.get(day) ?? { day, total: 0, success: 0, failure: 0, cancelled: 0, other: 0 },
   );
 }
 

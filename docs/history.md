@@ -108,9 +108,35 @@ devcontext history --kind pull_request --output json
 ## Where to see it
 
 - `devcontext history` in the terminal, with a bar per day
-- the **History** page in the [web viewer](web.md), as a line with the daily
-  movement on hover and a per-person snapshot beneath it
+- the **History** page in the [web viewer](web.md), as three lines — every
+  ticket, GitHub issues alone, pull requests alone — with the daily movement on
+  hover and a per-person snapshot beneath them
 - the **History** view in the [terminal viewer](tui.md)
+
+### Two charts on that page that are not balances
+
+The History page also draws **pull requests finished per day** and **workflow
+runs per day**, and neither reads from `state_changes`. The distinction matters:
+
+|              | A balance                          | A count of events                |
+| ------------ | ---------------------------------- | -------------------------------- |
+| The question | How many were open on Tuesday      | How many finished on Tuesday     |
+| Needs        | Everything carried in from earlier | Only what happened in the window |
+| Read from    | `state_changes`                    | `closed_at` / `created_at`       |
+
+Both are split rather than drawn as one total, because the total on its own
+misleads. Twelve pull requests closed in a week is a good week or a wasted one
+depending entirely on how many were **merged** rather than thrown away, and
+whether CI is getting worse is a **failure** count rather than a run count.
+
+The finished chart takes the `--person` and `--team` filters; the balances do
+not, because "Ada's open pull requests on the 3rd of March" needs who it was
+assigned to _then_, which is a different query from who holds it now.
+
+Workflow runs are grouped by when they started, which is exact, rather than by
+when they finished, which is not recorded. A run that started before midnight
+and failed after it counts on the day the work was pushed — the day somebody
+has to look at.
 
 ## Limits worth knowing
 

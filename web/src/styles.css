@@ -818,6 +818,71 @@ a {
   stroke: none;
 }
 
+/* The stacked bars reuse the words the tables already colour, so "merged" is
+   the same purple on a chart as it is in a row. */
+.bar-merged {
+  fill: var(--closed);
+}
+
+.bar-discarded {
+  fill: var(--muted);
+}
+
+.bar-success {
+  fill: var(--open);
+}
+
+.bar-failure {
+  fill: var(--failure);
+}
+
+.bar-cancelled {
+  fill: var(--muted);
+}
+
+.bar-other {
+  fill: var(--border);
+}
+
+.chart-legend {
+  display: inline-flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* A swatch, drawn with the same fill the segment uses. `fill` does nothing to
+   a span, so the colour is taken from it via `background` on the element that
+   the segment class also sets — hence the explicit backgrounds below. */
+.chart-key {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
+.chart-key.bar-merged {
+  background: var(--closed);
+}
+
+.chart-key.bar-discarded,
+.chart-key.bar-cancelled {
+  background: var(--muted);
+}
+
+.chart-key.bar-success {
+  background: var(--open);
+}
+
+.chart-key.bar-failure {
+  background: var(--failure);
+}
+
+.chart-key.bar-other {
+  background: var(--border);
+}
+
 /* Invisible, but it is what the native tooltip hangs off. */
 .chart-hit {
   fill: transparent;

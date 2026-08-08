@@ -280,18 +280,47 @@ test.describe('the data actually arrived', () => {
      * table can produce. The line has a point per day and the caption states
      * the balance, so both are checked rather than only that an svg exists.
      */
-    const chart = page.locator('.chart svg');
-    await expect(chart).toBeVisible();
-    await expect(page.locator('.chart-line')).toHaveCount(1);
+    const openTickets = page.locator('.panel', { hasText: 'Open tickets' }).first();
+    await expect(openTickets.locator('.chart svg')).toBeVisible();
+    await expect(openTickets.locator('.chart-line')).toHaveCount(1);
 
     // One hit column per day in the window, each carrying its own tooltip.
-    await expect(page.locator('.chart-hit')).toHaveCount(30);
-    await expect(page.locator('.chart-hit title').first()).toHaveText(
+    await expect(openTickets.locator('.chart-hit')).toHaveCount(30);
+    await expect(openTickets.locator('.chart-hit title').first()).toHaveText(
       /\d{4}-\d{2}-\d{2}: \d+ open/,
     );
+    await expect(openTickets.locator('figcaption')).toContainText('open now');
 
-    await expect(page.locator('.chart figcaption')).toContainText('open now');
+    // Three balances — everything, issues alone, pull requests alone — so a
+    // chart wired to the wrong filter shows up as a missing line rather than
+    // as a plausible one.
+    await expect(page.locator('.chart-line')).toHaveCount(3);
+    await expect(page.locator('.panel', { hasText: 'Open GitHub issues' })).toBeVisible();
+    await expect(page.locator('.panel', { hasText: 'Open pull requests' })).toBeVisible();
     await expect(page.locator('.panel', { hasText: 'Open per person' })).toBeVisible();
+  });
+
+  test('the finished and CI charts count events rather than balances', async ({ page }) => {
+    await openViewer(page, 'history');
+
+    /*
+     * Both are stacked bars, and both would be indistinguishable from a
+     * working chart if the split were wrong — a day of nothing but merges and
+     * a day of nothing but abandoned work are the same height.
+     */
+    const finished = page.locator('.panel', { hasText: 'Pull requests finished per day' });
+    await expect(finished.locator('.bar-merged').first()).toBeVisible();
+    await expect(finished.locator('.chart-hit title').first()).toHaveText(
+      /\d{4}-\d{2}-\d{2}: \d+ finished — \d+ merged, \d+ closed unmerged/,
+    );
+
+    const runs = page.locator('.panel', { hasText: 'Workflow runs per day' });
+    await expect(runs.locator('.chart-hit title').first()).toHaveText(
+      /\d{4}-\d{2}-\d{2}: \d+ run\(s\) — \d+ success, \d+ failure/,
+    );
+    // The fixture has a failing run; the red segment is the whole reason this
+    // chart is drawn by conclusion rather than as one total.
+    await expect(runs.locator('.bar-failure')).not.toHaveCount(0);
   });
 
   test('the ticket list merges both sources and builds its filters from them', async ({ page }) => {

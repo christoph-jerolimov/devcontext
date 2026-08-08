@@ -341,6 +341,40 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
     const to = query.get('to') ?? new Date().toISOString();
     const from = query.get('from') ?? new Date(Date.now() - 29 * 86_400_000).toISOString();
 
+    /*
+     * Two series that do not come from `state_changes`, because they are not
+     * balances. "How many were open on Tuesday" needs everything that carried
+     * in from before the window; "how many finished on Tuesday" is a count of
+     * events inside it, and the two are different questions with different
+     * right answers.
+     */
+    if (resource === 'closed') {
+      return {
+        from,
+        to,
+        days: gh.closedByDay(db, {
+          from,
+          to,
+          ...(listParam(query, 'container') ? { repos: listParam(query, 'container') } : {}),
+          ...(selection ? { people: selection.github } : {}),
+          excludeBots: query.get('bots') === 'false',
+          bots: directory.botIdentities(),
+        }),
+      };
+    }
+
+    if (resource === 'runs') {
+      return {
+        from,
+        to,
+        days: gh.runsByDay(db, {
+          from,
+          to,
+          ...(listParam(query, 'container') ? { repos: listParam(query, 'container') } : {}),
+        }),
+      };
+    }
+
     return {
       from,
       to,
