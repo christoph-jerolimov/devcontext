@@ -187,6 +187,38 @@ describe('github queries', () => {
     expect(data.events).toHaveLength(1);
     expect(document.title).toBe('acme/platform#12 Sync is slow');
   });
+  it('splits the counts per repository, adding up to the totals', () => {
+    // A second repository, so the split is doing something.
+    insertIssue({ id: 90, number: 90, repo_full_name: 'acme/docs', title: 'Docs issue' });
+
+    const perRepo = gh.githubStatsByRepository(db);
+    const totals = gh.githubStats(db);
+
+    expect(perRepo.map((row) => row.repository).toSorted()).toEqual(['acme/docs', 'acme/platform']);
+    expect(perRepo.find((row) => row.repository === 'acme/docs')?.issues).toBe(1);
+
+    /*
+     * The invariant worth having: a breakdown that does not add up to the
+     * number beside it is worse than no breakdown, and every column is a
+     * separate query that could have been joined wrongly.
+     */
+    for (const field of [
+      'issues',
+      'openIssues',
+      'pullRequests',
+      'openPullRequests',
+      'comments',
+      'events',
+      'reviews',
+      'workflows',
+      'workflowRuns',
+      'workflowJobs',
+      'jobLogs',
+    ] as const) {
+      const summed = perRepo.reduce((sum, row) => sum + row[field], 0);
+      expect([field, summed]).toEqual([field, totals[field]]);
+    }
+  });
 });
 
 describe('jira queries', () => {

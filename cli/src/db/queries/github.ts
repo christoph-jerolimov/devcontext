@@ -459,6 +459,85 @@ export function getJobLog(
   return db.get('SELECT content, truncated, size_bytes FROM gh_job_logs WHERE job_id = ?', [jobId]);
 }
 
+const group = (table: string, where = ''): string =>
+  `SELECT repo_full_name AS name, COUNT(*) AS total FROM ${table}
+   ${where ? `WHERE ${where}` : ''} GROUP BY repo_full_name`;
+
+/** The same counts as `githubStats`, split per repository. */
+export interface RepositoryStats {
+  repository: string;
+  issues: number;
+  openIssues: number;
+  pullRequests: number;
+  openPullRequests: number;
+  comments: number;
+  events: number;
+  reviews: number;
+  workflows: number;
+  workflowRuns: number;
+  workflowJobs: number;
+  jobLogs: number;
+}
+
+export function githubStatsByRepository(db: Database): RepositoryStats[] {
+  const rows = new Map<string, RepositoryStats>();
+  const forRepository = (name: string): RepositoryStats => {
+    const existing = rows.get(name);
+    if (existing) return existing;
+    const created: RepositoryStats = {
+      repository: name,
+      issues: 0,
+      openIssues: 0,
+      pullRequests: 0,
+      openPullRequests: 0,
+      comments: 0,
+      events: 0,
+      reviews: 0,
+      workflows: 0,
+      workflowRuns: 0,
+      workflowJobs: 0,
+      jobLogs: 0,
+    };
+    rows.set(name, created);
+    return created;
+  };
+
+  // Every repository appears, even one that has only just been added and has
+  // nothing under it yet — a row of zeroes says more than a missing row.
+  for (const repository of db.all<{ full_name: string }>(
+    'SELECT full_name FROM gh_repositories ORDER BY full_name',
+  )) {
+    forRepository(repository.full_name);
+  }
+
+  const tally = (field: keyof RepositoryStats, sql: string): void => {
+    for (const row of db.all<{ name: string; total: number }>(sql)) {
+      if (row.name) (forRepository(row.name)[field] as number) = row.total;
+    }
+  };
+  tally('issues', group('gh_issues', 'is_pull_request = 0'));
+  tally('openIssues', group('gh_issues', "is_pull_request = 0 AND state = 'open'"));
+  tally('pullRequests', group('gh_pull_requests'));
+  tally('openPullRequests', group('gh_pull_requests', "state = 'open'"));
+  tally('comments', group('gh_comments'));
+  tally('events', group('gh_events'));
+  tally('reviews', group('gh_reviews'));
+  tally('workflows', group('gh_workflows'));
+  tally('workflowRuns', group('gh_workflow_runs'));
+  tally('workflowJobs', group('gh_workflow_jobs'));
+  // Job logs only carry the numeric repository id, so they come through the
+  // repository table.
+  tally(
+    'jobLogs',
+    `SELECT r.full_name AS name, COUNT(*) AS total
+       FROM gh_job_logs l
+       JOIN gh_repositories r ON r.host = l.host AND r.id = l.repo_id
+      GROUP BY r.full_name`,
+  );
+
+  return [...rows.values()];
+}
+
 export function githubStats(db: Database): Record<string, number> {
   return {
     repositories: db.count('gh_repositories'),

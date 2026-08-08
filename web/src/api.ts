@@ -14,6 +14,9 @@ export interface StatusResponse {
   };
   github: Record<string, number>;
   jira: Record<string, number>;
+  /** The same totals per repository and per project. */
+  githubByRepository: Array<{ repository: string } & Record<string, number>>;
+  jiraByProject: Array<{ project: string } & Record<string, number>>;
   /** Choices the server defines, so the viewer does not restate them. */
   filters: { workitemTypes: string[] };
   runs: SyncRun[];

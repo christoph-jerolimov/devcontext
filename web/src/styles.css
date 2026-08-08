@@ -318,6 +318,12 @@ input[type='search'] {
   font-size: 12.5px;
 }
 
+/* A table with a column per kind of thing counted outgrows its panel long
+   before the page outgrows the window. Scroll the table, not the page. */
+.table-scroll {
+  overflow-x: auto;
+}
+
 .right {
   text-align: right;
 }

@@ -47,6 +47,30 @@ export function Overview({ status }: { status: StatusResponse }): ReactNode {
         </div>
       </Panel>
 
+      {status.githubByRepository.length > 0 ? (
+        <Panel title="GitHub repositories">
+          <CountsTable
+            keyHeader="Repository"
+            rows={status.githubByRepository.map(({ repository, ...counts }) => ({
+              name: repository,
+              counts,
+            }))}
+          />
+        </Panel>
+      ) : null}
+
+      {status.jiraByProject.length > 0 ? (
+        <Panel title="Jira projects">
+          <CountsTable
+            keyHeader="Project"
+            rows={status.jiraByProject.map(({ project, ...counts }) => ({
+              name: project,
+              counts,
+            }))}
+          />
+        </Panel>
+      ) : null}
+
       <Panel title="Recent sync runs">
         <table className="table">
           <thead>
@@ -98,6 +122,54 @@ export function Overview({ status }: { status: StatusResponse }): ReactNode {
           </tbody>
         </table>
       </Panel>
+    </div>
+  );
+}
+
+/**
+ * One row per repository or project, one column per kind of thing counted.
+ *
+ * The columns come from the rows rather than being listed here, so a count
+ * added to the server appears without a second edit — and cannot be forgotten.
+ */
+function CountsTable({
+  keyHeader,
+  rows,
+}: {
+  keyHeader: string;
+  rows: Array<{ name: string; counts: Record<string, number> }>;
+}): ReactNode {
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row.counts)))];
+
+  return (
+    <div className="table-scroll">
+      <table className="table compact">
+        <thead>
+          <tr>
+            <th>{keyHeader}</th>
+            {columns.map((column) => (
+              <th className="right" key={column}>
+                {column.replace(/([A-Z])/g, ' $1').toLowerCase()}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name}>
+              <td>{row.name}</td>
+              {columns.map((column) => (
+                <td className="right" key={column}>
+                  {/* Zero is dimmed: what is there matters more than what is not. */}
+                  <span className={row.counts[column] ? undefined : 'muted'}>
+                    {row.counts[column] ?? 0}
+                  </span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

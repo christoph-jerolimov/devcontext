@@ -155,6 +155,10 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       },
       github: gh.githubStats(db),
       jira: jira.jiraStats(db),
+      // The same totals broken down, so the Overview can say which repository
+      // or project the rows came from rather than only how many there are.
+      githubByRepository: gh.githubStatsByRepository(db),
+      jiraByProject: jira.jiraStatsByProject(db),
       links: crossLinks.linkStats(db),
       // Served rather than duplicated in the viewer, so the dropdown and the
       // grouping that backs it cannot drift apart.
