@@ -80,6 +80,38 @@ interface Part {
 const EXCERPT = 240;
 
 /**
+ * How far apart a merge and the close it caused may be and still count as the
+ * same act.
+ *
+ * GitHub stamps both to the same second in practice. The tolerance is for
+ * clock skew between the two records, not for a genuine later close — a pull
+ * request that was closed, reopened weeks on and then merged has two real
+ * events, and both belong in the feed.
+ */
+const MERGE_CLOSE_TOLERANCE_SECONDS = 120;
+
+/**
+ * True when this row is the close that a merge performed.
+ *
+ * Merging a pull request closes it, and GitHub reports both, so the feed said
+ * "merged" and "closed" one line apart for the same act. Two lines for one
+ * thing is not a cosmetic problem: it doubles that pull request in
+ * `activity --by-person` and makes a merge look like twice the work of any
+ * other close.
+ *
+ * Written as "drop the close" rather than "drop the merge" because merged is
+ * the more specific word — closed is true of every merge, and merged is what
+ * actually happened.
+ */
+const MERGED_ALONGSIDE = `EXISTS (
+             SELECT 1 FROM gh_events m
+              WHERE m.host = e.host AND m.issue_id = e.issue_id
+                AND m.event = 'merged'
+                AND ABS(STRFTIME('%s', m.created_at) - STRFTIME('%s', e.created_at))
+                    <= ${String(MERGE_CLOSE_TOLERANCE_SECONDS)}
+           )`;
+
+/**
  * One `SELECT` per thing that can happen.
  *
  * Written out rather than generated because every one of them reaches its
@@ -133,7 +165,8 @@ function parts(filter: ActivityFilter): Part[] {
                i.html_url AS url
           FROM gh_events e
           LEFT JOIN gh_issues i ON i.host = e.host AND i.id = e.issue_id
-         WHERE e.event IN ('closed', 'reopened', 'merged') AND e.created_at IS NOT NULL`,
+         WHERE e.event IN ('closed', 'reopened', 'merged') AND e.created_at IS NOT NULL
+           AND NOT (e.event = 'closed' AND ${MERGED_ALONGSIDE})`,
       params: [],
     });
 

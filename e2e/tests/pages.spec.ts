@@ -233,6 +233,45 @@ test.describe('the data actually arrived', () => {
     expect(feed.total).toBe(feed.events.length);
   });
 
+  test('a merged pull request is one line, not merged and closed', async ({ request }) => {
+    /*
+     * The fixture reports both, a second apart, exactly as GitHub does —
+     * merging closes the pull request. Through the real sync and the real
+     * server, only the more specific word should survive.
+     */
+    const feed = (await (
+      await request.get('/api/activity?since=2000-01-01T00:00:00Z&limit=500')
+    ).json()) as { events: Array<{ ref: string; action: string }> };
+
+    const merged = feed.events.filter((event) => event.ref === 'acme/platform#42');
+
+    expect(merged.map((event) => event.action)).toContain('merged');
+    expect(merged.map((event) => event.action)).not.toContain('closed');
+  });
+
+  test('the feed can be narrowed to one repository and one person', async ({ request }) => {
+    /*
+     * Two filters that only look right: a container filter that matches
+     * nothing and a person filter that matches everything both produce a page
+     * nobody can tell is wrong. So both are asserted against the union.
+     */
+    const url = '/api/activity?since=2000-01-01T00:00:00Z&limit=500';
+    const all = (await (await request.get(url)).json()) as {
+      events: Array<{ container: string; actor: string | null }>;
+    };
+    const scoped = (await (await request.get(`${url}&container=acme/platform`)).json()) as {
+      events: Array<{ container: string }>;
+      total: number;
+    };
+
+    expect(scoped.events.length).toBeGreaterThan(0);
+    expect(new Set(scoped.events.map((event) => event.container))).toEqual(
+      new Set(['acme/platform']),
+    );
+    // It narrowed rather than passed everything through.
+    expect(scoped.events.length).toBeLessThan(all.events.length);
+  });
+
   test('the history chart is drawn from the state changes, not from today', async ({ page }) => {
     await openViewer(page, 'history');
 

@@ -413,10 +413,15 @@ fortnight and closed looks, in the issue list, exactly like one nobody touched.
 
 ```bash
 devcontext activity --since 7d
+devcontext activity --since 4h                          # while you were in that meeting
 devcontext activity --team platform --kind review
 devcontext activity --no-bots --container acme/platform
 devcontext activity --by-person --since 30d
 ```
+
+`--since` takes hours as readily as days — `1h`, `2h`, `4h`, `8h`, `12h` — which
+is the grain the question usually has when it is asked in the morning or after
+a meeting. The viewer offers the same windows in its dropdown.
 
 ### The three kinds
 
@@ -434,6 +439,14 @@ mattered.
 Only the **status** field of the Jira changelog counts as a status change.
 "Changed the description" is a change, but it is not that, and a feed that said
 otherwise would be full of them.
+
+A merged pull request says **merged**, once. GitHub reports a `closed` event
+alongside the `merged` one — merging closes the pull request — and the feed
+drops the close when a merge happened at the same moment. Two lines for one act
+is not only noise: it doubled that pull request in `--by-person` and made a
+merge look like twice the work of any other close. A pull request genuinely
+closed, reopened weeks later and then merged still shows both, because that is
+two decisions rather than one.
 
 ### `--by-person`
 
