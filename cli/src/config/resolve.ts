@@ -94,6 +94,18 @@ function readToken(explicit: string | undefined, envName: string): string | null
   return fromEnv && fromEnv.trim() !== '' ? fromEnv : null;
 }
 
+/**
+ * The workflow run cap, where "no cap" and "not configured" are different.
+ *
+ * `?? 250` would be wrong: an explicit `null` means every run was asked for,
+ * and `??` cannot tell that apart from the key being absent — it would hand
+ * back the default and quietly ignore the request. Only `undefined` defaults.
+ */
+function resolveRunCap(value: number | null | 'all' | undefined): number | null {
+  if (value === undefined) return 250;
+  return value === 'all' ? null : value;
+}
+
 function resolveSince(value: string | undefined, now: Date): string | null {
   if (value === undefined) return null;
   return resolveTimeExpression(value, now);
@@ -278,7 +290,7 @@ export function resolveConfig(
         repo,
         fullName: `${owner}/${repo}`,
         since: resolveSince(entry.since, now),
-        maxWorkflowRuns: entry.maxWorkflowRuns ?? 250,
+        maxWorkflowRuns: resolveRunCap(entry.maxWorkflowRuns),
         maxLogBytes: entry.maxLogBytes ?? 2_000_000,
         sync: mergeFlags<GithubRepoSyncOptions>(
           DEFAULT_GITHUB_SYNC,

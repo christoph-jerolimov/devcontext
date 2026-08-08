@@ -415,7 +415,11 @@ export function configReport(config: ResolvedConfig): ConfigReport {
     for (const repo of project.github) {
       const limits: string[] = [];
       if (repo.since) limits.push(`nothing older than ${repo.since.slice(0, 10)}`);
-      limits.push(`at most ${repo.maxWorkflowRuns} workflow runs`);
+      limits.push(
+        repo.maxWorkflowRuns === null
+          ? 'every workflow run'
+          : `at most ${String(repo.maxWorkflowRuns)} workflow runs`,
+      );
       if (repo.sync.workflowLogs) {
         limits.push(`job logs truncated at ${Math.round(repo.maxLogBytes / 1024)} KiB`);
       }

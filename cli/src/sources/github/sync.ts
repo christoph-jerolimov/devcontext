@@ -331,7 +331,9 @@ class GithubRepoSyncer {
     if (sync.workflowRuns) {
       const total = await probe(`/repos/${this.target.owner}/${this.target.repo}/actions/runs`, {});
       if (total !== null) {
-        const runs = Math.min(total, this.target.maxWorkflowRuns);
+        // `null` is no cap, so the size of the work is the repository's own.
+        const cap = this.target.maxWorkflowRuns;
+        const runs = cap === null ? total : Math.min(total, cap);
         /*
          * List pages, one jobs call per run, and — when logs are on — one log
          * call per *job*.
@@ -942,6 +944,11 @@ class GithubRepoSyncer {
    * Walks the workflow run list, newest first, and stops at the cursor or at
    * `maxWorkflowRuns`. The jobs of each run are a request each and belong to
    * the last phase.
+   *
+   * A `null` cap means every run the API will return, which on a busy
+   * repository is tens of thousands. That is a deliberate choice rather than an
+   * accident — see docs/configuration.md — and the run itself warns about the
+   * size once it knows it.
    */
   private async listWorkflowRuns(): Promise<void> {
     const scope = `${this.scopePrefix}:workflow_runs`;
@@ -958,9 +965,10 @@ class GithubRepoSyncer {
       for (const raw of page) {
         const createdAt = str(raw, 'created_at');
         if (since && createdAt && createdAt < since && !this.ctx.full) break outer;
-        if (this.workflowRunIds.length >= this.target.maxWorkflowRuns) {
+        const cap = this.target.maxWorkflowRuns;
+        if (cap !== null && this.workflowRunIds.length >= cap) {
           this.ctx.progress.log(
-            `Stopping after ${this.target.maxWorkflowRuns} workflow runs for ${this.target.fullName} (maxWorkflowRuns).`,
+            `Stopping after ${String(cap)} workflow runs for ${this.target.fullName} (maxWorkflowRuns).`,
           );
           break outer;
         }

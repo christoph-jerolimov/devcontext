@@ -46,7 +46,8 @@ export interface GithubRepoTarget {
   fullName: string;
   /** Oldest data the initial sync should reach for, as an ISO timestamp. */
   since: string | null;
-  maxWorkflowRuns: number;
+  /** How many workflow runs one sync may take, or `null` for every one. */
+  maxWorkflowRuns: number | null;
   maxLogBytes: number;
   sync: GithubRepoSyncOptions;
 }

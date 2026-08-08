@@ -1208,6 +1208,57 @@ describe('runSync', () => {
     });
   });
 
+  describe('the workflow run cap', () => {
+    function runsStored(): number {
+      const db = Database.open(config.databasePath, { create: false, readOnly: true });
+      try {
+        return db.get<{ n: number }>('SELECT COUNT(*) AS n FROM gh_workflow_runs')?.n ?? 0;
+      } finally {
+        db.close();
+      }
+    }
+
+    async function syncWith(cap: string): Promise<void> {
+      config = parseConfig(
+        CONFIG_YAML.replace(
+          '      - repo: acme/platform\n',
+          `      - repo: acme/platform\n        maxWorkflowRuns: ${cap}\n`,
+        ),
+        { configPath: join(workspace, 'devcontext.yaml') },
+      );
+      await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+      });
+    }
+
+    it('fetches every run when the cap is removed', async () => {
+      /*
+       * The guard this asserts is not cosmetic. The walk compares the number of
+       * runs collected so far against the cap, and `0 >= null` is `0 >= 0` —
+       * true. Without the explicit null check, asking for every run would break
+       * out of the loop before storing a single one, which is the exact
+       * opposite of what was asked for and looks like a repository with no CI.
+       */
+      await syncWith('null');
+      expect(runsStored()).toBe(1);
+    });
+
+    it('fetches every run for "all" too', async () => {
+      await syncWith('all');
+      expect(runsStored()).toBe(1);
+    });
+
+    it('still stops at a number', async () => {
+      await syncWith('250');
+      expect(runsStored()).toBe(1);
+    });
+  });
+
   describe('the three phases', () => {
     const TWO_REPOSITORIES = CONFIG_YAML.replace(
       '      - repo: acme/platform\n',

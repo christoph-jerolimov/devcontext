@@ -215,7 +215,7 @@ projects:
       - repo: acme/platform # owner/name
         host: github.com # optional, defaults to the first host
         since: 12mo # how far back the initial sync reaches
-        maxWorkflowRuns: 250 # safety net per sync run
+        maxWorkflowRuns: 250 # safety net per sync run; null or "all" for every run
         maxLogBytes: 2000000 # job logs are truncated beyond this
         sync:
           workflowLogs: true
@@ -230,6 +230,23 @@ projects:
         sync:
           worklogs: false
 ```
+
+### `maxWorkflowRuns`
+
+A safety net per sync run, defaulting to 250. A busy repository accumulates
+workflow runs faster than anything else devcontext syncs, and each one costs a
+jobs call on top of the list — so an unbounded first sync of a large repository
+is the one that runs for hours.
+
+Set it to `null` or `"all"` when that is what you want:
+
+```yaml
+maxWorkflowRuns: null # or: maxWorkflowRuns: "all"
+```
+
+Both spellings mean the same thing. The run still walks newest first and still
+stops at the stored cursor, so only the _first_ sync pays the full price; after
+that it fetches what has appeared since.
 
 ### `since`
 

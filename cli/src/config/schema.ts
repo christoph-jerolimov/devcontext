@@ -72,7 +72,15 @@ const githubRepoSchema = z
     repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected "owner/repo"'),
     host: z.string().optional(),
     since: z.string().optional(),
-    maxWorkflowRuns: z.number().int().positive().optional(),
+    /*
+     * A cap, or no cap at all.
+     *
+     * `null` and `"all"` both mean every run the API will return. Two spellings
+     * because they answer the question in different words — one is "there is no
+     * limit", the other is "give me all of them" — and a configuration file is
+     * read by people who think in one or the other.
+     */
+    maxWorkflowRuns: z.union([z.number().int().positive(), z.null(), z.literal('all')]).optional(),
     maxLogBytes: z.number().int().positive().optional(),
     sync: githubSyncOptionsSchema.optional(),
   })
