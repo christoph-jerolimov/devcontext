@@ -120,7 +120,7 @@ export const ISSUES = [
     node_id: 'PR_2001',
     number: 42,
     title: 'PLAT-3: respect the secondary rate limit',
-    body: 'Implements PLAT-3.\n\nBacks off when GitHub reports a secondary limit, instead of retrying immediately.',
+    body: 'Implements PLAT-3.\n\nFixes #12.\n\nBacks off when GitHub reports a secondary limit, instead of retrying immediately.',
     state: 'closed',
     user: user('ada'),
     labels: [LABELS[1]],
@@ -353,7 +353,24 @@ export const TIMELINES = {
     },
   ],
   13: [{ id: 6004, event: 'closed', actor: user('ada'), created_at: at(9) }],
-  14: [],
+  14: [
+    // What GitHub records itself when one item mentions another: the referring
+    // item comes attached and already resolved, with no prose to read.
+    {
+      id: 6008,
+      event: 'cross-referenced',
+      actor: user('grace'),
+      created_at: at(3),
+      source: {
+        type: 'issue',
+        issue: {
+          number: 43,
+          repository: { full_name: 'acme/platform' },
+          pull_request: { url: 'https://api.github.com/repos/acme/platform/pulls/43' },
+        },
+      },
+    },
+  ],
   42: [
     {
       id: 6005,

@@ -388,12 +388,6 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
         assignee: query.get('assignee') ?? undefined,
         sprint: query.get('sprint') ?? undefined,
       }),
-      byAssignee: historyQueries.openByAssignee(db, {
-        at: to,
-        source: query.get('source') ?? undefined,
-        container: query.get('container') ?? undefined,
-        kind: query.get('kind') ?? undefined,
-      }),
     };
   }
 

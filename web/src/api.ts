@@ -281,7 +281,6 @@ export interface HistoryResponse {
   from: string;
   to: string;
   days: OpenOnDay[];
-  byAssignee: Array<{ assignee: string; open: number }>;
 }
 
 /** Pull requests finished per day. A count of events, not a balance. */

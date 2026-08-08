@@ -189,34 +189,6 @@ export function HistoryView(): ReactNode {
           />
         ) : null}
       </Panel>
-
-      {(tickets.data?.byAssignee.length ?? 0) > 0 ? (
-        <Panel title="Open per person, now">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Assignee</th>
-                <th className="right">Open</th>
-                <th>Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(tickets.data?.byAssignee ?? []).map((entry) => (
-                <tr key={entry.assignee}>
-                  <td>{entry.assignee}</td>
-                  <td className="right">{entry.open}</td>
-                  <td>
-                    <Meter
-                      value={entry.open}
-                      peak={Math.max(...(tickets.data?.byAssignee ?? []).map((row) => row.open), 1)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-      ) : null}
     </div>
   );
 }
@@ -256,14 +228,5 @@ function OpenPanel({
         />
       ) : null}
     </>
-  );
-}
-
-/** A proportion, as a bar. Wide enough to compare, short enough for a cell. */
-function Meter({ value, peak }: { value: number; peak: number }): ReactNode {
-  return (
-    <span className="meter" aria-hidden="true">
-      <span className="meter-fill" style={{ width: `${String((value / peak) * 100)}%` }} />
-    </span>
   );
 }

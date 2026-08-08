@@ -614,7 +614,8 @@ CREATE TABLE IF NOT EXISTS cross_links (
   to_source   TEXT NOT NULL,
   to_kind     TEXT NOT NULL,
   to_ref      TEXT NOT NULL,
-  via         TEXT NOT NULL,      -- branch | title | body | commit | comment | jira-field
+  via         TEXT NOT NULL,      -- branch | title | body | commit | comment |
+                                  -- jira-field | closes | timeline
   detail      TEXT,               -- the text that produced the match
   confidence  TEXT NOT NULL,      -- high | medium
   synced_at   TEXT NOT NULL
