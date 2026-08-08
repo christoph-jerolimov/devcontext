@@ -1,10 +1,46 @@
 import type { ReactNode } from 'react';
 
 import { api, formatRelative } from '../api.ts';
-import type { ActivityEvent, ActivityResponse } from '../api.ts';
+import type { ActivityEvent, ActivityResponse, StatusResponse } from '../api.ts';
 import { Badge, Panel, StateMessage, useAsync } from '../components/common.tsx';
 import { usePeopleFilter } from '../components/PeopleFilter.tsx';
 import { useUrlState } from '../router.ts';
+
+/**
+ * The windows the feed offers, shortest first.
+ *
+ * Hours are here because the feed answers "what happened while I was in that
+ * meeting" as often as "what happened this fortnight", and a day was the
+ * finest grain available — which on a busy repository is hundreds of rows to
+ * read for an answer about the last twenty minutes.
+ */
+export const WINDOWS = [
+  { value: '1h', label: 'Last hour', hours: 1 },
+  { value: '2h', label: 'Last 2 hours', hours: 2 },
+  { value: '4h', label: 'Last 4 hours', hours: 4 },
+  { value: '8h', label: 'Last 8 hours', hours: 8 },
+  { value: '12h', label: 'Last 12 hours', hours: 12 },
+  { value: '1d', label: 'Last day', hours: 24 },
+  { value: '7d', label: 'Last week', hours: 7 * 24 },
+  { value: '14d', label: 'Last two weeks', hours: 14 * 24 },
+  { value: '30d', label: 'Last month', hours: 30 * 24 },
+  { value: '90d', label: 'Last quarter', hours: 90 * 24 },
+] as const;
+
+export const DEFAULT_WINDOW = '14d';
+const DEFAULT_HOURS = 14 * 24;
+
+/**
+ * How far back a window value reaches.
+ *
+ * An unknown value — a stale bookmark, a hand-edited URL — falls back to the
+ * default rather than to nothing. Reaching back zero hours renders an empty
+ * feed, and an empty feed is exactly what a quiet fortnight looks like, so the
+ * mistake would be invisible in the one output that could reveal it.
+ */
+export function hoursFor(value: string): number {
+  return WINDOWS.find((entry) => entry.value === value)?.hours ?? DEFAULT_HOURS;
+}
 
 /**
  * What people did, newest first.
@@ -15,17 +51,23 @@ import { useUrlState } from '../router.ts';
  * exactly like one nobody ever touched.
  */
 export function ActivityView(): ReactNode {
-  const [days, setDays] = useUrlState('days', '14');
+  const [range, setRange] = useUrlState('window', DEFAULT_WINDOW);
   const [source, setSource] = useUrlState('source');
+  const [container, setContainer] = useUrlState('container');
   const [kind, setKind] = useUrlState('kind');
   const [bots, setBots] = useUrlState('bots');
   const people = usePeopleFilter();
 
-  const since = new Date(Date.now() - Number(days || '14') * 86_400_000).toISOString();
+  const status = useAsync<StatusResponse>(() => api.status(), []);
+  const repositories = status.data?.filters.containers.github ?? [];
+  const projects = status.data?.filters.containers.jira ?? [];
+
+  const since = new Date(Date.now() - hoursFor(range) * 3_600_000).toISOString();
 
   const params = {
     since,
     source: source || undefined,
+    container: container || undefined,
     kind: kind || undefined,
     bots: bots || undefined,
     ...people.params,
@@ -34,7 +76,7 @@ export function ActivityView(): ReactNode {
 
   const feed = useAsync<ActivityResponse>(
     () => api.activity(params),
-    [days, source, kind, bots, people.key],
+    [range, source, container, kind, bots, people.key],
   );
 
   const events = feed.data?.events ?? [];
@@ -44,12 +86,16 @@ export function ActivityView(): ReactNode {
       title="Activity"
       actions={
         <>
-          <select value={days} onChange={(event) => setDays(event.target.value)}>
-            <option value="1">Last day</option>
-            <option value="7">Last week</option>
-            <option value="14">Last two weeks</option>
-            <option value="30">Last month</option>
-            <option value="90">Last quarter</option>
+          <select
+            value={range}
+            aria-label="Time window"
+            onChange={(event) => setRange(event.target.value)}
+          >
+            {WINDOWS.map((entry) => (
+              <option key={entry.value} value={entry.value}>
+                {entry.label}
+              </option>
+            ))}
           </select>
 
           <select value={source} onChange={(event) => setSource(event.target.value)}>
@@ -57,6 +103,39 @@ export function ActivityView(): ReactNode {
             <option value="github">GitHub</option>
             <option value="jira">Jira</option>
           </select>
+
+          {/*
+           * Repositories and Jira projects share one control, the way people
+           * and teams do: they answer the same question, and the feed mixes
+           * both platforms anyway.
+           */}
+          {repositories.length + projects.length > 0 ? (
+            <select
+              value={container}
+              aria-label="Repository or project"
+              onChange={(event) => setContainer(event.target.value)}
+            >
+              <option value="">Everywhere</option>
+              {repositories.length > 0 ? (
+                <optgroup label="Repositories">
+                  {repositories.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {projects.length > 0 ? (
+                <optgroup label="Jira projects">
+                  {projects.map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          ) : null}
 
           <select value={kind} onChange={(event) => setKind(event.target.value)}>
             <option value="">Everything</option>

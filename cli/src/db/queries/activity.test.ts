@@ -341,6 +341,106 @@ describe('the activity feed', () => {
     );
   });
 
+  it('says merged, not merged and closed, for one merge', () => {
+    /*
+     * Merging closes the pull request, and GitHub reports both, one second
+     * apart. Two lines for one act is not only noise: it doubles that pull
+     * request in --by-person and makes a merge look like twice the work of
+     * any other close.
+     */
+    issue({ id: 3, number: 9, author: 'ada', created: '2024-03-08T09:00:00Z', pull: true });
+    pullRequest({ id: 900, number: 9, title: 'Cache the field catalogue' });
+    event({
+      uid: 'm1',
+      issueId: 3,
+      number: 9,
+      event: 'merged',
+      actor: 'ghopper',
+      at: '2024-03-09T09:00:00Z',
+    });
+    event({
+      uid: 'm2',
+      issueId: 3,
+      number: 9,
+      event: 'closed',
+      actor: 'ghopper',
+      at: '2024-03-09T09:00:01Z',
+    });
+
+    const rows = listActivity(db).filter((row) => row.ref === 'acme/platform#9');
+
+    expect(rows.map((row) => row.action)).toEqual(['merged', 'opened pull request']);
+  });
+
+  it('keeps a close that was not a merge, even on a pull request merged later', () => {
+    /*
+     * The other half of the rule. Closed in March, reopened, merged in May is
+     * two real decisions weeks apart, and swallowing the first would lose the
+     * fact that the work was once abandoned.
+     */
+    issue({ id: 4, number: 11, author: 'ada', created: '2024-03-01T09:00:00Z', pull: true });
+    pullRequest({ id: 1100, number: 11, title: 'Retry on a 502' });
+    event({
+      uid: 'r1',
+      issueId: 4,
+      number: 11,
+      event: 'closed',
+      actor: 'ada',
+      at: '2024-03-10T09:00:00Z',
+    });
+    event({
+      uid: 'r2',
+      issueId: 4,
+      number: 11,
+      event: 'reopened',
+      actor: 'ada',
+      at: '2024-05-01T09:00:00Z',
+    });
+    event({
+      uid: 'r3',
+      issueId: 4,
+      number: 11,
+      event: 'merged',
+      actor: 'ghopper',
+      at: '2024-05-02T09:00:00Z',
+    });
+
+    const rows = listActivity(db).filter((row) => row.ref === 'acme/platform#11');
+
+    expect(rows.map((row) => row.action)).toEqual([
+      'merged',
+      'reopened',
+      'closed',
+      'opened pull request',
+    ]);
+  });
+
+  it('counts the merge once per person, not twice', () => {
+    // What the duplicate actually cost: the busiest-first ordering.
+    issue({ id: 5, number: 13, author: 'ada', created: '2024-03-08T09:00:00Z', pull: true });
+    pullRequest({ id: 1300, number: 13, title: 'Bound the backoff' });
+    event({
+      uid: 'p1',
+      issueId: 5,
+      number: 13,
+      event: 'merged',
+      actor: 'linus',
+      at: '2024-03-09T09:00:00Z',
+    });
+    event({
+      uid: 'p2',
+      issueId: 5,
+      number: 13,
+      event: 'closed',
+      actor: 'linus',
+      at: '2024-03-09T09:00:00Z',
+    });
+
+    const linus = activityByActor(db).find((row) => row.actor === 'linus');
+
+    expect(linus?.total).toBe(1);
+  });
+
   it('carries the item title, so a row reads on its own', () => {
     const approval = listActivity(db).find((row) => row.action === 'approved');
 

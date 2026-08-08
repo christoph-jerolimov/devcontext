@@ -363,6 +363,9 @@ export const TIMELINES = {
       created_at: at(11),
     },
     { id: 6006, event: 'merged', actor: user('linus'), created_at: at(6) },
+    // GitHub reports both for one merge, a second apart, because merging
+    // closes the pull request. The feed has to say it once.
+    { id: 6007, event: 'closed', actor: user('linus'), created_at: at(6) },
   ],
   43: [],
 };

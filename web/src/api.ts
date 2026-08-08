@@ -20,6 +20,8 @@ export interface StatusResponse {
   /** Choices the server defines, so the viewer does not restate them. */
   filters: {
     workitemTypes: string[];
+    /** The repositories and Jira projects that actually have rows. */
+    containers: { github: string[]; jira: string[] };
     /** Configured people and bots; empty when devcontext.yaml names none. */
     people: PersonOption[];
     teams: TeamOption[];

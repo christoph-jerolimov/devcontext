@@ -238,6 +238,17 @@ function handleApi(url: URL, ctx: RequestContext): unknown {
       // grouping that backs it cannot drift apart.
       filters: {
         workitemTypes: [...jira.WORKITEM_TYPES],
+        /*
+         * The repositories and Jira projects the activity filter offers.
+         *
+         * Read from the data rather than from the configuration: a repository
+         * configured but never synced has nothing to filter to, and offering
+         * it means a dropdown choice that always returns an empty feed.
+         */
+        containers: {
+          github: gh.githubStatsByRepository(db).map((row) => row.repository),
+          jira: jira.jiraStatsByProject(db).map((row) => row.project),
+        },
         // Sent with the status the viewer already fetches, so a person or team
         // dropdown costs no extra request. Only what a dropdown needs — the
         // identities behind each entry are the server's business.
