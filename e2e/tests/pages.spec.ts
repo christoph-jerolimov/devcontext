@@ -27,6 +27,7 @@ const PAGES = [
  */
 async function openViewer(page: Page, hash: string): Promise<void> {
   await page.clock.setFixedTime(new Date(REFERENCE));
+  await pinVolatileValues(page);
   await page.goto(`/#/${hash}`);
   // The shell renders before the fetches resolve; waiting on the panel avoids
   // photographing a half loaded page.
@@ -35,30 +36,69 @@ async function openViewer(page: Page, hash: string): Promise<void> {
 }
 
 /**
- * The few things on a page that cannot be the same twice.
+ * Pins the handful of values the *server* derives from its own clock, or from
+ * where the database happens to live.
  *
- * Almost everything the viewer shows comes from the fixture and is rendered
- * against the frozen clock, so it is stable. These are the exceptions: values
- * the *server* derives from its own clock, or from where the database happens
- * to live. Masking them is narrower than dropping the page from the
- * comparison, which would leave its layout unwatched.
+ * Everything else the viewer shows comes from the fixture and is rendered
+ * against the frozen clock above, so it is already stable. These are the
+ * exceptions, and they used to be painted over with Playwright's mask instead
+ * — which made the screenshots reproducible and simultaneously useless for
+ * anything else, because a mask is a solid magenta rectangle.
+ *
+ * Rewriting the response is narrower than masking in both directions. The rows
+ * stay in the picture, so their layout is still compared rather than hidden,
+ * and the picture stays a picture of the product.
  */
-function unstable(page: Page, id: string) {
-  if (id === 'overview') {
-    return [
-      // Absolute paths on this machine.
-      page.locator('.panel', { hasText: 'Projects' }).locator('p.muted'),
-      // When the sync ran, and the cursors it wrote — both real timestamps.
-      page.locator('.panel', { hasText: 'Recent sync runs' }).locator('tbody'),
-      page.locator('.panel', { hasText: 'Sync state' }).locator('tbody'),
-    ];
-  }
-  if (id === 'insights') {
-    // "Oldest" is an age the server computes from now, not from the frozen
-    // browser clock, so it grows by a day every day.
-    return [page.locator('.panel', { hasText: 'Work in progress' }).locator('td:last-child')];
-  }
-  return [];
+async function pinVolatileValues(page: Page): Promise<void> {
+  await page.route('**/api/status', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      config: { path: string; database: string };
+      runs: Array<Record<string, unknown>>;
+      state: Array<Record<string, unknown>>;
+    };
+
+    // Absolute paths on whichever machine ran the sync.
+    body.config.path = '/work/platform/devcontext.yaml';
+    body.config.database = '/work/platform/.devcontext/devcontext.db';
+
+    // Ids count up across runs, and the timings are real measurements.
+    body.runs = body.runs.map((run, index) => ({
+      ...run,
+      id: index + 1,
+      started_at: REFERENCE,
+      duration_ms: 1200,
+    }));
+    /*
+     * Cursors come in two kinds and only one of them is stable.
+     *
+     * Most are the newest `updated_at` the walk saw, which is fixture data and
+     * never moves. The rest — labels, milestones, workflows, sprints — have no
+     * timestamp to carry, so the sync stores the moment it ran, which is a
+     * different string every time. Anything later than the frozen reference is
+     * one of those by construction.
+     */
+    body.state = body.state.map((entry) => ({
+      ...entry,
+      updated_at: REFERENCE,
+      cursor:
+        typeof entry['cursor'] === 'string' && entry['cursor'] > REFERENCE
+          ? REFERENCE
+          : entry['cursor'],
+    }));
+
+    await route.fulfill({ response, json: body });
+  });
+
+  await page.route('**/api/insights**', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      wip: { byAssignee: Array<Record<string, unknown>> };
+    };
+    // An age the server measures from its own now, so it grows by a day a day.
+    body.wip.byAssignee = body.wip.byAssignee.map((row) => ({ ...row, oldestHours: 36 }));
+    await route.fulfill({ response, json: body });
+  });
 }
 
 test.describe('the viewer, page by page', () => {
@@ -70,10 +110,7 @@ test.describe('the viewer, page by page', () => {
       // would show up as something other than a screenshot difference.
       await expect(page.locator('.sidebar a.active')).toHaveText(label);
 
-      await expect(page).toHaveScreenshot(`${id}.png`, {
-        fullPage: true,
-        mask: unstable(page, id),
-      });
+      await expect(page).toHaveScreenshot(`${id}.png`, { fullPage: true });
     });
   }
 });
