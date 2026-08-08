@@ -145,11 +145,23 @@ count, and every follow up call an item implies (comments, timeline, reviews,
 commits, files) is known from the configuration. Jira is easier still: a search
 reports how many work items match the JQL.
 
-Two things stay unknowable until the work is under way, and only these are
-still discovered as the sync runs: how many jobs a workflow run has, and how
-many sprints hang off a board. Both are small, so the percentage and the
-estimated time are meaningful from the first call rather than only near the
-end.
+Two costs cannot be probed at all: how many jobs a workflow run has, and how
+many sprints hang off a board. Neither API answers either question without
+listing them, which is the work itself.
+
+They are unaskable rather than unknowable, though — **the last sync already
+found out, and the database still holds the answer.** A repository whose runs
+averaged four jobs yesterday will not average one today, so the stored ratios
+price both. On a first sync there is no history, so those two parts are still
+discovered as the run goes; from the second sync on they are priced up front
+like everything else, and each phase replaces its own figure with the exact
+one as soon as it knows it.
+
+What remains is one over-estimate, deliberately: a Jira search usually returns
+a work item's comments embedded, so the request the plan reserves for them is
+often never made. Whether it will be is a property of the individual item
+rather than a ratio, so the plan reserves it and the run comes in slightly
+under — which is the safe direction for a progress bar.
 
 The syncers replace the planned figure for their part of the work with the real
 one as they go, so a plan that guessed high or low is corrected rather than

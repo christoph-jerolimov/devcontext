@@ -6,6 +6,7 @@ import { errorMessage } from '../../util/errors.js';
 import { num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
 import { nowIso } from '../../util/time.js';
+import { jobsPerWorkflowRun } from '../../sync/estimates.js';
 import { GithubClient } from './client.js';
 import * as map from './map.js';
 import type { RepoRef, Row } from './map.js';
@@ -205,6 +206,8 @@ class GithubRepoSyncer {
   /** Filled in the item phase: a pull request's own id, which reviews key on. */
   private readonly pullRequestIds = new Map<number, number>();
   private readonly workflowRunIds: number[] = [];
+  /** List pages walked, so the detail phase can restate the whole slice. */
+  private workflowRunPages = 0;
 
   /** Cursors computed while listing, written only once the details are in. */
   private issuesCursor: string | null = null;
@@ -317,21 +320,30 @@ class GithubRepoSyncer {
       const total = await probe(`/repos/${this.target.owner}/${this.target.repo}/actions/runs`, {});
       if (total !== null) {
         const runs = Math.min(total, this.target.maxWorkflowRuns);
-        // One list page per `pageSize` runs, plus one job call per run. The
-        // logs are per job, which only the run itself reveals.
         /*
-         * List pages, one job call per run, and — when logs are on — one log
-         * per job. How many jobs a run has is only known once it is fetched,
-         * so one per run is the assumption; the walk corrects it.
+         * List pages, one jobs call per run, and — when logs are on — one log
+         * call per *job*.
+         *
+         * Neither API can be asked how many jobs a run has without listing
+         * them, but the database was told last time. A repository whose runs
+         * averaged four jobs yesterday will not average one today, so the
+         * stored ratio prices the logs; the walk corrects it either way.
          */
         this.seed(
           key('workflow_runs'),
           Math.max(1, Math.ceil(runs / pageSize)) +
             (sync.workflowJobs ? runs : 0) +
-            (sync.workflowJobs && sync.workflowLogs ? runs : 0),
+            (sync.workflowJobs && sync.workflowLogs
+              ? Math.round(runs * this.jobsPerRunEstimate())
+              : 0),
         );
       }
     }
+  }
+
+  /** Jobs per run as the last sync saw it, or one when there is no history. */
+  private jobsPerRunEstimate(): number {
+    return jobsPerWorkflowRun(this.ctx.db, this.target.host.name, this.target.fullName) ?? 1;
   }
 
   /** Seeds a slice from the survey, remembering the figure for later. */
@@ -845,12 +857,11 @@ class GithubRepoSyncer {
     const { sync } = this.target;
 
     let newest: string | null = null;
-    let pages = 0;
 
     outer: for await (const page of this.client.workflowRuns(this.target.owner, this.target.repo, {
       created: since,
     })) {
-      pages += 1;
+      this.workflowRunPages += 1;
 
       for (const raw of page) {
         const createdAt = str(raw, 'created_at');
@@ -871,8 +882,15 @@ class GithubRepoSyncer {
 
       // The walk stops at maxWorkflowRuns or at the cursor, neither of which a
       // count of runs can know, so this replaces the survey's figure once it
-      // grows past it.
-      this.reviseAtLeast(scope, pages + (sync.workflowJobs ? this.workflowRunIds.length : 0));
+      // grows past it. The logs, priced per job, are still ahead.
+      this.reviseAtLeast(
+        scope,
+        this.workflowRunPages +
+          (sync.workflowJobs ? this.workflowRunIds.length : 0) +
+          (sync.workflowJobs && sync.workflowLogs
+            ? Math.round(this.workflowRunIds.length * this.jobsPerRunEstimate())
+            : 0),
+      );
     }
 
     this.workflowRunsCursor = newest ?? since;
@@ -881,10 +899,30 @@ class GithubRepoSyncer {
   /** The jobs of every run listed, which carry the steps, and their logs. */
   private async fetchWorkflowJobs(): Promise<void> {
     const { sync } = this.target;
+    const runs = this.workflowRunIds.length;
+    let jobsSeen = 0;
+    let runsDone = 0;
 
     for (const runId of this.workflowRunIds) {
       const jobs = await this.client.workflowRunJobs(this.target.owner, this.target.repo, runId);
-      if (sync.workflowLogs) this.ctx.progress.expect(jobs.length);
+      jobsSeen += jobs.length;
+      runsDone += 1;
+
+      if (sync.workflowLogs) {
+        /*
+         * The whole slice, restated: the list pages, one jobs call per run,
+         * and one log per job — with the runs not yet reached priced from the
+         * ones that have been.
+         *
+         * This is set rather than raised, because by now the walk knows better
+         * than the survey did. Yesterday's ratio got the first percent right;
+         * today's, measured on this run, gets the rest right.
+         */
+        this.ctx.progress.expectFor(
+          `${this.scopePrefix}:workflow_runs`,
+          this.workflowRunPages + runs + Math.round((runs * jobsSeen) / runsDone),
+        );
+      }
 
       for (const job of jobs) {
         const syncedAt = nowIso();

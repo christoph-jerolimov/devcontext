@@ -6,6 +6,7 @@ import { CliError, errorMessage } from '../../util/errors.js';
 import { arr, num, str } from '../../util/json.js';
 import type { JsonObject } from '../../util/json.js';
 import { nowIso } from '../../util/time.js';
+import { boardCount, sprintsPerBoard } from '../../sync/estimates.js';
 import { JiraClient } from './client.js';
 import * as map from './map.js';
 import type { JiraContext, Row } from './map.js';
@@ -261,18 +262,18 @@ class JiraProjectSyncer {
    * many work items match, so one call prices the pages and every follow up
    * call each item implies.
    *
-   * Boards and sprints are not counted here. Their cost depends on how many
-   * boards the project has and how many sprints each board holds, which is
-   * only known once the boards have been listed.
+   * Boards and sprints cannot be counted through the API without listing them,
+   * which is the work itself — but the last sync already listed them, and
+   * neither the number of boards nor the sprints per board moves much between
+   * two runs. So the stored figures price both, and on a first sync only the
+   * listing itself is counted, as before.
    */
   async survey(): Promise<void> {
     const { sync } = this.target;
 
     // The project and the field catalogue, one call each, always.
     this.ctx.progress.expectFor(`${this.scopePrefix}:project`, 2);
-    // Listing the boards is one call. How many sprints hang off each, and how
-    // many work items off each sprint, only the listing reveals.
-    if (sync.boards || sync.sprints) this.ctx.progress.expectFor(`${this.scopePrefix}:boards`, 1);
+    if (sync.boards || sync.sprints) this.surveyBoards();
 
     if (!sync.workitems) return;
 
@@ -284,6 +285,36 @@ class JiraProjectSyncer {
     // Kept so the walk does not pay for the same count a second time.
     this.surveyed = { jql, total };
     this.ctx.progress.expectFor(scope, this.workitemCalls(total));
+  }
+
+  /**
+   * Prices the board listing, the sprint listing per board and the membership
+   * call per sprint, from what the last sync stored.
+   *
+   * Each of the three phases replaces its own figure with the exact one as
+   * soon as it knows it, so a project that gained or lost a board since
+   * yesterday is corrected within the run rather than at the end of it.
+   */
+  private surveyBoards(): void {
+    const { db } = this.ctx;
+    const { site, projectKey } = this.jiraCtx;
+
+    // Configured board ids need no listing call at all.
+    const configured = this.target.boardIds.length;
+    this.ctx.progress.expectFor(`${this.scopePrefix}:boards`, configured > 0 ? 0 : 1);
+
+    const boards = configured > 0 ? configured : boardCount(db, site, projectKey);
+    if (boards === null) return;
+
+    this.ctx.progress.expectFor(`${this.scopePrefix}:board_sprints`, boards);
+    if (!this.target.sync.sprints) return;
+
+    const perBoard = sprintsPerBoard(db, site, projectKey);
+    if (perBoard === null) return;
+    this.ctx.progress.expectFor(
+      `${this.scopePrefix}:sprint_members`,
+      Math.round(boards * perBoard),
+    );
   }
 
   /** The count, for a run that skipped the survey (a targeted sync). */

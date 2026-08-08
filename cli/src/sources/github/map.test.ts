@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { nextPageUrl, totalFromLinkHeader } from './client.js';
+import { nextPageUrl, statedTotal, totalFromLinkHeader } from './client.js';
 import {
   isPullRequest,
   issueLabelRows,
@@ -203,6 +203,28 @@ describe('totalFromLinkHeader', () => {
 
   it('treats a header with neither next nor last as a single page', () => {
     expect(totalFromLinkHeader('<https://api.github.com/x?page=1>; rel="first"', 1)).toBe(1);
+  });
+
+  it('does not help with an object shaped response, which is what statedTotal is for', () => {
+    // `/actions/runs` answers `{ total_count, workflow_runs: [...] }`. It is
+    // not an array, so nothing can be counted on the page, and a single page
+    // response carries no Link header either — which read as zero runs and
+    // left the whole workflow run slice unsized.
+    expect(totalFromLinkHeader(null, 0)).toBe(0);
+  });
+
+  it('takes the endpoint at its word when it states a total', () => {
+    expect(statedTotal({ total_count: 273, workflow_runs: [] })).toBe(273);
+    expect(statedTotal({ total_count: 0, workflow_runs: [] })).toBe(0);
+  });
+
+  it('ignores anything that is not an object with an honest total', () => {
+    expect(statedTotal([{ id: 1 }])).toBeNull();
+    expect(statedTotal(null)).toBeNull();
+    expect(statedTotal({ workflow_runs: [] })).toBeNull();
+    expect(statedTotal({ total_count: '273' })).toBeNull();
+    expect(statedTotal({ total_count: -1 })).toBeNull();
+    expect(statedTotal({ total_count: 1.5 })).toBeNull();
   });
 
   it('says "no idea" rather than guessing when there is a next but no last', () => {
