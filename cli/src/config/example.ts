@@ -135,5 +135,4 @@ projects:
           links: true
           attachments: true
           sprints: true
-          worklogs: false
 `;

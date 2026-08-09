@@ -36,7 +36,6 @@ const jiraSyncOptionsSchema = z
     workitems: z.boolean().optional(),
     comments: z.boolean().optional(),
     changelog: z.boolean().optional(),
-    worklogs: z.boolean().optional(),
     links: z.boolean().optional(),
     attachments: z.boolean().optional(),
     boards: z.boolean().optional(),

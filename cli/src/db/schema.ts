@@ -9,7 +9,7 @@
  *    GitHub Enterprise servers or Jira sites can live in the same database;
  *  - `synced_at` records when devcontext last wrote the row.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS meta (
@@ -831,22 +831,6 @@ CREATE TABLE IF NOT EXISTS jira_changelog (
 CREATE INDEX IF NOT EXISTS idx_jira_changelog_workitem
   ON jira_changelog (site, workitem_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_jira_changelog_field ON jira_changelog (field, created_at);
-
-CREATE TABLE IF NOT EXISTS jira_worklogs (
-  site         TEXT NOT NULL,
-  id           TEXT NOT NULL,
-  workitem_id  TEXT NOT NULL,
-  workitem_key TEXT NOT NULL,
-  author       TEXT,
-  comment      TEXT,
-  started_at   TEXT,
-  time_spent_seconds INTEGER,
-  created_at   TEXT,
-  updated_at   TEXT,
-  synced_at    TEXT NOT NULL,
-  raw          TEXT NOT NULL,
-  PRIMARY KEY (site, id)
-);
 
 CREATE TABLE IF NOT EXISTS jira_links (
   site           TEXT NOT NULL,

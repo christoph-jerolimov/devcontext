@@ -45,12 +45,11 @@ const ROLE_ORDER = `CASE role
     WHEN 'raised' THEN 2
     WHEN 'assignee' THEN 3
     WHEN 'committer' THEN 4
-    WHEN 'worked' THEN 5
-    WHEN 'reviewer' THEN 6
-    WHEN 'review_requested' THEN 7
-    WHEN 'commenter' THEN 8
-    WHEN 'merged_by' THEN 9
-    ELSE 10 END`;
+    WHEN 'reviewer' THEN 5
+    WHEN 'review_requested' THEN 6
+    WHEN 'commenter' THEN 7
+    WHEN 'merged_by' THEN 8
+    ELSE 9 END`;
 
 export function contributionsOf(db: Database, refs: string[]): Contribution[] {
   if (refs.length === 0) return [];

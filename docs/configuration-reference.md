@@ -135,7 +135,6 @@ jira:
     workitems: true
     comments: true
     changelog: true # the full history: status, labels, assignee, sprint, ...
-    worklogs: false
     links: true
     attachments: true # metadata only, never the files themselves
     boards: true
@@ -225,7 +224,6 @@ projects:
           workitems: true
           comments: true
           changelog: true
-          worklogs: false
           links: true
           attachments: true
           boards: true

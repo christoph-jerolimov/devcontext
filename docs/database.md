@@ -70,7 +70,6 @@ no native dependency to compile.
 | `jira_changelog`                                       | **Changed field** of a history entry                                 |
 | `jira_links`                                           | Issue link, one row per direction                                    |
 | `jira_attachments`                                     | Attachment metadata                                                  |
-| `jira_worklogs`                                        | Work log (`worklogs: true`)                                          |
 | `jira_boards`, `jira_sprints`, `jira_sprint_workitems` | Agile data                                                           |
 
 Descriptions and comment bodies are stored as markdown whichever Jira flavour
@@ -259,6 +258,12 @@ falls back to scanning — see [search.md](search.md).
 Version 2 added `search_index` and the `synced_at` indexes it needs. Upgrading
 is automatic; the index itself fills in on the next sync, and searching scans
 until it does.
+
+Version 5 dropped `jira_worklogs`. Nothing wrote to it and nothing read it, and
+a table in that state is worse than no table: its rows get older and more wrong
+every day while still answering a hand-written query as though they were
+current. Upgrading drops it, which does lose the entries — they are not
+re-syncable, because nothing fetches them any more.
 
 Version 4 added `details_parts` and `details_synced_at` to `gh_issues`, which
 record which per-item resources have been fetched for each item and are what

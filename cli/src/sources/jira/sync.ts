@@ -217,7 +217,6 @@ class JiraProjectSyncer {
    */
   private readonly needComments: WorkitemRef[] = [];
   private readonly needChangelog: WorkitemRef[] = [];
-  private readonly needWorklogs: WorkitemRef[] = [];
   private workitemCount = 0;
   private workitemsCursor: string | null = null;
 
@@ -358,7 +357,7 @@ class JiraProjectSyncer {
    */
   private workitemCalls(listed: number, changed: number): number {
     const { sync } = this.target;
-    const perItem = (sync.comments ? 1 : 0) + (sync.changelog ? 1 : 0) + (sync.worklogs ? 1 : 0);
+    const perItem = (sync.comments ? 1 : 0) + (sync.changelog ? 1 : 0);
     return 1 + Math.max(1, Math.ceil(listed / this.ctx.config.sync.pageSize)) + changed * perItem;
   }
 
@@ -692,9 +691,6 @@ class JiraProjectSyncer {
       else if (!stale) this.needChangelog.push(workitem);
     }
 
-    // Worklogs are never embedded, so they always owe a request.
-    if (sync.worklogs && !stale) this.needWorklogs.push(workitem);
-
     return updatedAt;
   }
 
@@ -707,10 +703,6 @@ class JiraProjectSyncer {
     for (const [index, workitem] of this.needChangelog.entries()) {
       this.at(workitem.key, index, this.needChangelog.length);
       this.writeChangelog(await this.client.changelog(workitem.key), workitem);
-    }
-    for (const [index, workitem] of this.needWorklogs.entries()) {
-      this.at(workitem.key, index, this.needWorklogs.length);
-      await this.syncWorklogs(workitem);
     }
   }
 
@@ -760,14 +752,6 @@ class JiraProjectSyncer {
       for (const row of map.mapChangelogEntry(entry, this.jiraCtx, workitem, syncedAt)) {
         this.write('jira_changelog', row);
       }
-    }
-  }
-
-  private async syncWorklogs(workitem: { id: string; key: string }): Promise<void> {
-    const worklogs = await this.client.worklogs(workitem.key);
-    const syncedAt = nowIso();
-    for (const worklog of worklogs) {
-      this.write('jira_worklogs', map.mapWorklog(worklog, this.jiraCtx, workitem, syncedAt));
     }
   }
 

@@ -54,7 +54,6 @@ export const DEFAULT_JIRA_SYNC: JiraProjectSyncOptions = {
   workitems: true,
   comments: true,
   changelog: true,
-  worklogs: false,
   links: true,
   attachments: true,
   boards: true,

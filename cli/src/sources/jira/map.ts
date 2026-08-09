@@ -289,28 +289,6 @@ export function mapChangelogEntry(
   }));
 }
 
-export function mapWorklog(
-  raw: JsonObject,
-  ctx: JiraContext,
-  workitem: { id: string; key: string },
-  syncedAt: string,
-): Row {
-  return {
-    site: ctx.site,
-    id: str(raw, 'id') ?? '',
-    workitem_id: workitem.id,
-    workitem_key: workitem.key,
-    author: str(raw, 'author', 'displayName'),
-    comment: adfToMarkdown(raw['comment']),
-    started_at: str(raw, 'started'),
-    time_spent_seconds: num(raw, 'timeSpentSeconds'),
-    created_at: str(raw, 'created'),
-    updated_at: str(raw, 'updated'),
-    synced_at: syncedAt,
-    raw: json(raw),
-  };
-}
-
 export function mapLinks(
   raw: JsonObject,
   ctx: JiraContext,

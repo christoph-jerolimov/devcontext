@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Database } from './database.js';
-import { backfillDetailParts, ensureColumn } from './migrations.js';
+import { backfillDetailParts, ensureColumn, migrateFrom } from './migrations.js';
 import { SCHEMA_VERSION } from './schema.js';
 
 let db: Database;
@@ -175,6 +175,36 @@ describe('backfilling what was already fetched', () => {
 
     expect(partsOf(1).parts).toBe(JSON.stringify(['comments']));
     expect(partsOf(3).parts).toBe(JSON.stringify([]));
+  });
+});
+
+describe('dropping worklogs', () => {
+  it('removes the table from a database that still has it', () => {
+    /*
+     * Nothing writes to it and nothing reads it. Left behind it is worse than
+     * no table: rows that get older and more wrong every day while still
+     * answering a hand-written query as though they were current.
+     */
+    db.exec(`CREATE TABLE IF NOT EXISTS jira_worklogs (site TEXT, id TEXT, author TEXT)`);
+    db.run(`INSERT INTO jira_worklogs VALUES ('acme', '1', 'ada')`);
+
+    migrateFrom(db, 4);
+
+    expect(db.all(`SELECT name FROM sqlite_master WHERE name = 'jira_worklogs'`)).toEqual([]);
+  });
+
+  it('says nothing when it was never there', () => {
+    // A fresh database has never had the table, and a migration that threw on
+    // that would strand every new install.
+    expect(() => migrateFrom(db, 1)).not.toThrow();
+  });
+
+  it('is not recreated by the schema', () => {
+    // The DDL is gone too, so opening the database again must not bring it
+    // back — which is exactly what would happen if only the migration changed.
+    db.migrate();
+
+    expect(db.all(`SELECT name FROM sqlite_master WHERE name = 'jira_worklogs'`)).toEqual([]);
   });
 });
 

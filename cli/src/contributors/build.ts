@@ -45,7 +45,6 @@ export const CONTRIBUTOR_ROLES = [
   'raised',
   'assignee',
   'committer',
-  'worked',
   'reviewer',
   'review_requested',
   'commenter',
@@ -60,7 +59,6 @@ export const ROLE_DESCRIPTIONS: Record<ContributorRole, string> = {
   reporter: 'reported it on somebody else’s behalf',
   assignee: 'it was assigned to them',
   committer: 'wrote commits on it',
-  worked: 'logged work against it',
   reviewer: 'reviewed it',
   review_requested: 'was asked to review it, and has not yet',
   commenter: 'commented on it',
@@ -280,22 +278,6 @@ const SOURCES: ReadonlyArray<{ role: ContributorRole; sql: string }> = [
         LEFT JOIN jira_workitems w ON w.site = c.site AND w.id = c.workitem_id
        WHERE NULLIF(c.author, '') IS NOT NULL AND w.project_key IS NOT NULL
        GROUP BY c.workitem_key, w.project_key, c.author`,
-  },
-  {
-    /*
-     * Logged time against it — the implementation work itself, rather than the
-     * conversation around it. The only record of somebody who did the work
-     * without ever being the assignee.
-     */
-    role: 'worked',
-    sql: `
-      SELECT 'jira' AS source, w.key AS ref, 'workitem' AS kind, w.project_key AS container,
-             l.author AS identity,
-             COUNT(*) AS events, MIN(l.started_at) AS first_at, MAX(l.started_at) AS last_at
-        FROM jira_worklogs l
-        JOIN jira_workitems w ON w.site = l.site AND w.id = l.workitem_id
-       WHERE NULLIF(l.author, '') IS NOT NULL
-       GROUP BY w.key, w.project_key, l.author`,
   },
 ];
 
