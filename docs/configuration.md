@@ -281,6 +281,42 @@ Both spellings mean the same thing. The run still walks newest first and still
 stops at the stored cursor, so only the _first_ sync pays the full price; after
 that it fetches what has appeared since.
 
+#### The ceiling GitHub imposes
+
+`/actions/runs` stops paginating after **400 pages**, which at 100 runs a page
+is **40,000 runs**. Past that the endpoint returns nothing further, whatever the
+repository actually holds.
+
+So `null` and `"all"` mean "as many as the API will serve", not "every run there
+has ever been" — and on a repository with more than 40,000 the sync says so:
+
+```
+warning: acme/platform: stopped at 40,000 workflow runs, which is as far as
+the GitHub API paginates. Older runs exist and were not fetched. Use `since`
+to sync a specific earlier period instead.
+```
+
+Without that line a sync ending at exactly 40,000 looks like a repository that
+happens to have 40,000 runs, and every question about the missing period gets a
+confident, smaller answer.
+
+A **number** above 40,000 is refused when the configuration loads, before any
+request:
+
+```
+error: acme/platform: maxWorkflowRuns is 60,000, but GitHub stops paginating
+/actions/runs after 400 pages — 40,000 runs at most.
+  hint: Use maxWorkflowRuns: 40000 or lower, or "all" to fetch as many as the
+  API serves.
+```
+
+Clipping it silently would run, finish, and leave you believing you asked for
+60,000 runs and got them. `null` and `"all"` are still accepted, because asking
+for as much as there is differs from naming a number that does not exist.
+
+To reach runs older than the ceiling, sync a specific window with `since`
+rather than raising the cap.
+
 ### `since`
 
 Accepts a relative duration (`30d`, `6w`, `3mo`, `2y`) or an absolute date

@@ -162,6 +162,8 @@ let mergedDuringTheRun = false;
 
 /** When set, the issue count probe answers as a repository with 24,318 of them. */
 let hugeRepository = false;
+/** Serves an endless supply of workflow runs, one full page at a time. */
+let endlessRuns = false;
 
 /** A logger that keeps the warnings, so a test can read what a run said. */
 function capturingLogger(): { logger: Logger; warnings: string[] } {
@@ -397,6 +399,35 @@ function route(rawUrl: string): Response {
     });
   }
   if (path === '/repos/acme/platform/actions/runs') {
+    /*
+     * A repository with more runs than GitHub will paginate through.
+     *
+     * Every page is full, so the walk never runs out on its own — which is the
+     * only way to find out whether anything stops it. Left unbounded this
+     * would loop until the process died.
+     */
+    if (endlessRuns) {
+      const pageNumber = Number(url.searchParams.get('page') ?? '1');
+      const size = Number(url.searchParams.get('per_page') ?? '100');
+      return json({
+        total_count: 60_000,
+        workflow_runs: Array.from({ length: size }, (_unused, index) => ({
+          id: (pageNumber - 1) * size + index + 1,
+          workflow_id: 55,
+          name: 'CI',
+          run_number: (pageNumber - 1) * size + index + 1,
+          run_attempt: 1,
+          event: 'push',
+          status: 'completed',
+          conclusion: 'success',
+          head_branch: 'main',
+          head_sha: 'abc',
+          created_at: '2024-02-01T10:00:00Z',
+          updated_at: '2024-02-01T10:05:00Z',
+          run_started_at: '2024-02-01T10:00:00Z',
+        })),
+      });
+    }
     return json({
       total_count: 1,
       workflow_runs: [
@@ -596,6 +627,7 @@ beforeEach(() => {
   requestedUrls.length = 0;
   mergedDuringTheRun = false;
   hugeRepository = false;
+  endlessRuns = false;
 
   vi.stubGlobal('fetch', async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -1304,6 +1336,46 @@ describe('runSync', () => {
       expect(warnings.join('\n')).toContain('acme/platform has 24,318 issues');
       expect(warnings.join('\n')).toContain('`since`');
     });
+
+    it('stops at the API ceiling however many runs were asked for', async () => {
+      /*
+       * `maxWorkflowRuns: null` reads as "every run" and cannot be: GitHub
+       * stops paginating /actions/runs after 400 pages. Without a stop of its
+       * own the walk simply runs until the API stops answering — here it would
+       * never stop, because every page is full.
+       *
+       * The warning is the point. A sync that ends at exactly 40,000 with
+       * nothing said looks like a repository that happens to have 40,000 runs.
+       */
+      endlessRuns = true;
+      const uncapped = parseConfig(
+        CONFIG_YAML.replace(
+          '          workflowLogs: true',
+          '          workflowLogs: true\n          workflowJobs: false\n        maxWorkflowRuns: null',
+        ),
+        { configPath: join(workspace, 'devcontext.yaml') },
+      );
+      const { logger, warnings } = capturingLogger();
+
+      await runSync({
+        config: uncapped,
+        logger,
+        full: false,
+        dryRun: false,
+        progress: true,
+        writeOutputs: false,
+      });
+
+      const db = Database.open(uncapped.databasePath, { create: false, readOnly: true });
+      try {
+        expect(db.count('gh_workflow_runs')).toBe(40_000);
+      } finally {
+        db.close();
+      }
+
+      expect(warnings.join('\n')).toContain('as far as the GitHub API paginates');
+      expect(warnings.join('\n')).toContain('40,000');
+    }, 120_000);
 
     it('says nothing about a repository of an ordinary size', async () => {
       const { logger, warnings } = capturingLogger();
