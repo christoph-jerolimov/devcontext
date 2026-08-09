@@ -1,5 +1,6 @@
 import { isAbsolute, resolve as resolvePath } from 'node:path';
 
+import { MAX_REACHABLE_WORKFLOW_RUNS, runCapTooLarge } from '../sources/github/limits.js';
 import { CliError } from '../util/errors.js';
 import { resolveTimeExpression } from '../util/time.js';
 import type { RawConfig, RawGithubSyncOptions, RawJiraSyncOptions, RawPerson } from './schema.js';
@@ -101,9 +102,26 @@ function readToken(explicit: string | undefined, envName: string): string | null
  * and `??` cannot tell that apart from the key being absent — it would hand
  * back the default and quietly ignore the request. Only `undefined` defaults.
  */
-function resolveRunCap(value: number | null | 'all' | undefined): number | null {
+function resolveRunCap(value: number | null | 'all' | undefined, repo: string): number | null {
   if (value === undefined) return 250;
-  return value === 'all' ? null : value;
+  if (value === 'all') return null;
+  if (value === null) return null;
+
+  /*
+   * A cap the API cannot honour is refused here rather than silently clipped.
+   *
+   * Clipping would run, finish, and leave somebody believing they asked for
+   * 60,000 runs and got them. Refusing costs a line in a configuration file and
+   * says exactly what the ceiling is. `null` and `all` remain allowed: they ask
+   * for as much as there is, which is a different request from naming a number
+   * that does not exist.
+   */
+  if (value > MAX_REACHABLE_WORKFLOW_RUNS) {
+    throw new CliError(`${repo}: ${runCapTooLarge(value)}`, {
+      hint: `Use maxWorkflowRuns: ${String(MAX_REACHABLE_WORKFLOW_RUNS)} or lower, or "all" to fetch as many as the API serves.`,
+    });
+  }
+  return value;
 }
 
 function resolveSince(value: string | undefined, now: Date): string | null {
@@ -291,7 +309,7 @@ export function resolveConfig(
         repo,
         fullName: `${owner}/${repo}`,
         since: resolveSince(entry.since, now),
-        maxWorkflowRuns: resolveRunCap(entry.maxWorkflowRuns),
+        maxWorkflowRuns: resolveRunCap(entry.maxWorkflowRuns, `${owner}/${repo}`),
         maxLogBytes: entry.maxLogBytes ?? 2_000_000,
         sync: mergeFlags<GithubRepoSyncOptions>(
           DEFAULT_GITHUB_SYNC,

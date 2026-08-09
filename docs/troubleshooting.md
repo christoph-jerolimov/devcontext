@@ -48,6 +48,17 @@ devcontext sync --delay 1000     # one API call per second
 or set `sync.minDelayMs` in the configuration. Reduce the amount of work with
 `since`, `maxWorkflowRuns` and by turning off `workflowLogs`.
 
+## GitHub: older workflow runs are missing
+
+`/actions/runs` stops paginating after 400 pages — 40,000 runs. A repository
+with more than that cannot be synced completely in one pass, whatever
+`maxWorkflowRuns` says, and the sync warns when it reaches the ceiling.
+
+Use `since` to sync a specific earlier window rather than raising the cap: a
+number above 40,000 is refused when the configuration loads, because it cannot
+be honoured. See
+[maxWorkflowRuns](configuration.md#the-ceiling-github-imposes).
+
 ## GitHub: workflow logs are missing
 
 `workflowLogs` is `false` by default. Enable it per repository:

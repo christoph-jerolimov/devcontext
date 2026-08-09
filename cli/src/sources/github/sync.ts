@@ -12,6 +12,12 @@ import { nowIso } from '../../util/time.js';
 import { jobsPerWorkflowRun } from '../../sync/estimates.js';
 import { GithubClient } from './client.js';
 import * as map from './map.js';
+import {
+  MAX_REACHABLE_WORKFLOW_RUNS,
+  RUN_PAGE_LIMIT,
+  RUN_PAGE_SIZE,
+  runCeilingReached,
+} from './limits.js';
 import { needsDetails, withinWindow } from './refresh.js';
 import type { DetailPart, StoredItem } from './refresh.js';
 import type { RepoRef, Row } from './map.js';
@@ -336,9 +342,17 @@ class GithubRepoSyncer {
     if (sync.workflowRuns) {
       const total = await probe(`/repos/${this.target.owner}/${this.target.repo}/actions/runs`, {});
       if (total !== null) {
-        // `null` is no cap, so the size of the work is the repository's own.
+        /*
+         * `null` is no cap, so the size of the work is the repository's own —
+         * bounded by what the API will actually paginate through, or the
+         * progress bar promises tens of thousands of runs that can never
+         * arrive and never reaches the end.
+         */
         const cap = this.target.maxWorkflowRuns;
-        const runs = cap === null ? total : Math.min(total, cap);
+        const runs = Math.min(
+          cap === null ? total : Math.min(total, cap),
+          MAX_REACHABLE_WORKFLOW_RUNS,
+        );
         // The count that matters is what will actually be fetched: a
         // repository with 40,000 runs and a cap of 250 is not a large sync.
         this.warnIfLarge('workflow runs', runs, BOUND_BY_RUNS);
@@ -1093,6 +1107,24 @@ class GithubRepoSyncer {
         this.countItem();
 
         if (createdAt && (!newest || createdAt > newest)) newest = createdAt;
+      }
+
+      /*
+       * The API's own ceiling, which applies whatever the cap says.
+       *
+       * Checked on pages rather than on runs because pages are what GitHub
+       * actually limits — and only when the last one was full, since a short
+       * page means the walk reached the end of the runs rather than the end of
+       * the pagination, and warning there would be a lie.
+       *
+       * Without this a repository configured `maxWorkflowRuns: null` walks to
+       * wherever the API stops answering and finishes quietly, short of
+       * however many older runs exist. A database missing them answers every
+       * question about that period confidently with a smaller number.
+       */
+      if (this.workflowRunPages >= RUN_PAGE_LIMIT && page.length >= RUN_PAGE_SIZE) {
+        this.ctx.progress.warn(runCeilingReached(this.target.fullName));
+        break outer;
       }
 
       // The walk stops at maxWorkflowRuns or at the cursor, neither of which a
