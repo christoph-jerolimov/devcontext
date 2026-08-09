@@ -205,13 +205,6 @@ export class JiraClient {
     }
   }
 
-  async worklogs(issueKey: string): Promise<JsonObject[]> {
-    const response = await this.http.request<JsonObject>(`${this.api}/issue/${issueKey}/worklog`, {
-      query: { maxResults: 100 },
-    });
-    return arr(response.data, 'worklogs') as JsonObject[];
-  }
-
   async boards(projectKey: string): Promise<JsonObject[]> {
     const collected: JsonObject[] = [];
     let startAt = 0;

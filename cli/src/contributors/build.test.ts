@@ -297,24 +297,6 @@ describe('a work item', () => {
     expect(rolesFor('PLAT-2', 'Grace Hopper')).toEqual(['author']);
     expect(rolesFor('PLAT-2', 'Ada Lovelace')).toEqual(['reporter']);
   });
-
-  it('counts logged work, which is the only record of somebody who was not the assignee', () => {
-    workitem({ key: 'PLAT-1', creator: 'Grace Hopper', assignee: 'Grace Hopper' });
-    db.upsert('jira_worklogs', {
-      site: 'acme',
-      id: 'w1',
-      workitem_id: 'PLAT-1',
-      workitem_key: 'PLAT-1',
-      author: 'Ada Lovelace',
-      started_at: '2024-03-04T10:00:00Z',
-      time_spent_seconds: 3600,
-      synced_at: SYNCED,
-      raw: '{}',
-    });
-    buildContributors(db);
-
-    expect(rolesFor('PLAT-1', 'Ada Lovelace')).toEqual(['worked']);
-  });
 });
 
 describe('a column of names', () => {

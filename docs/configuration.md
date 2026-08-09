@@ -167,7 +167,6 @@ jira:
         customfield_10020: sprint
 
   sync: # defaults for every Jira project
-    worklogs: false
 ```
 
 `auth` defaults to `basic` when an `email` is set and to `bearer` otherwise.
@@ -235,7 +234,6 @@ Detected sprint, storyPoints on acme from the field catalogue; set `fields:` in 
 | `attachments` | `true`  | Attachment metadata (not the files)                       |
 | `boards`      | `true`  | Boards of the project                                     |
 | `sprints`     | `true`  | Sprints of those boards, including their membership       |
-| `worklogs`    | `false` | Work logs                                                 |
 
 ## `projects`
 
@@ -261,7 +259,6 @@ projects:
         fields:
           customfield_10101: teamName
         sync:
-          worklogs: false
 ```
 
 ### `maxWorkflowRuns`

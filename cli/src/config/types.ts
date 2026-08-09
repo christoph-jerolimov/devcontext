@@ -56,7 +56,6 @@ export interface JiraProjectSyncOptions {
   workitems: boolean;
   comments: boolean;
   changelog: boolean;
-  worklogs: boolean;
   links: boolean;
   attachments: boolean;
   boards: boolean;

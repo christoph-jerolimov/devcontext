@@ -194,7 +194,6 @@ const CONTENT_GROUPS: Array<{ group: string; tables: string[]; freeText: string[
     tables: ['jira_changelog'],
     freeText: ['from_string', 'to_string'],
   },
-  { group: 'Work logs', tables: ['jira_worklogs'], freeText: ['comment'] },
   { group: 'Attachments (metadata only)', tables: ['jira_attachments'], freeText: ['filename'] },
 ];
 

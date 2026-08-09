@@ -170,7 +170,7 @@ function name(directory: Directory, source: IdentitySource, identity: string): s
  * a capacity reads the same wherever it appears.
  */
 function roleColour(role: string): Colour {
-  if (role === 'author' || role === 'committer' || role === 'worked') return 'green';
+  if (role === 'author' || role === 'committer') return 'green';
   if (role === 'reviewer' || role === 'merged_by') return 'purple';
   if (role === 'review_requested') return 'yellow';
   return 'gray';

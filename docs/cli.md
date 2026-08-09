@@ -524,7 +524,6 @@ Linus         commenter                        1  2026-08-03
 | `reporter`         | Reported it on somebody else's behalf               |
 | `assignee`         | It was assigned to them                             |
 | `committer`        | Wrote commits on it                                 |
-| `worked`           | Logged work against it                              |
 | `reviewer`         | Reviewed it                                         |
 | `review_requested` | Was asked to review it, and has not yet             |
 | `commenter`        | Commented on it, in the conversation or on the diff |

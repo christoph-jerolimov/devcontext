@@ -100,6 +100,22 @@ export function backfillDetailParts(db: Database): void {
  * behind gets all of them and one already current gets none.
  */
 export function migrateFrom(db: Database, from: number): void {
+  if (from < 5) {
+    /*
+     * Schema 5: worklogs are gone.
+     *
+     * Dropped rather than left behind, because a table nothing writes to and
+     * nothing reads is worse than no table: it holds rows that get older and
+     * more wrong every day while still answering a hand-written query as
+     * though they were current.
+     *
+     * This does lose data — the entries are not re-syncable, because nothing
+     * fetches them any more. That is the request, and the alternative is a
+     * quiet trap.
+     */
+    db.exec('DROP TABLE IF EXISTS jira_worklogs');
+  }
+
   if (from < 4) {
     ensureColumn(db, 'gh_issues', 'details_parts', 'TEXT');
     ensureColumn(db, 'gh_issues', 'details_synced_at', 'TEXT');
