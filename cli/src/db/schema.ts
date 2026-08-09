@@ -9,7 +9,7 @@
  *    GitHub Enterprise servers or Jira sites can live in the same database;
  *  - `synced_at` records when devcontext last wrote the row.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS meta (
@@ -578,25 +578,6 @@ CREATE TABLE IF NOT EXISTS gh_job_logs (
   content    TEXT,
   fetched_at TEXT NOT NULL,
   PRIMARY KEY (host, job_id)
-);
-
-CREATE TABLE IF NOT EXISTS gh_releases (
-  host           TEXT NOT NULL,
-  id             INTEGER NOT NULL,
-  repo_id        INTEGER NOT NULL,
-  repo_full_name TEXT NOT NULL,
-  tag_name       TEXT,
-  name           TEXT,
-  body           TEXT,
-  draft          INTEGER,
-  prerelease     INTEGER,
-  author         TEXT,
-  created_at     TEXT,
-  published_at   TEXT,
-  html_url       TEXT,
-  synced_at      TEXT NOT NULL,
-  raw            TEXT NOT NULL,
-  PRIMARY KEY (host, id)
 );
 
 -- ---------------------------------------------------------------------------

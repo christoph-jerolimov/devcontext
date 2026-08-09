@@ -77,7 +77,6 @@ github:
     workflowJobs: true
     # Job logs are large; enable them per repository when you need them.
     workflowLogs: false
-    releases: false
 
 jira:
   sites:

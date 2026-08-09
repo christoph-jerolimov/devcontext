@@ -122,31 +122,6 @@ export function openByDay(
   return out;
 }
 
-/** How many open items each person held at a moment. */
-export function openByAssignee(
-  db: Database,
-  options: { at: string } & HistoryFilters,
-): Array<{ assignee: string; open: number }> {
-  const where = scope(options);
-  return db.all<{ assignee: string; open: number }>(
-    `SELECT a.value AS assignee, COUNT(*) AS open FROM (
-       SELECT c.source, c.ref, c.value FROM state_changes c
-        WHERE c.dimension = 'assignee' AND c.at <= ? ${where.sql}
-        GROUP BY c.source, c.ref, c.value
-       HAVING SUM(c.delta) > 0
-     ) a
-     JOIN (
-       SELECT c.source, c.ref FROM state_changes c
-        WHERE c.dimension = 'state' AND c.value = 'open' AND c.at <= ? ${where.sql}
-        GROUP BY c.source, c.ref
-       HAVING SUM(c.delta) > 0
-     ) o ON o.source = a.source AND o.ref = a.ref
-     GROUP BY a.value
-     ORDER BY open DESC, assignee`,
-    [options.at, ...where.params, options.at, ...where.params],
-  );
-}
-
 /** The days from `from` to `to` inclusive, as `YYYY-MM-DD`. */
 export function eachDay(from: string, to: string): string[] {
   const days: string[] = [];

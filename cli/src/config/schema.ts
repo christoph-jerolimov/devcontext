@@ -23,7 +23,6 @@ const githubSyncOptionsSchema = z
     pullRequestFiles: z.boolean().optional(),
     labels: z.boolean().optional(),
     milestones: z.boolean().optional(),
-    releases: z.boolean().optional(),
     workflows: z.boolean().optional(),
     workflowRuns: z.boolean().optional(),
     workflowJobs: z.boolean().optional(),
