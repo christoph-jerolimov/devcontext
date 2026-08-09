@@ -301,7 +301,6 @@ class GithubRepoSyncer {
     this.seed(key('repository'), 1);
     if (sync.labels) this.seed(key('labels'), 1);
     if (sync.milestones) this.seed(key('milestones'), 1);
-    if (sync.releases) this.seed(key('releases'), 1);
     if (sync.workflows) this.seed(key('workflows'), 1);
 
     if (sync.issues) {
@@ -452,9 +451,6 @@ class GithubRepoSyncer {
     }
     if (sync.milestones && !this.done('milestones')) {
       await this.wholeOperation('milestones', () => this.syncMilestones());
-    }
-    if (sync.releases && !this.done('releases')) {
-      await this.wholeOperation('releases', () => this.syncReleases());
     }
     if (sync.workflows && !this.done('workflows')) {
       await this.wholeOperation('workflows', () => this.syncWorkflows());
@@ -689,16 +685,6 @@ class GithubRepoSyncer {
     }
     this.countItem(milestones.length);
     return { items: milestones.length, cursor: syncedAt };
-  }
-
-  private async syncReleases(): Promise<OperationStats> {
-    const releases = await this.client.releases(this.target.owner, this.target.repo);
-    const syncedAt = nowIso();
-    for (const release of releases) {
-      this.write('gh_releases', map.mapRelease(release, this.ref, syncedAt));
-    }
-    this.countItem(releases.length);
-    return { items: releases.length, cursor: syncedAt };
   }
 
   /**

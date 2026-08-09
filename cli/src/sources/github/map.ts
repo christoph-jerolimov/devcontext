@@ -461,26 +461,6 @@ export function mapWorkflowSteps(job: JsonObject, host: string, syncedAt: string
   });
 }
 
-export function mapRelease(raw: JsonObject, ref: RepoRef, syncedAt: string): Row {
-  return {
-    host: ref.host,
-    id: num(raw, 'id') ?? 0,
-    repo_id: ref.repoId,
-    repo_full_name: ref.fullName,
-    tag_name: str(raw, 'tag_name'),
-    name: str(raw, 'name'),
-    body: str(raw, 'body'),
-    draft: bool(raw, 'draft') ?? false,
-    prerelease: bool(raw, 'prerelease') ?? false,
-    author: str(raw, 'author', 'login'),
-    created_at: str(raw, 'created_at'),
-    published_at: str(raw, 'published_at'),
-    html_url: str(raw, 'html_url'),
-    synced_at: syncedAt,
-    raw: json(raw),
-  };
-}
-
 function durationMs(from: string | null, to: string | null): number | null {
   if (!from || !to) return null;
   const start = new Date(from).getTime();

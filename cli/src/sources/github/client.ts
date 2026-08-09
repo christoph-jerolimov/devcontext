@@ -223,10 +223,6 @@ export class GithubClient {
     return this.collect(`/repos/${owner}/${repo}/milestones`, { state: 'all' });
   }
 
-  releases(owner: string, repo: string): Promise<JsonObject[]> {
-    return this.collect(`/repos/${owner}/${repo}/releases`);
-  }
-
   async workflows(owner: string, repo: string): Promise<JsonObject[]> {
     const response = await this.http.request<JsonObject>(
       `/repos/${owner}/${repo}/actions/workflows`,

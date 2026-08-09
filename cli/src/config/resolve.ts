@@ -43,7 +43,6 @@ export const DEFAULT_GITHUB_SYNC: GithubRepoSyncOptions = {
   pullRequestFiles: true,
   labels: true,
   milestones: true,
-  releases: false,
   workflows: true,
   workflowRuns: true,
   workflowJobs: true,

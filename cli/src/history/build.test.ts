@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Database } from '../db/database.js';
-import { openByAssignee, openByDay } from '../db/queries/history.js';
+import { openByDay } from '../db/queries/history.js';
 import { buildStateHistory } from './build.js';
 
 let workspace: string;
@@ -78,6 +78,29 @@ function event(issueId: number, name: string, at: string, assignee?: string): vo
  * transition recorded out of order sends the running total to 2 for a while
  * and comes back to 1, and every count taken during that window is wrong.
  */
+/**
+ * Everything in a dimension at a moment, the way any reader of this table has
+ * to ask: sum the deltas up to that point and keep what is above zero.
+ *
+ * Written out here rather than borrowed from a query module, because what is
+ * under test is the builder — the shape it writes has to be assertable without
+ * depending on whichever reader happens to exist today.
+ */
+function membersAt(dimension: string, at: string): Array<{ value: string; refs: string[] }> {
+  const rows = db.all<{ value: string; ref: string }>(
+    `SELECT value, ref FROM state_changes
+      WHERE dimension = ? AND at <= ?
+      GROUP BY source, ref, value
+     HAVING SUM(delta) > 0
+      ORDER BY value, ref`,
+    [dimension, at],
+  );
+
+  const byValue = new Map<string, string[]>();
+  for (const row of rows) byValue.set(row.value, [...(byValue.get(row.value) ?? []), row.ref]);
+  return [...byValue].map(([value, refs]) => ({ value, refs }));
+}
+
 function seriesBounds(): { lowest: number; highest: number } {
   const row = db.get<{ lowest: number; highest: number }>(
     `SELECT MIN(running) AS lowest, MAX(running) AS highest FROM (
@@ -146,11 +169,11 @@ describe('buildStateHistory', () => {
 
     buildStateHistory(db);
 
-    expect(openByAssignee(db, { at: '2024-03-03T00:00:00.000Z' })).toEqual([
-      { assignee: 'alice', open: 1 },
+    expect(membersAt('assignee', '2024-03-03T00:00:00.000Z').map((row) => row.value)).toEqual([
+      'alice',
     ]);
-    expect(openByAssignee(db, { at: '2024-03-07T00:00:00.000Z' })).toEqual([
-      { assignee: 'bob', open: 1 },
+    expect(membersAt('assignee', '2024-03-07T00:00:00.000Z').map((row) => row.value)).toEqual([
+      'bob',
     ]);
   });
 
@@ -168,11 +191,25 @@ describe('buildStateHistory', () => {
 
     buildStateHistory(db);
 
-    expect(openByAssignee(db, { at: '2024-03-03T00:00:00.000Z' })).toEqual([
-      { assignee: 'alice', open: 1 },
+    /*
+     * The property that makes the two dimensions intersectable: on the 3rd she
+     * holds it and it is open; on the 6th she still holds it and it is not.
+     * Anything counting open work per person needs both to be true separately,
+     * which is why they are separate rows rather than one column.
+     */
+    const holds = (at: string): boolean =>
+      membersAt('assignee', at).some((row) => row.value === 'alice');
+    const open = (at: string): boolean =>
+      membersAt('state', at).some((row) => row.value === 'open');
+
+    expect([holds('2024-03-03T00:00:00.000Z'), open('2024-03-03T00:00:00.000Z')]).toEqual([
+      true,
+      true,
     ]);
-    // Still assigned to her, no longer open, so it counts against nobody.
-    expect(openByAssignee(db, { at: '2024-03-06T00:00:00.000Z' })).toEqual([]);
+    expect([holds('2024-03-06T00:00:00.000Z'), open('2024-03-06T00:00:00.000Z')]).toEqual([
+      true,
+      false,
+    ]);
   });
 
   it('is unmoved by a timeline that contradicts itself', () => {

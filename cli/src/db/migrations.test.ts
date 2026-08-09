@@ -178,6 +178,21 @@ describe('backfilling what was already fetched', () => {
   });
 });
 
+describe('dropping releases', () => {
+  it('removes the table, and the schema does not bring it back', () => {
+    // Same shape as the worklog removal: the sync fetched them and nothing ever
+    // read them back, and rows in that state still answer a hand-written query
+    // as though they were current.
+    db.exec(`CREATE TABLE IF NOT EXISTS gh_releases (host TEXT, id INTEGER, tag_name TEXT)`);
+    db.run(`INSERT INTO gh_releases VALUES ('github.com', 1, 'v2.0')`);
+
+    migrateFrom(db, 5);
+    db.migrate();
+
+    expect(db.all(`SELECT name FROM sqlite_master WHERE name = 'gh_releases'`)).toEqual([]);
+  });
+});
+
 describe('dropping worklogs', () => {
   it('removes the table from a database that still has it', () => {
     /*

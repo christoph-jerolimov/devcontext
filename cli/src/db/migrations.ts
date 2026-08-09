@@ -100,6 +100,18 @@ export function backfillDetailParts(db: Database): void {
  * behind gets all of them and one already current gets none.
  */
 export function migrateFrom(db: Database, from: number): void {
+  if (from < 6) {
+    /*
+     * Schema 6: releases are gone, for the same reason worklogs were.
+     *
+     * The sync fetched them and nothing ever read them back — no command, no
+     * endpoint, no view. Rows in that state do not sit there harmlessly: they
+     * age, and they still answer a hand-written query as though they were
+     * current.
+     */
+    db.exec('DROP TABLE IF EXISTS gh_releases');
+  }
+
   if (from < 5) {
     /*
      * Schema 5: worklogs are gone.

@@ -1050,7 +1050,6 @@ devcontext history [options]
 | `--kind <kind>` | — | — | issue, pull_request or workitem |
 | `--assignee <person>` | — | — | only items assigned to this person at the time |
 | `--sprint <id>` | — | — | only items in this sprint at the time |
-| `--by-assignee` | — | — | a snapshot per person at the end of the window instead |
 | `--rebuild` | — | — | recompute the history from the synced timelines before reading it |
 | `-o, --output <format>` | `default`, `json`, `markdown`, `plain` | `default` | output format |
 | `--list` | — | — | print bare identifiers only, one per line (for shell scripts) |

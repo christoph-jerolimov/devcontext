@@ -32,7 +32,6 @@ export interface GithubRepoSyncOptions {
   pullRequestFiles: boolean;
   labels: boolean;
   milestones: boolean;
-  releases: boolean;
   workflows: boolean;
   workflowRuns: boolean;
   workflowJobs: boolean;

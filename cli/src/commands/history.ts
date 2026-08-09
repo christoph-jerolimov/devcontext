@@ -28,7 +28,6 @@ export function createHistoryCommand(): Command {
     .option('--kind <kind>', 'issue, pull_request or workitem')
     .option('--assignee <person>', 'only items assigned to this person at the time')
     .option('--sprint <id>', 'only items in this sprint at the time')
-    .option('--by-assignee', 'a snapshot per person at the end of the window instead')
     .option('--rebuild', 'recompute the history from the synced timelines before reading it');
 
   return addListOptions(command).action((options: Record<string, unknown>, self: Command) => {
@@ -52,27 +51,6 @@ export function createHistoryCommand(): Command {
 
     const ctx = openReadContext(self);
     try {
-      if (options['byAssignee'] === true) {
-        const rows = history.openByAssignee(ctx.db, { at: to, ...filters });
-        printOutput(
-          renderTable(
-            rows,
-            [
-              { header: 'ASSIGNEE', value: (row) => row.assignee },
-              { header: 'OPEN', value: (row) => row.open, align: 'right' },
-            ],
-            {
-              format: ctx.format,
-              list: ctx.list,
-              listValue: (row) => row.assignee,
-              title: `Open per assignee at ${to.slice(0, 10)}`,
-              emptyMessage: 'Nothing was open then, or no history has been built yet.',
-            },
-          ),
-        );
-        return;
-      }
-
       const rows = history.openByDay(ctx.db, {
         from,
         to,

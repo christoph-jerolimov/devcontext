@@ -144,7 +144,6 @@ accept the same flags; the per repository value wins.
 | `pullRequestFiles`    | `true`  | Changed files including the patch                                                                             |
 | `labels`              | `true`  | Repository labels                                                                                             |
 | `milestones`          | `true`  | Repository milestones                                                                                         |
-| `releases`            | `false` | Releases                                                                                                      |
 | `workflows`           | `true`  | Actions workflow definitions                                                                                  |
 | `workflowRuns`        | `true`  | Workflow runs                                                                                                 |
 | `workflowJobs`        | `true`  | Jobs of each run, including every step                                                                        |

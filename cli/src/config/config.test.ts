@@ -39,20 +39,20 @@ projects:
 github:
   sync:
     workflowLogs: true
-    releases: true
+    workflowJobs: true
 projects:
   - key: demo
     github:
       - repo: acme/platform
         sync:
-          releases: false
+          workflowJobs: false
 `,
       { configPath: CONFIG_PATH },
     );
 
     const repo = config.projects[0]?.github[0];
     expect(repo?.sync.workflowLogs).toBe(true);
-    expect(repo?.sync.releases).toBe(false);
+    expect(repo?.sync.workflowJobs).toBe(false);
   });
 
   it('resolves relative "since" values into absolute timestamps', () => {

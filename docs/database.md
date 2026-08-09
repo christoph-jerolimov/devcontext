@@ -56,7 +56,6 @@ no native dependency to compile.
 | `gh_pull_request_files`                                                     | Changed file including its patch                                           |
 | `gh_workflows`, `gh_workflow_runs`, `gh_workflow_jobs`, `gh_workflow_steps` | Actions data                                                               |
 | `gh_job_logs`                                                               | Complete job log (`workflowLogs: true`)                                    |
-| `gh_releases`                                                               | Release (`releases: true`)                                                 |
 
 ## Jira tables
 
@@ -258,6 +257,10 @@ falls back to scanning — see [search.md](search.md).
 Version 2 added `search_index` and the `synced_at` indexes it needs. Upgrading
 is automatic; the index itself fills in on the next sync, and searching scans
 until it does.
+
+Version 6 dropped `gh_releases`, for the same reason and with the same
+consequence as version 5: the sync fetched releases and nothing ever read them
+back.
 
 Version 5 dropped `jira_worklogs`. Nothing wrote to it and nothing read it, and
 a table in that state is worse than no table: its rows get older and more wrong

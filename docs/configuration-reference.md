@@ -105,7 +105,6 @@ github:
     pullRequestFiles: true # changed files including the patch
     labels: true
     milestones: true
-    releases: false
     workflows: true
     workflowRuns: true
     workflowJobs: true # jobs of each run, including every step
@@ -204,7 +203,6 @@ projects:
           pullRequestFiles: true
           labels: true
           milestones: true
-          releases: false
           workflows: true
           workflowRuns: true
           workflowJobs: true
