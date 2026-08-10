@@ -3,17 +3,19 @@ import { useState, useSyncExternalStore } from 'react';
 
 import type { StatusResponse, SyncProgress } from '../api.ts';
 import { formatRelative } from '../api.ts';
-import { liveSyncState, requestSync, subscribeLive } from '../live.ts';
+import { liveSyncState, requestPause, requestResume, requestSync, subscribeLive } from '../live.ts';
 
 /**
- * What the background sync is doing, and the button to kick one off.
+ * What the background sync is doing, and the buttons to steer it.
  *
  * A sync can run for hours, and for exactly that reason it must not run
  * silently: while one is going this shows a bar, the estimate, and the item
- * being fetched right now. The snapshot comes from two places on purpose —
- * the event stream while the page is open, and `/api/status` for a page
- * opened two hours into a run, which would otherwise say nothing until the
- * next event happened to arrive.
+ * being fetched right now — and a Pause button, because hours of API calls
+ * somebody did not want right now should be stoppable without hunting for
+ * the serving terminal. The snapshot comes from two places on purpose — the
+ * event stream while the page is open, and `/api/status` for a page opened
+ * two hours into a run, which would otherwise say nothing until the next
+ * event happened to arrive.
  *
  * Renders nothing at all until there is something to say: the server is not
  * in watch mode and no sync has run while this page was open. That silence is
@@ -25,19 +27,22 @@ export function SyncIndicator({ watch }: { watch: StatusResponse['watch'] }): Re
   const [refused, setRefused] = useState(false);
 
   const running = sync.running || (watch?.running ?? false);
+  const paused = sync.paused ?? watch?.paused ?? false;
   const progress = sync.progress ?? watch?.progress ?? null;
 
   if (!watch && !running && sync.lastFinishedAt === null) return null;
 
-  const label = running
-    ? syncingLabel(progress)
-    : sync.lastFinishedAt !== null
-      ? sync.lastError !== null
-        ? `Sync failed ${formatRelative(sync.lastFinishedAt)}`
-        : `Synced ${formatRelative(sync.lastFinishedAt)}`
-      : watch
-        ? `Syncing every ${String(Math.round(watch.intervalMs / 1000))}s`
-        : '';
+  const label = paused
+    ? 'Sync paused'
+    : running
+      ? syncingLabel(progress)
+      : sync.lastFinishedAt !== null
+        ? sync.lastError !== null
+          ? `Sync failed ${formatRelative(sync.lastFinishedAt)}`
+          : `Synced ${formatRelative(sync.lastFinishedAt)}`
+        : watch
+          ? `Syncing every ${String(Math.round(watch.intervalMs / 1000))}s`
+          : '';
 
   const syncNow = () => {
     setRefused(false);
@@ -47,18 +52,33 @@ export function SyncIndicator({ watch }: { watch: StatusResponse['watch'] }): Re
   return (
     <div className="sync-indicator">
       <div className="sync-indicator-row">
-        <span className={sync.lastError !== null && !running ? 'state-error' : 'muted'}>
-          {running ? <span className="sync-spinner" aria-hidden="true" /> : null}
+        <span className={sync.lastError !== null && !running && !paused ? 'state-error' : 'muted'}>
+          {running && !paused ? <span className="sync-spinner" aria-hidden="true" /> : null}
           {label}
         </span>
-        {watch && !running ? (
-          <button type="button" onClick={syncNow}>
-            Sync now
-          </button>
+        {watch ? (
+          paused ? (
+            <button type="button" onClick={() => void requestResume()}>
+              Resume
+            </button>
+          ) : running ? (
+            <button type="button" onClick={() => void requestPause()}>
+              Pause
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={syncNow}>
+                Sync now
+              </button>
+              <button type="button" onClick={() => void requestPause()}>
+                Pause
+              </button>
+            </>
+          )
         ) : null}
         {refused ? <span className="muted small">already running</span> : null}
       </div>
-      {running && progress ? <SyncProgressBar progress={progress} /> : null}
+      {running && !paused && progress ? <SyncProgressBar progress={progress} /> : null}
     </div>
   );
 }

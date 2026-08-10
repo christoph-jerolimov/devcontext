@@ -17,6 +17,8 @@ import type { SyncProgress } from '@devcontext/shared';
 
 export interface LiveSyncState {
   running: boolean;
+  /** Null until the stream has said either way; /api/status fills the gap. */
+  paused: boolean | null;
   /** Where the running sync has got to; null between runs. */
   progress: SyncProgress | null;
   lastFinishedAt: string | null;
@@ -28,6 +30,7 @@ const DEBOUNCE_MS = 2000;
 let version = 0;
 let syncState: LiveSyncState = {
   running: false,
+  paused: null,
   progress: null,
   lastFinishedAt: null,
   lastError: null,
@@ -67,17 +70,28 @@ function connect(): void {
     syncState = { ...syncState, running: true, progress: payload.progress };
     notify();
   });
+  source.addEventListener('watch-paused', () => {
+    syncState = { ...syncState, paused: true };
+    notify();
+  });
+  source.addEventListener('watch-resumed', () => {
+    syncState = { ...syncState, paused: false };
+    notify();
+  });
   source.addEventListener('sync-completed', (event) => {
     const payload = JSON.parse((event as MessageEvent<string>).data) as {
       at: string;
-      status: 'completed' | 'failed';
+      status: 'completed' | 'failed' | 'interrupted';
       error: string | null;
     };
     syncState = {
+      ...syncState,
       running: false,
       progress: null,
-      lastFinishedAt: payload.at,
-      lastError: payload.error,
+      // An interrupted run is a pause, not an outcome; the paused flag
+      // carries that story and the last real outcome stays what it was.
+      lastFinishedAt: payload.status === 'interrupted' ? syncState.lastFinishedAt : payload.at,
+      lastError: payload.status === 'interrupted' ? syncState.lastError : payload.error,
     };
     notify();
     // The data poller will also have noticed, but a finished sync is the one
@@ -110,4 +124,14 @@ export function liveSyncState(): LiveSyncState {
 export async function requestSync(): Promise<boolean> {
   const response = await fetch('/api/sync', { method: 'POST' });
   return response.status === 202;
+}
+
+/** Holds the interval and stops the run in flight at its next request. */
+export async function requestPause(): Promise<void> {
+  await fetch('/api/sync/pause', { method: 'POST' });
+}
+
+/** Lifts the pause; a run cut short by it continues where it left off. */
+export async function requestResume(): Promise<void> {
+  await fetch('/api/sync/resume', { method: 'POST' });
 }

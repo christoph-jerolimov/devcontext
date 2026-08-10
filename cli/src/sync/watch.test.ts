@@ -167,6 +167,106 @@ describe('the scheduler', () => {
     scheduler.stop();
   });
 
+  it('pause stops the run in flight and reports it as interrupted, not failed', async () => {
+    /*
+     * The run honours the abort signal the way the real sync honours Ctrl-C:
+     * it stops at the next request. Cut short by a button press it is
+     * neither done nor broken — "interrupted", with no error, so nobody
+     * reads a stack trace that was really a pause.
+     */
+    const events: SchedulerEvent[] = [];
+    const scheduler = new SyncScheduler({
+      intervalMs: 60_000,
+      logger: nullLogger,
+      run: (ctx) =>
+        new Promise<void>((_, reject) => {
+          ctx.signal.addEventListener('abort', () => reject(new Error('stopped')));
+        }),
+    });
+    scheduler.subscribe((event) => events.push(event));
+
+    scheduler.start();
+    expect(scheduler.pause()).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(events.map((event) => event.event)).toEqual([
+      'sync-started',
+      'watch-paused',
+      'sync-completed',
+    ]);
+    expect(events.at(-1)).toMatchObject({ status: 'interrupted', error: null });
+    expect(scheduler.isPaused).toBe(true);
+    scheduler.stop();
+  });
+
+  it('holds the interval while paused and refuses triggers', async () => {
+    const { run, finish, calls } = controllableRun();
+    const scheduler = new SyncScheduler({ intervalMs: 60_000, logger: nullLogger, run });
+
+    scheduler.start();
+    await finish();
+    scheduler.pause();
+
+    // Paused means paused: the interval is not permission to overrule it.
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(calls()).toBe(1);
+    expect(scheduler.trigger()).toBe(false);
+    scheduler.stop();
+  });
+
+  it('resume continues an interrupted run with the resume flag set', async () => {
+    const seen: Array<{ resume: boolean }> = [];
+    let abortable: AbortSignal | null = null;
+    const scheduler = new SyncScheduler({
+      intervalMs: 60_000,
+      logger: nullLogger,
+      run: (ctx) => {
+        seen.push({ resume: ctx.resume });
+        abortable = ctx.signal;
+        return seen.length === 1
+          ? new Promise<void>((_, reject) => {
+              ctx.signal.addEventListener('abort', () => reject(new Error('stopped')));
+            })
+          : Promise.resolve();
+      },
+    });
+    const events: SchedulerEvent[] = [];
+    scheduler.subscribe((event) => events.push(event));
+
+    scheduler.start();
+    scheduler.pause();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(abortable?.aborted).toBe(true);
+
+    scheduler.resume();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The second run picks up where the first left off — the journal knows
+    // which resources finished, and `resume` is what makes it skip them.
+    expect(seen).toEqual([{ resume: false }, { resume: true }]);
+    const started = events.filter((event) => event.event === 'sync-started');
+    expect(started.at(-1)).toMatchObject({ reason: 'resume' });
+    scheduler.stop();
+  });
+
+  it('resume after an idle pause lifts the hold without starting a run', async () => {
+    const { run, finish, calls } = controllableRun();
+    const scheduler = new SyncScheduler({ intervalMs: 60_000, logger: nullLogger, run });
+
+    scheduler.start();
+    await finish();
+    scheduler.pause();
+    scheduler.resume();
+    // Nothing was interrupted, so nothing needs continuing — the next
+    // interval is soon enough.
+    expect(calls()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(calls()).toBe(2);
+    await finish();
+    scheduler.stop();
+  });
+
   it('does nothing after stop', async () => {
     const { run, finish, calls } = controllableRun();
     const scheduler = new SyncScheduler({ intervalMs: 60_000, logger: nullLogger, run });
