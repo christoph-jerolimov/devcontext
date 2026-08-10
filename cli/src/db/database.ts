@@ -65,6 +65,10 @@ export class Database {
       db.exec('PRAGMA journal_mode = WAL;');
       db.exec('PRAGMA synchronous = NORMAL;');
     }
+    // Wait out a concurrent writer instead of failing with SQLITE_BUSY. With
+    // WAL this only bites in the brief moments a checkpoint holds the file,
+    // but "brief" is exactly when a running sync and an open viewer meet.
+    db.exec('PRAGMA busy_timeout = 5000;');
     db.exec('PRAGMA foreign_keys = OFF;');
     return db;
   }

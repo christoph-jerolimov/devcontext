@@ -32,30 +32,34 @@ export function listLinks(db: Database, filter: LinkFilter = {}): CrossLinkRow[]
   );
 }
 
+/** One end of a cross reference, as a caller sees it. */
+export interface LinkedRef {
+  ref: string;
+  /** The builder only ever writes these two; narrowed here at the read boundary. */
+  source: 'github' | 'jira';
+  kind: string;
+  via: string;
+  confidence: 'high' | 'medium';
+}
+
 /** Everything linked to `ref`, in both directions, deduplicated. */
-export function linksFor(
-  db: Database,
-  ref: string,
-): Array<{ ref: string; source: string; kind: string; via: string; confidence: string }> {
+export function linksFor(db: Database, ref: string): LinkedRef[] {
   const normalised = normaliseRef(ref);
   const rows = db.all<CrossLinkRow>('SELECT * FROM cross_links WHERE from_ref = ? OR to_ref = ?', [
     normalised,
     normalised,
   ]);
 
-  const byRef = new Map<
-    string,
-    { ref: string; source: string; kind: string; via: string; confidence: string }
-  >();
+  const byRef = new Map<string, LinkedRef>();
 
   for (const row of rows) {
     const isFrom = row.from_ref === normalised;
-    const other = {
+    const other: LinkedRef = {
       ref: isFrom ? row.to_ref : row.from_ref,
-      source: isFrom ? row.to_source : row.from_source,
+      source: (isFrom ? row.to_source : row.from_source) as LinkedRef['source'],
       kind: isFrom ? row.to_kind : row.from_kind,
       via: row.via,
-      confidence: row.confidence,
+      confidence: row.confidence as LinkedRef['confidence'],
     };
     const existing = byRef.get(other.ref);
     // Keep the strongest reason a link exists, and the most specific of the
