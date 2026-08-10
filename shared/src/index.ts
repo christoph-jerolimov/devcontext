@@ -74,6 +74,12 @@ export interface StatusResponse {
   state: SyncState[];
   /** Non-null when the server was started with `serve --watch`. */
   watch: WatchStatus | null;
+  /**
+   * The rate limit budget each API reported the last time a sync spoke to
+   * it, persisted with the data. Empty until a sync has run. During a run
+   * the live numbers travel in `watch.progress.rateLimits` instead.
+   */
+  rateLimits: Record<string, RateLimitState>;
 }
 
 /** Present in `/api/status` when the server also syncs on an interval. */
@@ -104,6 +110,23 @@ export interface SyncProgress {
   elapsedMs: number;
   /** Null before the first call has been made; 0 when nothing remains. */
   etaMs: number | null;
+  /**
+   * What the remote APIs said about their budget, per source ("GitHub",
+   * "Jira (acme)"), as of the last response that carried the headers.
+   */
+  rateLimits: Record<string, RateLimitState>;
+}
+
+/** One API's rate limit budget, read off its response headers. */
+export interface RateLimitState {
+  /** The window's size; null when the API does not say. */
+  limit: number | null;
+  /** Calls left in the current window. */
+  remaining: number | null;
+  /** When the window resets, ISO 8601; null when the API does not say. */
+  resetAt: string | null;
+  /** When the headers were last seen — how fresh the numbers are. */
+  observedAt: string;
 }
 
 /*

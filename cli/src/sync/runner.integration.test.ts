@@ -14,6 +14,7 @@ import { nullLogger } from '../util/logger.js';
 import type { Logger } from '../util/logger.js';
 import { duplicateEvents, type DuplicateEvent } from '../testing/duplicates.js';
 import { runSync } from './runner.js';
+import { readRateLimits } from './rateLimitStore.js';
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                    */
@@ -698,6 +699,13 @@ describe('runSync', () => {
 
     const db = Database.open(config.databasePath, { create: false, readOnly: true });
     try {
+      // The budget the API reported rides along and is kept with the data,
+      // which is where the status command, the TUI and the viewer read it.
+      expect(readRateLimits(db)['GitHub (github.com)']).toMatchObject({
+        limit: 5000,
+        remaining: 4999,
+      });
+
       // --- GitHub ---------------------------------------------------------
       expect(gh.listRepositories(db).map((repo) => repo.full_name)).toEqual(['acme/platform']);
 
@@ -956,6 +964,8 @@ describe('runSync', () => {
     try {
       expect(gh.listIssues(db, { state: 'all' })).toHaveLength(0);
       expect(jira.listWorkitems(db)).toHaveLength(0);
+      // Including the rate limit note: a dry run writes nothing at all.
+      expect(readRateLimits(db)).toEqual({});
       // The run itself is still recorded so the history stays complete.
       expect(new SyncJournal(db).listRuns()).toHaveLength(2);
     } finally {

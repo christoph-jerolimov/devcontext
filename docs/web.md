@@ -51,6 +51,11 @@ the server for just that item, so fresh comments and state arrive in seconds
 instead of waiting for the next full run. The page refreshes itself when the
 targeted run commits, like any other write.
 
+The sidebar also shows the **rate limit budget** the sync is spending —
+`GitHub: 4,321 left · resets in 41m` — live from the progress events while a
+run is going, and the last persisted observation (served in `/api/status` as
+`rateLimits`) between runs.
+
 A running sync can be **paused** from the sidebar (or `POST /api/sync/pause`).
 Pausing leans on the machinery the sync already has for Ctrl-C: the run stops
 politely at its next request, cursors only move when a resource finishes, and

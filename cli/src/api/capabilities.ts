@@ -61,6 +61,7 @@ import { buildWorkitemTree, summariseTree } from '../db/queries/tree.js';
 import { buildDigest } from '../insights/digest.js';
 import * as insights from '../insights/index.js';
 import type { Directory } from '../people/directory.js';
+import { readRateLimits } from '../sync/rateLimitStore.js';
 import { searchAll } from '../search/index.js';
 import {
   buildIssueDocument,
@@ -310,6 +311,9 @@ export const handlers: ApiHandlers = {
       runs: ctx.journal.listRuns({ limit: 20 }),
       state: ctx.journal.listState(),
       watch: ctx.watch,
+      // Persisted by the last sync; during a run the live numbers travel in
+      // watch.progress.rateLimits instead.
+      rateLimits: readRateLimits(ctx.db),
     }) satisfies StatusResponse,
 
   'insights.summary': (ctx, input) => {

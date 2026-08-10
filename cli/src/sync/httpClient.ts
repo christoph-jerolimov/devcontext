@@ -96,6 +96,9 @@ export class HttpClient {
       }
 
       this.options.rateLimiter.observeHeaders(response.headers);
+      // The budget travels with the progress: the CLI's own line, the serve
+      // process and every connected viewer read the same numbers.
+      this.options.progress.setRateLimit(this.options.label, this.options.rateLimiter.state);
 
       if (response.ok) {
         return {
