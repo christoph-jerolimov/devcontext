@@ -61,6 +61,7 @@ export type {
   Sprint,
   StatusResponse,
   StatusTimesResponse,
+  SyncProgress,
   SyncRun,
   SyncState,
   TeamOption,

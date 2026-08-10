@@ -23,6 +23,7 @@ import { nowIso } from '../util/time.js';
 import { planGithubRepository, syncGithubItem } from '../sources/github/sync.js';
 import { planJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
 import { ProgressReporter } from './progress.js';
+import type { ProgressSnapshot } from './progress.js';
 import { isSyncStopped, SyncStopped } from './stop.js';
 import { SYNC_PHASES } from './types.js';
 import type { SyncContext, TargetPlan, TargetSyncResult } from './types.js';
@@ -40,6 +41,12 @@ export interface RunSyncOptions {
   full: boolean;
   dryRun: boolean;
   progress: boolean;
+  /**
+   * Observes the run as it advances, throttled, independently of `progress` —
+   * that flag is the bar in this terminal, this is whoever else is watching
+   * (the serve process forwarding to its connected viewers).
+   */
+  onProgress?: (snapshot: ProgressSnapshot) => void;
   /** Skip the resources a failed or interrupted run already finished. */
   resume?: boolean;
   /** Stops the sync at the next request when it fires. */
@@ -89,7 +96,11 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
     );
   }
 
-  const progress = new ProgressReporter({ enabled: options.progress, logger });
+  const progress = new ProgressReporter({
+    enabled: options.progress,
+    logger,
+    ...(options.onProgress ? { onSnapshot: options.onProgress } : {}),
+  });
   const results: TargetSyncResult[] = [];
 
   try {

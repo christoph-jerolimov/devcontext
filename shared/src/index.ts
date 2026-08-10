@@ -81,6 +81,27 @@ export interface WatchStatus {
   intervalMs: number;
   /** True while a background sync is writing. */
   running: boolean;
+  /**
+   * Where the running sync has got to; null between runs. Served with the
+   * status so a page opened two hours into a sync shows the bar immediately
+   * instead of waiting for the next event.
+   */
+  progress: SyncProgress | null;
+}
+
+/** How far a sync has got — the server's progress bar, as data. */
+export interface SyncProgress {
+  /** `planning`, `issues`, `pull requests`, ... */
+  phase: string;
+  /** `#4021, 5 of 231`, or empty when the phase is not walking a list. */
+  position: string;
+  apiCalls: number;
+  /** Grows as the sync discovers work; never below `apiCalls`. */
+  apiCallsExpected: number;
+  items: number;
+  elapsedMs: number;
+  /** Null before the first call has been made; 0 when nothing remains. */
+  etaMs: number | null;
 }
 
 /*
@@ -95,6 +116,11 @@ export interface HelloEvent {
 export interface SyncStartedEvent {
   at: string;
   reason: 'startup' | 'interval' | 'manual';
+}
+
+export interface SyncProgressEvent {
+  at: string;
+  progress: SyncProgress;
 }
 
 export interface SyncCompletedEvent {

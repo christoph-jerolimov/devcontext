@@ -15,10 +15,12 @@
 
 import { nowIso } from '../util/time.js';
 import type { Logger } from '../util/logger.js';
+import type { ProgressSnapshot } from './progress.js';
 
 /** What a listener is told. `sync-completed` carries the outcome. */
 export type SchedulerEvent =
   | { event: 'sync-started'; at: string; reason: 'startup' | 'interval' | 'manual' }
+  | { event: 'sync-progress'; at: string; progress: ProgressSnapshot }
   | {
       event: 'sync-completed';
       at: string;
@@ -27,23 +29,40 @@ export type SchedulerEvent =
       error: string | null;
     };
 
+/** What the scheduler hands each run. */
+export interface RunContext {
+  /**
+   * Reports how far the run has got. The scheduler forwards it to whoever is
+   * listening and keeps the latest snapshot for anyone who asks in between —
+   * a page opened two hours into a sync should not wait for the next event
+   * to learn one is running.
+   */
+  report: (progress: ProgressSnapshot) => void;
+}
+
 export interface SchedulerOptions {
   intervalMs: number;
   logger: Logger;
   /** Runs one sync. Rejections are reported as a failed run, not a crash. */
-  run: () => Promise<unknown>;
+  run: (ctx: RunContext) => Promise<unknown>;
 }
 
 export class SyncScheduler {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private stopped = false;
+  private latestProgress: ProgressSnapshot | null = null;
   private readonly listeners = new Set<(event: SchedulerEvent) => void>();
 
   constructor(private readonly options: SchedulerOptions) {}
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  /** Where the current run has got to; null between runs. */
+  get progress(): ProgressSnapshot | null {
+    return this.latestProgress;
   }
 
   /** Syncs once right away, then on every interval. */
@@ -90,9 +109,14 @@ export class SyncScheduler {
     const startedAt = Date.now();
     this.emit({ event: 'sync-started', at: nowIso(), reason });
 
+    const report = (progress: ProgressSnapshot): void => {
+      this.latestProgress = progress;
+      this.emit({ event: 'sync-progress', at: nowIso(), progress });
+    };
+
     let error: string | null = null;
     try {
-      await this.options.run();
+      await this.options.run({ report });
     } catch (cause) {
       // A failed sync is an event, not the end of watching: the network comes
       // back, the token gets fixed, and the next interval tries again.
@@ -100,6 +124,9 @@ export class SyncScheduler {
       this.options.logger.warn(`Background sync failed: ${error}`);
     } finally {
       this.running = false;
+      // A finished run's last snapshot would otherwise read as a sync stuck
+      // at 100% to anyone asking between runs.
+      this.latestProgress = null;
     }
 
     this.emit({

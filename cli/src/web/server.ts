@@ -201,7 +201,11 @@ export function handleApi(
     config: ctx.config,
     directory: Directory.from(ctx.config),
     watch: ctx.watch
-      ? { intervalMs: ctx.watch.intervalMs, running: ctx.watch.scheduler.isRunning }
+      ? {
+          intervalMs: ctx.watch.intervalMs,
+          running: ctx.watch.scheduler.isRunning,
+          progress: ctx.watch.scheduler.progress,
+        }
       : null,
   };
   return dispatch(match.name, api, input);

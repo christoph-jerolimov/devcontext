@@ -46,16 +46,37 @@ export function createServeCommand(): Command {
                 intervalMs: watch.intervalMs,
                 logger,
                 // The same sync the command runs, minus the progress bar — its
-                // terminal is busy being a server log.
-                run: () =>
-                  runSync({
+                // terminal is busy being a server log. Progress still goes two
+                // places: to the scheduler for the connected viewers, and to
+                // the log every 10%, so an hours-long sync is never silent.
+                run: (ctx) => {
+                  let lastMilestone = 0;
+                  return runSync({
                     config,
                     logger,
                     full: false,
                     dryRun: false,
                     progress: false,
                     writeOutputs: true,
-                  }),
+                    onProgress: (snapshot) => {
+                      ctx.report(snapshot);
+                      const expected = Math.max(snapshot.apiCallsExpected, snapshot.apiCalls);
+                      if (expected === 0) return;
+                      const milestone = Math.floor((snapshot.apiCalls / expected) * 10);
+                      if (milestone <= lastMilestone) return;
+                      lastMilestone = milestone;
+                      const parts = [
+                        `Background sync ${String(milestone * 10)}%`,
+                        `${String(snapshot.apiCalls)}/${String(expected)} calls`,
+                      ];
+                      if (snapshot.etaMs !== null && snapshot.etaMs > 0) {
+                        parts.push(`about ${formatDuration(snapshot.etaMs)} left`);
+                      }
+                      if (snapshot.position) parts.push(`on ${snapshot.position}`);
+                      logger.info(parts.join(', ') + '.');
+                    },
+                  });
+                },
               })
             : null;
 
