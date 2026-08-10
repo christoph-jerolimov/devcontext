@@ -183,11 +183,17 @@ queued are exactly the pull requests newer than the cursor.
 
 ## Rate limits and pacing
 
-Every API call goes through a rate limiter that
+Up to `sync.concurrency` API calls run at the same time (default 4) — the
+per-item work of the details phase is independent, and waiting a full round
+trip before starting the next item is where an hours-long sync spends most of
+its wall clock. Concurrency hides that latency; it never raises the request
+rate, because every call still goes through one rate limiter that
 
-- keeps at least `sync.minDelayMs` between two calls (default 250 ms),
+- keeps at least `sync.minDelayMs` between any two request starts (default
+  250 ms), across all parallel workers,
 - reads `x-ratelimit-remaining` / `x-ratelimit-reset` and pauses until the
-  window resets once fewer than `sync.rateLimitReserve` calls are left,
+  window resets once fewer than `sync.rateLimitReserve` calls are left —
+  counting the requests still in flight, since each will consume one,
 - honours `Retry-After` on 429 and on GitHub's secondary rate limits,
 - retries 408/425/429/5xx and network errors with exponential backoff
   (`retryBaseMs`, doubling, capped at one minute, `maxRetries` times).
@@ -197,7 +203,8 @@ devcontext sync --delay 1000     # at most one API call per second
 ```
 
 Set `respectRateLimit: false` only if a proxy in front of the API strips the
-rate limit headers.
+rate limit headers, and `concurrency: 1` for the strictly serial sync of
+earlier versions.
 
 The budget the APIs report is also shown, everywhere a sync is: the progress
 line appends the tightest remaining budget (`4321 rate left`), and the last

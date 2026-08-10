@@ -93,6 +93,10 @@ export class HttpClient {
         }
         await this.backoff(++attempt, (error as Error).message);
         continue;
+      } finally {
+        // Answered or dead, the request no longer owes a call against the
+        // budget; the retry loop re-acquires for the next attempt.
+        this.options.rateLimiter.release();
       }
 
       this.options.rateLimiter.observeHeaders(response.headers);

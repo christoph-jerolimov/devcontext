@@ -150,6 +150,7 @@ export const configSchema = z
     sync: z
       .object({
         minDelayMs: z.number().int().min(0).optional(),
+        concurrency: z.number().int().min(1).max(16).optional(),
         maxRetries: z.number().int().min(0).optional(),
         retryBaseMs: z.number().int().min(0).optional(),
         respectRateLimit: z.boolean().optional(),

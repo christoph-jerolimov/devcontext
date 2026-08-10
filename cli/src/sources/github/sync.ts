@@ -3,6 +3,7 @@ import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import type { SyncMode } from '../../db/journal.js';
 import { errorMessage } from '../../util/errors.js';
+import { forEachConcurrent } from '../../sync/concurrency.js';
 import { positionOf } from '../../sync/progress.js';
 import { BOUND_BY_RUNS, BOUND_BY_SINCE, warnIfLarge } from '../../sync/warnings.js';
 import { isSyncStopped } from '../../sync/stop.js';
@@ -869,10 +870,12 @@ class GithubRepoSyncer {
 
   /** The comments and the timeline of every issue the list phase found. */
   private async fetchIssueDetails(): Promise<void> {
-    for (const [index, issue] of this.issueRefs.entries()) {
+    // Items are independent of each other, so up to `concurrency` of them run
+    // at once; the rate limiter still spaces out the individual requests.
+    await forEachConcurrent(this.issueRefs, this.ctx.config.sync.concurrency, (issue, index) => {
       this.at(`#${String(issue.number)}`, index, this.issueRefs.length);
-      await this.writeIssueDetails(issue);
-    }
+      return this.writeIssueDetails(issue);
+    });
   }
 
   /**
@@ -931,27 +934,37 @@ class GithubRepoSyncer {
 
     let newestUpdate: string | null = null;
 
-    for (const [index, number] of this.pullRequestNumbers.entries()) {
-      this.at(`#${String(number)}`, index, this.pullRequestNumbers.length);
-      const raw = await this.client.pullRequest(this.target.owner, this.target.repo, number);
-      const syncedAt = nowIso();
-      this.write('gh_pull_requests', map.mapPullRequest(raw, this.ref, syncedAt));
-      this.writeUser(raw['user'], syncedAt);
-      this.pullRequestIds.set(number, num(raw, 'id') ?? 0);
-      this.countItem();
+    // A maximum is the same whatever order the responses land in, so the
+    // cursor is exact under concurrency too.
+    await forEachConcurrent(
+      this.pullRequestNumbers,
+      this.ctx.config.sync.concurrency,
+      async (number, index) => {
+        this.at(`#${String(number)}`, index, this.pullRequestNumbers.length);
+        const raw = await this.client.pullRequest(this.target.owner, this.target.repo, number);
+        const syncedAt = nowIso();
+        this.write('gh_pull_requests', map.mapPullRequest(raw, this.ref, syncedAt));
+        this.writeUser(raw['user'], syncedAt);
+        this.pullRequestIds.set(number, num(raw, 'id') ?? 0);
+        this.countItem();
 
-      const updatedAt = str(raw, 'updated_at');
-      if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
-    }
+        const updatedAt = str(raw, 'updated_at');
+        if (updatedAt && (!newestUpdate || updatedAt > newestUpdate)) newestUpdate = updatedAt;
+      },
+    );
 
     this.pullRequestsCursor = newestUpdate ?? nowIso();
   }
 
   private async fetchPullRequestDetails(): Promise<void> {
-    for (const [index, number] of this.pullRequestNumbers.entries()) {
-      this.at(`#${String(number)}`, index, this.pullRequestNumbers.length);
-      await this.writePullRequestDetails(number);
-    }
+    await forEachConcurrent(
+      this.pullRequestNumbers,
+      this.ctx.config.sync.concurrency,
+      (number, index) => {
+        this.at(`#${String(number)}`, index, this.pullRequestNumbers.length);
+        return this.writePullRequestDetails(number);
+      },
+    );
   }
 
   /**
@@ -1136,37 +1149,43 @@ class GithubRepoSyncer {
     let jobsSeen = 0;
     let runsDone = 0;
 
-    for (const [index, runId] of this.workflowRunIds.entries()) {
-      this.at(`run ${String(runId)}`, index, runs);
-      const jobs = await this.client.workflowRunJobs(this.target.owner, this.target.repo, runId);
-      jobsSeen += jobs.length;
-      runsDone += 1;
+    // Runs are independent; the jobs and logs *within* one run stay
+    // sequential, so a failure still leaves whole runs either done or not.
+    await forEachConcurrent(
+      this.workflowRunIds,
+      this.ctx.config.sync.concurrency,
+      async (runId, index) => {
+        this.at(`run ${String(runId)}`, index, runs);
+        const jobs = await this.client.workflowRunJobs(this.target.owner, this.target.repo, runId);
+        jobsSeen += jobs.length;
+        runsDone += 1;
 
-      if (sync.workflowLogs) {
-        /*
-         * The whole slice, restated: the list pages, one jobs call per run,
-         * and one log per job — with the runs not yet reached priced from the
-         * ones that have been.
-         *
-         * This is set rather than raised, because by now the walk knows better
-         * than the survey did. Yesterday's ratio got the first percent right;
-         * today's, measured on this run, gets the rest right.
-         */
-        this.ctx.progress.expectFor(
-          `${this.scopePrefix}:workflow_runs`,
-          this.workflowRunPages + runs + Math.round((runs * jobsSeen) / runsDone),
-        );
-      }
-
-      for (const job of jobs) {
-        const syncedAt = nowIso();
-        this.write('gh_workflow_jobs', map.mapWorkflowJob(job, this.ref, syncedAt));
-        for (const step of map.mapWorkflowSteps(job, this.ref.host, syncedAt)) {
-          this.write('gh_workflow_steps', step);
+        if (sync.workflowLogs) {
+          /*
+           * The whole slice, restated: the list pages, one jobs call per run,
+           * and one log per job — with the runs not yet reached priced from the
+           * ones that have been.
+           *
+           * This is set rather than raised, because by now the walk knows better
+           * than the survey did. Yesterday's ratio got the first percent right;
+           * today's, measured on this run, gets the rest right.
+           */
+          this.ctx.progress.expectFor(
+            `${this.scopePrefix}:workflow_runs`,
+            this.workflowRunPages + runs + Math.round((runs * jobsSeen) / runsDone),
+          );
         }
-        if (sync.workflowLogs) await this.syncJobLog(num(job, 'id') ?? 0, runId);
-      }
-    }
+
+        for (const job of jobs) {
+          const syncedAt = nowIso();
+          this.write('gh_workflow_jobs', map.mapWorkflowJob(job, this.ref, syncedAt));
+          for (const step of map.mapWorkflowSteps(job, this.ref.host, syncedAt)) {
+            this.write('gh_workflow_steps', step);
+          }
+          if (sync.workflowLogs) await this.syncJobLog(num(job, 'id') ?? 0, runId);
+        }
+      },
+    );
   }
 
   private async syncJobLog(jobId: number, runId: number): Promise<void> {

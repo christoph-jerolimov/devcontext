@@ -3,6 +3,7 @@ import type { SyncMode } from '../../db/journal.js';
 import { SYNC_PHASES } from '../../sync/types.js';
 import type { SyncContext, SyncPhase, TargetPlan, TargetSyncResult } from '../../sync/types.js';
 import { CliError, errorMessage } from '../../util/errors.js';
+import { forEachConcurrent } from '../../sync/concurrency.js';
 import { positionOf } from '../../sync/progress.js';
 import { BOUND_BY_FILTER, warnIfLarge } from '../../sync/warnings.js';
 import { isSyncStopped } from '../../sync/stop.js';
@@ -696,14 +697,17 @@ class JiraProjectSyncer {
 
   /** The follow up requests the search response left owing. */
   private async fetchWorkitemDetails(): Promise<void> {
-    for (const [index, workitem] of this.needComments.entries()) {
+    // Items are independent of each other, so up to `concurrency` of them run
+    // at once; the rate limiter still spaces out the individual requests.
+    const concurrency = this.ctx.config.sync.concurrency;
+    await forEachConcurrent(this.needComments, concurrency, async (workitem, index) => {
       this.at(workitem.key, index, this.needComments.length);
       this.writeComments(await this.client.comments(workitem.key), workitem);
-    }
-    for (const [index, workitem] of this.needChangelog.entries()) {
+    });
+    await forEachConcurrent(this.needChangelog, concurrency, async (workitem, index) => {
       this.at(workitem.key, index, this.needChangelog.length);
       this.writeChangelog(await this.client.changelog(workitem.key), workitem);
-    }
+    });
   }
 
   /**
@@ -807,18 +811,22 @@ class JiraProjectSyncer {
 
   /** Which work items are in each sprint. */
   private async fetchSprintMembership(): Promise<void> {
-    for (const [index, sprintId] of this.sprintIds.entries()) {
-      this.at(`sprint ${String(sprintId)}`, index, this.sprintIds.length);
-      const members = await this.client.sprintIssueKeys(sprintId);
-      for (const member of members) {
-        this.write('jira_sprint_workitems', {
-          site: this.jiraCtx.site,
-          sprint_id: sprintId,
-          workitem_id: member.id,
-          workitem_key: member.key,
-        });
-      }
-    }
+    await forEachConcurrent(
+      this.sprintIds,
+      this.ctx.config.sync.concurrency,
+      async (sprintId, index) => {
+        this.at(`sprint ${String(sprintId)}`, index, this.sprintIds.length);
+        const members = await this.client.sprintIssueKeys(sprintId);
+        for (const member of members) {
+          this.write('jira_sprint_workitems', {
+            site: this.jiraCtx.site,
+            sprint_id: sprintId,
+            workitem_id: member.id,
+            workitem_key: member.key,
+          });
+        }
+      },
+    );
   }
 
   private resolveSince(scope: string): string | null {

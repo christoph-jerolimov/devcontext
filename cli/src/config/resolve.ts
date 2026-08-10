@@ -21,6 +21,7 @@ import type {
 
 export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   minDelayMs: 250,
+  concurrency: 4,
   maxRetries: 5,
   retryBaseMs: 1000,
   respectRateLimit: true,

@@ -114,8 +114,9 @@ check is fast enough to run on every save.
   only. The CLI is not a React project, and running those rules over it just
   produces false positives.
 - `no-await-in-loop` is off. Sequential `await` inside a loop is the design of
-  the syncers: calls are paced by the rate limiter, pagination is inherently
-  ordered, and running them concurrently would defeat both.
+  the syncers' list walks: pagination is inherently ordered. The per-item
+  detail phases run on a bounded pool instead (`sync/concurrency.ts`), with
+  the rate limiter still pacing the individual requests.
 - `react/react-in-jsx-scope` is off because `web/` uses the automatic JSX
   runtime (`"jsx": "react-jsx"`), where `React` does not need to be in scope.
 

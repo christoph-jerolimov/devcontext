@@ -35,6 +35,10 @@ sync:
   # allows; 1000 means at most one request per second. `sync --delay <ms>`
   # overrides this for a single run.
   minDelayMs: 250
+  # How many API calls may be in flight at once. The spacing above still
+  # applies between any two request starts, so raising this hides latency
+  # rather than multiplying request rate; 1 restores the strictly serial sync.
+  concurrency: 4
   # Retries for HTTP 429, 5xx and network errors. Anything else fails at once.
   maxRetries: 5
   # Backoff base, doubled per attempt: 1s, 2s, 4s, 8s, 16s.

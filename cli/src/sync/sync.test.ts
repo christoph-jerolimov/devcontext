@@ -50,6 +50,97 @@ describe('RateLimiter', () => {
     expect(clock.waits).toEqual([250]);
   });
 
+  it('grants concurrent acquires one at a time, spaced by the minimum delay', async () => {
+    /*
+     * The property parallelism must not break: several workers may wait at
+     * once, but grants come one per minimum delay — concurrency hides
+     * latency, it never multiplies the request rate.
+     */
+    const clock = createClock();
+    const limiter = new RateLimiter({
+      minDelayMs: 250,
+      respectRateLimit: true,
+      reserve: 10,
+      logger: nullLogger,
+      sleepFn: clock.sleepFn,
+      nowFn: clock.nowFn,
+    });
+
+    const start = clock.nowFn();
+    await Promise.all(Array.from({ length: 4 }, () => limiter.acquire()));
+
+    // Four grants at one per 250 ms minimum: at least 750 ms of clock must
+    // have passed, however the workers interleaved.
+    expect(clock.nowFn() - start).toBeGreaterThanOrEqual(750);
+    expect(clock.waits.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('counts the requests already in flight against the reserve', async () => {
+    /*
+     * The headers only report what the last answered call saw. With several
+     * unanswered calls out, each will still consume one — ignoring them
+     * would overshoot into the reserve by exactly the concurrency.
+     */
+    const clock = createClock();
+    const limiter = new RateLimiter({
+      minDelayMs: 0,
+      respectRateLimit: true,
+      reserve: 10,
+      logger: nullLogger,
+      sleepFn: clock.sleepFn,
+      nowFn: clock.nowFn,
+    });
+
+    const resetSeconds = Math.floor(clock.nowFn() / 1000) + 60;
+    limiter.observeHeaders(
+      new Headers({
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': '12',
+        'x-ratelimit-reset': String(resetSeconds),
+      }),
+    );
+
+    // 12 remaining, reserve 10: two more requests may start...
+    await limiter.acquire();
+    await limiter.acquire();
+    expect(clock.waits).toEqual([]);
+
+    // ...but the third would eat into the reserve while two are unanswered,
+    // so it waits for the window even though no new headers arrived.
+    await limiter.acquire();
+    expect(clock.waits.length).toBeGreaterThan(0);
+    expect(clock.waits[0]).toBeGreaterThan(59_000);
+  });
+
+  it('a released request gives its budget headroom back', async () => {
+    const clock = createClock();
+    const limiter = new RateLimiter({
+      minDelayMs: 0,
+      respectRateLimit: true,
+      reserve: 10,
+      logger: nullLogger,
+      sleepFn: clock.sleepFn,
+      nowFn: clock.nowFn,
+    });
+
+    const resetSeconds = Math.floor(clock.nowFn() / 1000) + 60;
+    limiter.observeHeaders(
+      new Headers({
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': '12',
+        'x-ratelimit-reset': String(resetSeconds),
+      }),
+    );
+
+    // Acquire and answer, one at a time, the way a serial sync does: the
+    // in-flight count never grows, so nothing ever waits.
+    for (let i = 0; i < 2; i += 1) {
+      await limiter.acquire();
+      limiter.release();
+    }
+    expect(clock.waits).toEqual([]);
+  });
+
   it('waits for the window reset once the remaining budget hits the reserve', async () => {
     const clock = createClock();
     const limiter = new RateLimiter({
