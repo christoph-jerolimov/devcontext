@@ -112,6 +112,8 @@ export interface Team {
 export interface SyncSettings {
   /** Minimum delay between two API calls against the same source, in milliseconds. */
   minDelayMs: number;
+  /** How many API calls may be in flight at once; 1 is the old serial sync. */
+  concurrency: number;
   maxRetries: number;
   retryBaseMs: number;
   /** Slow down / wait when the remote rate limit budget gets low. */

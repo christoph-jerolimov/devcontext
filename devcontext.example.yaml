@@ -15,6 +15,10 @@ sync:
   # Minimum pause between two API calls. Raise it to be gentle with the API,
   # lower it (0) to go as fast as the rate limit allows.
   minDelayMs: 250
+  # How many API calls may run at the same time. The spacing above still
+  # applies between any two request starts, so this hides latency rather than
+  # multiplying throughput; 1 restores the strictly serial sync.
+  concurrency: 4
   maxRetries: 5
   retryBaseMs: 1000
   # Wait for the rate limit window to reset instead of running into HTTP 403.

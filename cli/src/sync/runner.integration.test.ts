@@ -1523,4 +1523,103 @@ describe('runSync', () => {
       expect(summary.results.find((result) => result.source === 'jira')?.status).toBe('completed');
     });
   });
+
+  describe('parallel requests', () => {
+    /*
+     * The stub answers instantly, which would let even a serial sync look
+     * "overlapped" in no measurable way — so each response is held for a few
+     * milliseconds and the peak number of unanswered requests is recorded.
+     * That peak is the whole claim: above 1 the calls genuinely overlap,
+     * and never above `concurrency` the cap genuinely binds.
+     */
+    function countInFlight(): { peak: () => number } {
+      let inFlight = 0;
+      let peak = 0;
+      vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        requestedUrls.push(url);
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return route(url);
+      });
+      return { peak: () => peak };
+    }
+
+    async function syncWith(concurrency: number): Promise<void> {
+      config = parseConfig(
+        CONFIG_YAML.replace(
+          '  minDelayMs: 0',
+          `  minDelayMs: 0\n  concurrency: ${String(concurrency)}`,
+        ),
+        { configPath: join(workspace, 'devcontext.yaml') },
+      );
+      const summary = await runSync({
+        config,
+        logger: nullLogger,
+        full: false,
+        dryRun: false,
+        progress: false,
+        writeOutputs: false,
+      });
+      for (const result of summary.results) expect(result.status).toBe('completed');
+    }
+
+    it('overlaps the per-item calls, and never beyond the configured cap', async () => {
+      const counter = countInFlight();
+      await syncWith(3);
+
+      expect(counter.peak()).toBeGreaterThan(1);
+      expect(counter.peak()).toBeLessThanOrEqual(3);
+    });
+
+    it('concurrency 1 is the old strictly serial sync', async () => {
+      const counter = countInFlight();
+      await syncWith(1);
+
+      expect(counter.peak()).toBe(1);
+    });
+
+    it('stores exactly what the serial sync stored', async () => {
+      /*
+       * Parallelism must change the wall clock and nothing else. The cursors
+       * that derive from the data are compared too; the ones that stamp "now"
+       * (labels, milestones) are left out because two runs can never agree
+       * on a wall clock.
+       */
+      const digest = (): Record<string, unknown> => {
+        const db = Database.open(config.databasePath, { create: false, readOnly: true });
+        try {
+          const rows = (table: string): unknown => db.all(`SELECT COUNT(*) AS n FROM ${table}`)[0];
+          return {
+            issues: db.all('SELECT number, title, updated_at FROM gh_issues ORDER BY number'),
+            comments: rows('gh_comments'),
+            events: rows('gh_events'),
+            reviews: rows('gh_reviews'),
+            commits: rows('gh_commits'),
+            files: rows('gh_pull_request_files'),
+            workitems: db.all('SELECT key, summary FROM jira_workitems ORDER BY key'),
+            changelog: rows('jira_changelog'),
+            sprints: rows('jira_sprint_workitems'),
+            issuesCursor: readCursors()['github:github.com/acme/platform:issues'],
+            pullsCursor: readCursors()['github:github.com/acme/platform:pull_requests'],
+          };
+        } finally {
+          db.close();
+        }
+      };
+
+      const counter = countInFlight();
+      await syncWith(4);
+      const parallel = digest();
+      expect(counter.peak()).toBeGreaterThan(1);
+
+      rmSync(workspace, { recursive: true, force: true });
+      workspace = mkdtempSync(join(tmpdir(), 'devcontext-test-'));
+      await syncWith(1);
+
+      expect(digest()).toEqual(parallel);
+    });
+  });
 });

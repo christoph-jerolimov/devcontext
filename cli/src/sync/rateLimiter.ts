@@ -35,6 +35,9 @@ export interface RateLimiterOptions {
 export class RateLimiter {
   private lastCallAt = 0;
   private pausedUntil = 0;
+  /** Requests acquired but not yet answered — each will consume one call. */
+  private inFlight = 0;
+  private resetAtMs: number | null = null;
   private snapshot: RateLimitSnapshot = { limit: null, remaining: null, resetAt: null, used: null };
   private readonly sleepFn: (ms: number) => Promise<void>;
   private readonly nowFn: () => number;
@@ -48,10 +51,29 @@ export class RateLimiter {
     return { ...this.snapshot };
   }
 
-  /** Waits until the next request may be sent. */
+  /**
+   * Waits until the next request may be sent, then counts it as in flight
+   * until `release` is called.
+   *
+   * Safe to call from several workers at once: the loop re-checks after
+   * every sleep, so concurrent callers are granted one at a time, each at
+   * least `minDelayMs` after the previous grant — parallelism hides latency,
+   * it never multiplies the request rate.
+   */
   async acquire(): Promise<void> {
     for (;;) {
       const now = this.nowFn();
+
+      /*
+       * The reserve check counts the requests already running. The headers
+       * only report what the last *answered* call saw; with several in
+       * flight, each unanswered one will still consume a call, and ignoring
+       * them would overshoot into the reserve by exactly the concurrency.
+       */
+      if (this.pausedUntil <= now) {
+        const wait = this.reserveWait(now);
+        if (wait !== null) this.pauseUntil(now + wait);
+      }
 
       if (this.pausedUntil > now) {
         const waitMs = this.pausedUntil - now;
@@ -84,8 +106,28 @@ export class RateLimiter {
       }
 
       this.lastCallAt = this.nowFn();
+      this.inFlight += 1;
       return;
     }
+  }
+
+  /** The response arrived (or the request died); its call is no longer owed. */
+  release(): void {
+    this.inFlight = Math.max(0, this.inFlight - 1);
+  }
+
+  /**
+   * How long to wait when the budget minus the requests in flight is down to
+   * the reserve — null when there is headroom, or when the window has already
+   * reset (the stored numbers describe a window that no longer exists).
+   */
+  private reserveWait(now: number): number | null {
+    if (!this.options.respectRateLimit) return null;
+    if (this.snapshot.remaining === null || this.resetAtMs === null) return null;
+    if (this.resetAtMs <= now) return null;
+    if (this.snapshot.remaining - this.inFlight > this.options.reserve) return null;
+    // +1s so the window has definitely rolled over when we continue.
+    return this.resetAtMs - now + 1000;
   }
 
   /** Feeds the rate limit headers of a response back into the limiter. */
@@ -101,6 +143,7 @@ export class RateLimiter {
       used,
       resetAt: resetSeconds !== null ? new Date(resetSeconds * 1000).toISOString() : null,
     };
+    this.resetAtMs = resetSeconds !== null ? resetSeconds * 1000 : null;
 
     if (!this.options.respectRateLimit) return;
     if (remaining === null || resetSeconds === null) return;
