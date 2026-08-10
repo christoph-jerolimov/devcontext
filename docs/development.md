@@ -6,14 +6,23 @@ devcontext is an npm workspaces monorepo:
 
 ```
 .
+├── shared/       @devcontext/shared — the wire contract: the /api payload types
 ├── cli/          @devcontext/cli — sync, database, read commands, web server
 ├── web/          @devcontext/web — the React viewer
+├── tui/          @devcontext/tui — the Ink terminal viewer
 ├── site/         @devcontext/site — the public site, which renders docs/
 ├── eve/          @devcontext/eve — experimental eve agent (see agent.md)
 ├── e2e/          @devcontext/e2e — sync, serve and drive the viewer in a browser
 ├── docs/         this documentation
 └── devcontext.example.yaml
 ```
+
+`shared/` is types only — no runtime code, no build step. It exists because two
+independently built programs have to agree on the API payloads: the server's
+handlers are compiled against these types and the viewer imports the same
+declarations for what `fetch` returns, so the two cannot drift apart. The TUI
+and the eve agent do not need it: they depend on `@devcontext/cli` directly and
+read the database through its query layer.
 
 ```bash
 npm install          # installs every workspace
@@ -138,7 +147,8 @@ the types promise but the oldest supported runtime does not have.
 | `sync/`             | Rate limiter, progress reporter, HTTP client, the sync runner                   |
 | `output/`           | Table and document rendering for `default`, `json`, `markdown`, `plain`         |
 | `exporters/`        | The yaml / markdown / json mirrors                                              |
-| `web/`              | Static file serving plus the JSON API                                           |
+| `api/`              | The JSON API as a capability table: routes, input schemas (zod), handlers       |
+| `web/`              | Static file serving plus the HTTP router over `api/`                            |
 
 Two rules keep this navigable:
 
@@ -156,7 +166,7 @@ npm run test:e2e                  # against the real GitHub API, see below
 npm run test:watch --workspace @devcontext/cli
 ```
 
-`npm test` runs both workspaces. The web viewer's tests cover the markdown
+`npm test` runs every workspace with a test script. The web viewer's tests cover the markdown
 parser in `web/src/markdown/`, which is pure and therefore worth pinning down:
 its job is to render every body correctly _and_ to never turn one into markup.
 

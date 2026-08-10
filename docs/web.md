@@ -173,6 +173,13 @@ The same endpoints power the viewer and are useful on their own:
 curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '.[].key'
 ```
 
+The API is declared as a table rather than scattered through the server:
+`cli/src/api/routes.ts` names every capability with its URL pattern and query
+parameters, `cli/src/api/capabilities.ts` binds each one to a handler, and the
+router is derived from the table. The payload types live in
+`@devcontext/shared` and are the same declarations the viewer compiles
+against, so this reference, the server and the viewer describe one API.
+
 ## Developing the viewer
 
 ```bash
