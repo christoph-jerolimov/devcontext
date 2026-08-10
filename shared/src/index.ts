@@ -81,6 +81,8 @@ export interface WatchStatus {
   intervalMs: number;
   /** True while a background sync is writing. */
   running: boolean;
+  /** True while the interval is held; nothing syncs until resumed. */
+  paused: boolean;
   /**
    * Where the running sync has got to; null between runs. Served with the
    * status so a page opened two hours into a sync shows the bar immediately
@@ -115,7 +117,7 @@ export interface HelloEvent {
 
 export interface SyncStartedEvent {
   at: string;
-  reason: 'startup' | 'interval' | 'manual';
+  reason: 'startup' | 'interval' | 'manual' | 'resume';
 }
 
 export interface SyncProgressEvent {
@@ -123,9 +125,15 @@ export interface SyncProgressEvent {
   progress: SyncProgress;
 }
 
+/** `watch-paused` / `watch-resumed`: the interval was held or released. */
+export interface WatchPausedEvent {
+  at: string;
+}
+
 export interface SyncCompletedEvent {
   at: string;
-  status: 'completed' | 'failed';
+  /** `interrupted` means a pause cut the run short; nothing is lost. */
+  status: 'completed' | 'failed' | 'interrupted';
   durationMs: number;
   error: string | null;
 }

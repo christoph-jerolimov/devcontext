@@ -138,9 +138,36 @@ async function handleRequest(
     }
     if (ctx.watch.scheduler.trigger()) {
       sendJson(response, 202, { started: true });
+    } else if (ctx.watch.scheduler.isPaused) {
+      sendJson(response, 409, { error: 'The sync is paused. Resume it first.' });
     } else {
       sendJson(response, 409, { error: 'A sync is already running.' });
     }
+    return;
+  }
+
+  if (url.pathname === '/api/sync/pause' && request.method === 'POST') {
+    if (!ctx.watch) {
+      sendJson(response, 404, {
+        error: 'The server is not running in watch mode. Start it with "devcontext serve --watch".',
+      });
+      return;
+    }
+    // Idempotent on purpose: two people pausing is one pause, not an error.
+    ctx.watch.scheduler.pause();
+    sendJson(response, 200, { paused: true });
+    return;
+  }
+
+  if (url.pathname === '/api/sync/resume' && request.method === 'POST') {
+    if (!ctx.watch) {
+      sendJson(response, 404, {
+        error: 'The server is not running in watch mode. Start it with "devcontext serve --watch".',
+      });
+      return;
+    }
+    ctx.watch.scheduler.resume();
+    sendJson(response, 200, { paused: false });
     return;
   }
 
@@ -204,6 +231,7 @@ export function handleApi(
       ? {
           intervalMs: ctx.watch.intervalMs,
           running: ctx.watch.scheduler.isRunning,
+          paused: ctx.watch.scheduler.isPaused,
           progress: ctx.watch.scheduler.progress,
         }
       : null,

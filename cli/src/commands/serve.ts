@@ -58,6 +58,8 @@ export function createServeCommand(): Command {
                     dryRun: false,
                     progress: false,
                     writeOutputs: true,
+                    signal: ctx.signal,
+                    resume: ctx.resume,
                     onProgress: (snapshot) => {
                       ctx.report(snapshot);
                       const expected = Math.max(snapshot.apiCallsExpected, snapshot.apiCalls);
@@ -96,9 +98,13 @@ export function createServeCommand(): Command {
                 logger.info(
                   event.status === 'completed'
                     ? `Background sync completed in ${formatDuration(event.durationMs)}.`
-                    : `Background sync failed after ${formatDuration(event.durationMs)}.`,
+                    : event.status === 'interrupted'
+                      ? `Background sync paused after ${formatDuration(event.durationMs)}; resuming will pick up where it left off.`
+                      : `Background sync failed after ${formatDuration(event.durationMs)}.`,
                 );
               }
+              if (event.event === 'watch-paused') logger.info('Background sync paused.');
+              if (event.event === 'watch-resumed') logger.info('Background sync resumed.');
             });
             scheduler.start();
             logger.raw(`Syncing every ${String(Math.round(watch.intervalMs / 1000))}s.`);

@@ -319,7 +319,44 @@ describe('watch mode', () => {
   it('reports itself in /api/status', async () => {
     const response = await fetch(`${watchBase}/api/status`);
     const body = (await response.json()) as { watch: unknown };
-    expect(body.watch).toEqual({ intervalMs: 3_600_000, running: false, progress: null });
+    expect(body.watch).toEqual({
+      intervalMs: 3_600_000,
+      running: false,
+      paused: false,
+      progress: null,
+    });
+  });
+
+  it('pauses and resumes over HTTP, and the paused state refuses the trigger', async () => {
+    const controller = new AbortController();
+    const stream = await fetch(`${watchBase}/api/events`, { signal: controller.signal });
+    const events = sseEvents(stream);
+    expect((await nextEvent(events)).event).toBe('hello');
+
+    const paused = await fetch(`${watchBase}/api/sync/pause`, { method: 'POST' });
+    expect(paused.status).toBe(200);
+    expect((await nextEvent(events)).event).toBe('watch-paused');
+
+    const status = (await (await fetch(`${watchBase}/api/status`)).json()) as {
+      watch: { paused: boolean };
+    };
+    expect(status.watch.paused).toBe(true);
+
+    // Paused means paused, and the refusal says so rather than claiming a
+    // sync is running.
+    const refused = await fetch(`${watchBase}/api/sync`, { method: 'POST' });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/paused/);
+
+    const resumed = await fetch(`${watchBase}/api/sync/resume`, { method: 'POST' });
+    expect(resumed.status).toBe(200);
+    expect((await nextEvent(events)).event).toBe('watch-resumed');
+    controller.abort();
+  });
+
+  it('the pause endpoints do not exist outside watch mode', async () => {
+    expect((await fetch(`${base}/api/sync/pause`, { method: 'POST' })).status).toBe(404);
+    expect((await fetch(`${base}/api/sync/resume`, { method: 'POST' })).status).toBe(404);
   });
 
   it('accepts one trigger, refuses a second, and tells the stream', async () => {

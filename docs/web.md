@@ -45,6 +45,14 @@ plain `devcontext sync` run in another terminal refreshes the open pages too —
 watch mode is not required for liveness, only for not having to run the sync
 yourself.
 
+A running sync can be **paused** from the sidebar (or `POST /api/sync/pause`).
+Pausing leans on the machinery the sync already has for Ctrl-C: the run stops
+politely at its next request, cursors only move when a resource finishes, and
+nothing is lost. While paused the interval is held — nothing syncs until
+**Resume** — and resuming a run that was cut short continues it with the same
+skip-what-finished logic as `devcontext sync --resume`, so the hours already
+done stay done.
+
 The server still opens the database read-only for serving; the background
 sync writes through its own connection, in WAL mode, which is what lets the
 two meet without blocking each other.
@@ -201,7 +209,9 @@ The same endpoints power the viewer and are useful on their own:
 | `GET /api/links?limit=&offset=`                                                         | Cross references between GitHub and Jira                                                                                         |
 | `GET /api/links/:ref`                                                                   | What references one item, and what it references. A GitHub reference is percent encoded: `/api/links/acme/platform%2342`         |
 | `GET /api/events`                                                                       | Server-sent events: `data-changed` on any database write, plus `sync-started` / `sync-progress` / `sync-completed` in watch mode |
-| `POST /api/sync`                                                                        | Start a sync now (watch mode only). `202` when started, `409` while one is already running                                       |
+| `POST /api/sync`                                                                        | Start a sync now (watch mode only). `202` when started, `409` while one is already running or paused                             |
+| `POST /api/sync/pause`                                                                  | Stop the run in flight at its next request and hold the interval (watch mode only). Idempotent                                   |
+| `POST /api/sync/resume`                                                                 | Lift the pause; a run cut short by it continues where it left off (watch mode only)                                              |
 
 ```bash
 curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '.[].key'
