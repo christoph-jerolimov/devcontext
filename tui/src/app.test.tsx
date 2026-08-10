@@ -92,6 +92,22 @@ beforeAll(() => {
     synced_at: '2024-06-01T00:00:00.000Z',
     raw: '{}',
   });
+  db.upsert('gh_workflow_runs', {
+    host: 'github.com',
+    id: 900,
+    repo_id: 1,
+    repo_full_name: 'acme/platform',
+    workflow_name: 'CI',
+    run_number: 7,
+    event: 'push',
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    actor: 'ada',
+    created_at: '2024-03-01T00:00:00Z',
+    synced_at: '2024-06-01T00:00:00.000Z',
+    raw: '{}',
+  });
   db.close();
 
   process.env['DEVCONTEXT_TUI_TEST_DB'] = join(workspace, 'devcontext.db');
@@ -108,6 +124,10 @@ afterAll(() => {
   store.close();
   rmSync(workspace, { recursive: true, force: true });
 });
+
+const neverSync = async (): Promise<void> => {
+  throw new Error('must not be called');
+};
 
 describe('the app', () => {
   it('opens on the overview and lists every view', async () => {
@@ -237,6 +257,61 @@ describe('the app', () => {
     const back = lastFrame() ?? '';
     expect(back).not.toContain('esc to go back');
     expect(back).toContain('Batch the API calls');
+    unmount();
+  });
+
+  it('syncs the opened item on s, and re-reads what the sync wrote', async () => {
+    /*
+     * The sync is a stub that writes to the same database the views read, so
+     * the assertion is the one that matters: the frame after the sync shows
+     * the new row state, not the memoised old one.
+     */
+    const synced: string[] = [];
+    const syncItem = async (target: Store, reference: string): Promise<void> => {
+      synced.push(reference);
+      // The real sync opens its own read-write connection next to the
+      // store's read-only one; the stub does the same.
+      const writer = Database.open(target.config.databasePath);
+      writer.run(`UPDATE gh_issues SET title = 'Freshly synced title' WHERE number = 12`);
+      writer.close();
+      await Promise.resolve();
+    };
+
+    const { lastFrame, stdin, unmount } = render(<App store={store} syncItem={syncItem} />);
+    await settle();
+
+    stdin.write('2'); // issues view
+    await settle();
+    stdin.write(ENTER); // open #12
+    await settle();
+    expect(lastFrame() ?? '').toContain('s to sync');
+
+    stdin.write('s');
+    await settle();
+
+    expect(synced).toEqual(['acme/platform#12']);
+    expect(lastFrame() ?? '').toContain('synced acme/platform#12');
+
+    stdin.write(ESC);
+    await settle();
+    expect(lastFrame() ?? '').toContain('Freshly synced title');
+    unmount();
+  });
+
+  it('offers no sync for a workflow run, which has no syncable reference', async () => {
+    const { lastFrame, stdin, unmount } = render(<App store={store} syncItem={neverSync} />);
+    await settle();
+
+    stdin.write('4'); // workflow runs view
+    await settle();
+    stdin.write(ENTER);
+    await settle();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).not.toContain('s to sync');
+    stdin.write('s');
+    await settle();
+    expect(lastFrame() ?? '').not.toContain('syncing');
     unmount();
   });
 });

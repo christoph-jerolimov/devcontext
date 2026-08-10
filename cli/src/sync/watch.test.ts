@@ -267,6 +267,58 @@ describe('the scheduler', () => {
     scheduler.stop();
   });
 
+  it('passes a targeted trigger through to the run, and says so in the event', async () => {
+    const contexts: Array<{ only?: string[] }> = [];
+    const events: SchedulerEvent[] = [];
+    const scheduler = new SyncScheduler({
+      intervalMs: 60_000,
+      logger: nullLogger,
+      run: (ctx) => {
+        contexts.push(ctx.only ? { only: ctx.only } : {});
+        return Promise.resolve();
+      },
+    });
+    scheduler.subscribe((event) => events.push(event));
+
+    expect(scheduler.trigger({ only: ['acme/platform#42'] })).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(contexts).toEqual([{ only: ['acme/platform#42'] }]);
+    expect(events[0]).toMatchObject({ event: 'sync-started', only: ['acme/platform#42'] });
+  });
+
+  it('a paused targeted run resumes as the same targeted run', async () => {
+    /*
+     * The pause remembers what the run was asked to do. Without that, the
+     * resume of an interrupted one-item sync would quietly become a full
+     * sync — hours of work nobody asked for, started by a resume button.
+     */
+    const contexts: Array<{ resume: boolean; only?: string[] }> = [];
+    const scheduler = new SyncScheduler({
+      intervalMs: 60_000,
+      logger: nullLogger,
+      run: (ctx) => {
+        contexts.push({ resume: ctx.resume, ...(ctx.only ? { only: ctx.only } : {}) });
+        return contexts.length === 1
+          ? new Promise<void>((_, reject) => {
+              ctx.signal.addEventListener('abort', () => reject(new Error('stopped')));
+            })
+          : Promise.resolve();
+      },
+    });
+
+    scheduler.trigger({ only: ['PLAT-7'] });
+    scheduler.pause();
+    await vi.advanceTimersByTimeAsync(0);
+    scheduler.resume();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(contexts).toEqual([
+      { resume: false, only: ['PLAT-7'] },
+      { resume: true, only: ['PLAT-7'] },
+    ]);
+  });
+
   it('does nothing after stop', async () => {
     const { run, finish, calls } = controllableRun();
     const scheduler = new SyncScheduler({ intervalMs: 60_000, logger: nullLogger, run });

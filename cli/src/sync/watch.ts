@@ -27,7 +27,7 @@ export type SyncReason = 'startup' | 'interval' | 'manual' | 'resume';
 
 /** What a listener is told. `sync-completed` carries the outcome. */
 export type SchedulerEvent =
-  | { event: 'sync-started'; at: string; reason: SyncReason }
+  | { event: 'sync-started'; at: string; reason: SyncReason; only: string[] | null }
   | { event: 'sync-progress'; at: string; progress: ProgressSnapshot }
   | {
       event: 'sync-completed';
@@ -52,6 +52,8 @@ export interface RunContext {
   signal: AbortSignal;
   /** True when the previous run was paused: skip what it already finished. */
   resume: boolean;
+  /** Sync only these items (`acme/platform#42`, `PLAT-7`) instead of everything. */
+  only?: string[];
 }
 
 export interface SchedulerOptions {
@@ -66,9 +68,11 @@ export class SyncScheduler {
   private running = false;
   private stopped = false;
   private paused = false;
-  /** True when a pause cut a run short; the next run picks up where it left off. */
-  private resumeNext = false;
+  /** Set when a pause cut a run short; resume repeats it, targets and all. */
+  private interruptedRun: { only?: string[] } | null = null;
   private current: AbortController | null = null;
+  /** What the run in flight was asked to do, for a pause to remember. */
+  private currentRun: { only?: string[] } | null = null;
   private pauseAsked = false;
   private latestProgress: ProgressSnapshot | null = null;
   private readonly listeners = new Set<(event: SchedulerEvent) => void>();
@@ -112,12 +116,14 @@ export class SyncScheduler {
   }
 
   /**
-   * Starts a sync now, for the "Sync now" button. Refused — not queued —
-   * while one is running or while paused, so the caller can answer honestly.
+   * Starts a sync now, for the "Sync now" button — of everything, or with
+   * `only` of just the named items, which is what "Sync this item" on an
+   * opened issue or pull request sends. Refused — not queued — while one is
+   * running or while paused, so the caller can answer honestly.
    */
-  trigger(): boolean {
+  trigger(options: { only?: string[] } = {}): boolean {
     if (this.running || this.stopped || this.paused) return false;
-    void this.runOnce('manual');
+    void this.runOnce('manual', options.only ? { only: options.only } : {});
     return true;
   }
 
@@ -133,7 +139,7 @@ export class SyncScheduler {
     this.paused = true;
     if (this.running) {
       this.pauseAsked = true;
-      this.resumeNext = true;
+      this.interruptedRun = this.currentRun ?? {};
       this.current?.abort();
     }
     this.emit({ event: 'watch-paused', at: nowIso() });
@@ -148,9 +154,10 @@ export class SyncScheduler {
     if (!this.paused || this.stopped) return false;
     this.paused = false;
     this.emit({ event: 'watch-resumed', at: nowIso() });
-    if (this.resumeNext) {
-      this.resumeNext = false;
-      void this.runOnce('resume', true);
+    if (this.interruptedRun !== null) {
+      const interrupted = this.interruptedRun;
+      this.interruptedRun = null;
+      void this.runOnce('resume', { resume: true, ...interrupted });
     }
     return true;
   }
@@ -164,12 +171,16 @@ export class SyncScheduler {
     for (const listener of this.listeners) listener(event);
   }
 
-  private async runOnce(reason: SyncReason, resume = false): Promise<void> {
+  private async runOnce(
+    reason: SyncReason,
+    options: { resume?: boolean; only?: string[] } = {},
+  ): Promise<void> {
     this.running = true;
     this.pauseAsked = false;
+    this.currentRun = options.only ? { only: options.only } : {};
     this.current = new AbortController();
     const startedAt = Date.now();
-    this.emit({ event: 'sync-started', at: nowIso(), reason });
+    this.emit({ event: 'sync-started', at: nowIso(), reason, only: options.only ?? null });
 
     const report = (progress: ProgressSnapshot): void => {
       this.latestProgress = progress;
@@ -178,7 +189,12 @@ export class SyncScheduler {
 
     let error: string | null = null;
     try {
-      await this.options.run({ report, signal: this.current.signal, resume });
+      await this.options.run({
+        report,
+        signal: this.current.signal,
+        resume: options.resume ?? false,
+        ...(options.only ? { only: options.only } : {}),
+      });
     } catch (cause) {
       // A failed sync is an event, not the end of watching: the network comes
       // back, the token gets fixed, and the next interval tries again.
@@ -187,6 +203,7 @@ export class SyncScheduler {
     } finally {
       this.running = false;
       this.current = null;
+      this.currentRun = null;
       // A finished run's last snapshot would otherwise read as a sync stuck
       // at 100% to anyone asking between runs.
       this.latestProgress = null;

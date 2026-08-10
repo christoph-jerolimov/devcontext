@@ -5,6 +5,7 @@ import type { Repository, StatusResponse } from './api.ts';
 import { StateMessage, useAsync } from './components/common.tsx';
 import { Palette } from './components/Palette.tsx';
 import { SyncIndicator } from './components/SyncIndicator.tsx';
+import { WatchContext } from './watch.ts';
 import { useLocation } from './router.ts';
 import { ActivityView } from './views/Activity.tsx';
 import { BurndownView } from './views/Burndown.tsx';
@@ -41,59 +42,67 @@ export function App(): ReactNode {
   const repos = useAsync<Repository[]>(() => api.repos(), []);
 
   return (
-    <div className="app">
-      <Palette />
+    <WatchContext.Provider value={status.data?.watch ?? null}>
+      <div className="app">
+        <Palette />
 
-      <nav className="sidebar">
-        <h1>devcontext</h1>
-        <p className="sidebar-shortcut">
-          Search <kbd>{navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}</kbd>
-          <kbd>K</kbd>
-        </p>
-        <ul>
-          {ROUTES.map((entry) => (
-            <li key={entry.id}>
-              <a href={`#/${entry.id}`} className={entry.id === route ? 'active' : undefined}>
-                {entry.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-        {status.data ? (
-          <p className="sidebar-footer">
-            {status.data.github.repositories} repositories · {status.data.jira.workitems} work items
+        <nav className="sidebar">
+          <h1>devcontext</h1>
+          <p className="sidebar-shortcut">
+            Search <kbd>{navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl'}</kbd>
+            <kbd>K</kbd>
           </p>
-        ) : null}
-        {status.data ? <SyncIndicator watch={status.data.watch} /> : null}
-      </nav>
+          <ul>
+            {ROUTES.map((entry) => (
+              <li key={entry.id}>
+                <a href={`#/${entry.id}`} className={entry.id === route ? 'active' : undefined}>
+                  {entry.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+          {status.data ? (
+            <p className="sidebar-footer">
+              {status.data.github.repositories} repositories · {status.data.jira.workitems} work
+              items
+            </p>
+          ) : null}
+          {status.data ? <SyncIndicator watch={status.data.watch} /> : null}
+        </nav>
 
-      <main className="content">
-        <StateMessage loading={status.loading} error={status.error} empty={false} emptyMessage="" />
+        <main className="content">
+          <StateMessage
+            loading={status.loading}
+            error={status.error}
+            empty={false}
+            emptyMessage=""
+          />
 
-        {status.data ? (
-          <>
-            {route === 'overview' ? <Overview status={status.data} /> : null}
-            {route === 'tickets' ? <TicketsView /> : null}
-            {route === 'issues' ? <IssuesView repos={repos.data ?? []} /> : null}
-            {route === 'pulls' ? <PullRequestsView repos={repos.data ?? []} /> : null}
-            {route === 'runs' ? <WorkflowRunsView repos={repos.data ?? []} /> : null}
-            {route === 'workitems' ? (
-              <WorkitemsView
-                projects={[
-                  ...new Set(status.data.config.projects.flatMap((project) => project.jira)),
-                ].map((entry) => entry.split('/').pop() ?? entry)}
-                types={status.data.filters.workitemTypes}
-              />
-            ) : null}
-            {route === 'sprints' ? <SprintsView /> : null}
-            {route === 'activity' ? <ActivityView /> : null}
-            {route === 'history' ? <HistoryView /> : null}
-            {route === 'burndown' ? <BurndownView /> : null}
-            {route === 'insights' ? <InsightsView /> : null}
-            {route === 'digest' ? <DigestView /> : null}
-          </>
-        ) : null}
-      </main>
-    </div>
+          {status.data ? (
+            <>
+              {route === 'overview' ? <Overview status={status.data} /> : null}
+              {route === 'tickets' ? <TicketsView /> : null}
+              {route === 'issues' ? <IssuesView repos={repos.data ?? []} /> : null}
+              {route === 'pulls' ? <PullRequestsView repos={repos.data ?? []} /> : null}
+              {route === 'runs' ? <WorkflowRunsView repos={repos.data ?? []} /> : null}
+              {route === 'workitems' ? (
+                <WorkitemsView
+                  projects={[
+                    ...new Set(status.data.config.projects.flatMap((project) => project.jira)),
+                  ].map((entry) => entry.split('/').pop() ?? entry)}
+                  types={status.data.filters.workitemTypes}
+                />
+              ) : null}
+              {route === 'sprints' ? <SprintsView /> : null}
+              {route === 'activity' ? <ActivityView /> : null}
+              {route === 'history' ? <HistoryView /> : null}
+              {route === 'burndown' ? <BurndownView /> : null}
+              {route === 'insights' ? <InsightsView /> : null}
+              {route === 'digest' ? <DigestView /> : null}
+            </>
+          ) : null}
+        </main>
+      </div>
+    </WatchContext.Provider>
   );
 }

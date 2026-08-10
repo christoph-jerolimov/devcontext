@@ -17,9 +17,16 @@ running.
 | `↑` `↓`        | move the selection                  |
 | `page up/down` | move ten at a time                  |
 | `enter`        | open the selected item              |
+| `s`            | sync the opened item, right now     |
 | `/`            | filter the list                     |
 | `esc`          | close the item, or clear the filter |
 | `q`            | quit                                |
+
+`s` runs the same targeted sync as `devcontext sync --only <ref>`, in this
+process, for the issue, pull request or work item that is open — and the view
+re-reads the database when it finishes, so the fresh comments and state are on
+screen without reopening anything. It works on the items a targeted sync can
+name; a workflow run or a sprint has no such reference and offers no key.
 
 ## The views
 

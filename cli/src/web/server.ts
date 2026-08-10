@@ -136,8 +136,15 @@ async function handleRequest(
       });
       return;
     }
-    if (ctx.watch.scheduler.trigger()) {
-      sendJson(response, 202, { started: true });
+    // `?only=acme/platform%2342` narrows the run to the named items — the
+    // "Sync this item" button on an opened issue or pull request.
+    const only = url.searchParams
+      .getAll('only')
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (ctx.watch.scheduler.trigger(only.length > 0 ? { only } : {})) {
+      sendJson(response, 202, { started: true, ...(only.length > 0 ? { only } : {}) });
     } else if (ctx.watch.scheduler.isPaused) {
       sendJson(response, 409, { error: 'The sync is paused. Resume it first.' });
     } else {

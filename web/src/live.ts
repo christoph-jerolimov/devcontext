@@ -120,9 +120,14 @@ export function liveSyncState(): LiveSyncState {
   return syncState;
 }
 
-/** Asks a watch-mode server to sync now. Resolves false on a 409. */
-export async function requestSync(): Promise<boolean> {
-  const response = await fetch('/api/sync', { method: 'POST' });
+/**
+ * Asks a watch-mode server to sync now — everything, or with `only` just the
+ * named item, which is what "Sync this item" on an opened issue or pull
+ * request sends. Resolves false on a 409.
+ */
+export async function requestSync(only?: string): Promise<boolean> {
+  const url = only === undefined ? '/api/sync' : `/api/sync?only=${encodeURIComponent(only)}`;
+  const response = await fetch(url, { method: 'POST' });
   return response.status === 202;
 }
 

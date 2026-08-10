@@ -60,6 +60,7 @@ export function createServeCommand(): Command {
                     writeOutputs: true,
                     signal: ctx.signal,
                     resume: ctx.resume,
+                    ...(ctx.only ? { only: ctx.only, targetedOnly: true } : {}),
                     onProgress: (snapshot) => {
                       ctx.report(snapshot);
                       const expected = Math.max(snapshot.apiCallsExpected, snapshot.apiCalls);

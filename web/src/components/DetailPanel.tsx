@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Body, StateMessage } from './common.tsx';
 import { CrossLinks, referenceFor } from './CrossLinks.tsx';
+import { SyncItemButton } from './SyncItemButton.tsx';
 import type { IssueDocument } from '../api.ts';
 import { formatRelative } from '../api.ts';
 
@@ -86,7 +87,11 @@ export function DetailPanel({
           {reference}
           {title}
         </h2>
-        <button type="button" onClick={onClose} aria-label="Close details">
+        {/* Only for the items a targeted sync can name — an issue, a pull
+            request or a work item. A workflow run or sprint has no such
+            reference, and gets no button rather than a broken one. */}
+        {crossLinkRef ? <SyncItemButton reference={crossLinkRef} /> : null}
+        <button type="button" className="detail-close" onClick={onClose} aria-label="Close details">
           ×
         </button>
       </header>

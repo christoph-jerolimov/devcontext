@@ -13,6 +13,8 @@ export interface ViewProps {
   filter: string;
   detail: string | null;
   setDetail: (value: string | null) => void;
+  /** Bumped after an in-app sync; views re-read the database when it moves. */
+  dataVersion: number;
 }
 
 /**

@@ -2,9 +2,38 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { nullLogger, runSync } from '@devcontext/cli';
+
 import type { Store } from './data.js';
 import { VIEWS } from './views/index.js';
 import type { ViewId } from './views/index.js';
+
+/**
+ * Whether `s` can do anything with this detail: a targeted sync takes the
+ * references `devcontext sync --only` takes — `acme/platform#42` or `PLAT-7`.
+ * A workflow run or a sprint is opened by a bare numeric id, which is not one.
+ */
+export function syncableReference(reference: string): boolean {
+  return /#\d+$/.test(reference) || /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(reference);
+}
+
+/**
+ * The TUI syncs in-process: it is the CLI as a library, so unlike the web
+ * viewer it needs no server to do the writing. The sync opens its own
+ * read-write connection; the store's read-only handle just sees the result.
+ */
+async function syncReference(store: Store, reference: string): Promise<void> {
+  await runSync({
+    config: store.config,
+    logger: nullLogger,
+    full: false,
+    dryRun: false,
+    progress: false,
+    writeOutputs: false,
+    only: [reference],
+    targetedOnly: true,
+  });
+}
 
 /**
  * The shell: a sidebar of views, a body, and a key hint line.
@@ -12,7 +41,14 @@ import type { ViewId } from './views/index.js';
  * Deliberately the same eight views as the web viewer and in the same order.
  * Two front ends that disagree about what exists are two things to learn.
  */
-export function App({ store }: { store: Store }): ReactNode {
+export function App({
+  store,
+  syncItem = syncReference,
+}: {
+  store: Store;
+  /** Injectable so the tests need no network; defaults to the real sync. */
+  syncItem?: (store: Store, reference: string) => Promise<void>;
+}): ReactNode {
   const { exit } = useApp();
   const { stdout } = useStdout();
 
@@ -23,6 +59,11 @@ export function App({ store }: { store: Store }): ReactNode {
   const [detail, setDetail] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [typing, setTyping] = useState(false);
+  /** The reference being synced right now, or null. */
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  /** Bumped after a sync so the views re-read what it wrote. */
+  const [dataVersion, setDataVersion] = useState(0);
 
   useEffect(() => {
     const onResize = (): void => {
@@ -75,6 +116,23 @@ export function App({ store }: { store: Store }): ReactNode {
       else setFilter('');
       return;
     }
+    if (input === 's' && detail !== null && syncableReference(detail) && syncing === null) {
+      const reference = detail;
+      setSyncing(reference);
+      setSyncNote(null);
+      syncItem(store, reference)
+        .then(() => {
+          setSyncNote(`synced ${reference}`);
+          setDataVersion((current) => current + 1);
+        })
+        .catch((error: unknown) => {
+          setSyncNote(
+            `sync of ${reference} failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        })
+        .finally(() => setSyncing(null));
+      return;
+    }
     if (key.tab || key.rightArrow) return void move(1);
     if (key.shift && key.tab) return void move(-1);
     if (key.leftArrow) return void move(-1);
@@ -98,8 +156,8 @@ export function App({ store }: { store: Store }): ReactNode {
 
   const Component = view?.component;
   const context = useMemo(
-    () => ({ store, width: bodyWidth, height: bodyHeight, filter, detail, setDetail }),
-    [store, bodyWidth, bodyHeight, filter, detail],
+    () => ({ store, width: bodyWidth, height: bodyHeight, filter, detail, setDetail, dataVersion }),
+    [store, bodyWidth, bodyHeight, filter, detail, dataVersion],
   );
 
   return (
@@ -123,7 +181,9 @@ export function App({ store }: { store: Store }): ReactNode {
         <Text dimColor>
           {typing
             ? `filter: ${filter}▏  enter to apply · esc to clear`
-            : `${filter === '' ? '' : `filter: ${filter} · `}1-${String(VIEWS.length)} or tab to switch · ↑↓ to move · enter to open · / to filter · q to quit`}
+            : syncing !== null
+              ? `syncing ${syncing}…`
+              : `${syncNote === null ? '' : `${syncNote} · `}${filter === '' ? '' : `filter: ${filter} · `}1-${String(VIEWS.length)} or tab to switch · ↑↓ to move · enter to open${detail !== null && syncableReference(detail) ? ' · s to sync' : ''} · / to filter · q to quit`}
         </Text>
       </Box>
     </Box>
