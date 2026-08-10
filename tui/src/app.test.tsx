@@ -108,6 +108,17 @@ beforeAll(() => {
     synced_at: '2024-06-01T00:00:00.000Z',
     raw: '{}',
   });
+  db.setMeta(
+    'rate_limits',
+    JSON.stringify({
+      GitHub: {
+        limit: 5000,
+        remaining: 4321,
+        resetAt: '2024-06-01T01:00:00.000Z',
+        observedAt: '2024-06-01T00:00:00.000Z',
+      },
+    }),
+  );
   db.close();
 
   process.env['DEVCONTEXT_TUI_TEST_DB'] = join(workspace, 'devcontext.db');
@@ -135,6 +146,9 @@ describe('the app', () => {
     await settle();
     const frame = lastFrame() ?? '';
 
+    // The status line carries the budget the last sync saw — the same
+    // numbers `devcontext status` and the web sidebar show.
+    expect(frame).toContain('rate: GitHub 4321 left');
     expect(frame).toContain('Overview');
     expect(frame).toContain('Pull requests');
     expect(frame).toContain('History');

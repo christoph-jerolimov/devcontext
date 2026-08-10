@@ -138,7 +138,8 @@ pre {
   transition: width 0.6s ease;
 }
 
-.sync-progress-detail {
+.sync-progress-detail,
+.sync-rate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -22,6 +22,11 @@ running.
 | `esc`          | close the item, or clear the filter |
 | `q`            | quit                                |
 
+The status line at the bottom shows the rate limit budget the last sync
+observed (`rate: GitHub (github.com) 4321 left`) — the same numbers
+`devcontext status` and the web viewer's sidebar show, read from the shared
+database.
+
 `s` runs the same targeted sync as `devcontext sync --only <ref>`, in this
 process, for the issue, pull request or work item that is open — and the view
 re-reads the database when it finishes, so the fresh comments and state are on

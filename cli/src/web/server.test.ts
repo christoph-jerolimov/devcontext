@@ -67,6 +67,18 @@ function seed(path: string): void {
     workitem('PLAT-3', { epic_key: 'PLAT-1', story_points: 3 });
     workitem('PLAT-9', { summary: 'Stands alone' });
 
+    db.setMeta(
+      'rate_limits',
+      JSON.stringify({
+        GitHub: {
+          limit: 5000,
+          remaining: 4321,
+          resetAt: '2026-08-01T11:00:00.000Z',
+          observedAt: '2026-08-01T09:59:00.000Z',
+        },
+      }),
+    );
+
     db.run(
       `INSERT INTO cross_links
          (uid, from_source, from_kind, from_ref, to_source, to_kind, to_ref, via, detail,
@@ -320,12 +332,21 @@ describe('watch mode', () => {
 
   it('reports itself in /api/status', async () => {
     const response = await fetch(`${watchBase}/api/status`);
-    const body = (await response.json()) as { watch: unknown };
+    const body = (await response.json()) as { watch: unknown; rateLimits: unknown };
     expect(body.watch).toEqual({
       intervalMs: 3_600_000,
       running: false,
       paused: false,
       progress: null,
+    });
+    // The budget the last sync persisted, watch mode or not.
+    expect(body.rateLimits).toEqual({
+      GitHub: {
+        limit: 5000,
+        remaining: 4321,
+        resetAt: '2026-08-01T11:00:00.000Z',
+        observedAt: '2026-08-01T09:59:00.000Z',
+      },
     });
   });
 

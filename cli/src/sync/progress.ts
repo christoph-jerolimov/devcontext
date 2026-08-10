@@ -10,6 +10,20 @@ export interface ProgressSnapshot {
   items: number;
   elapsedMs: number;
   etaMs: number | null;
+  /**
+   * What each remote API said about its budget, keyed by source label
+   * ("GitHub", "Jira (acme)"), as of the last response carrying the headers.
+   */
+  rateLimits: Record<string, RateLimitState>;
+}
+
+/** One API's rate limit budget, as the reporter carries it. */
+export interface RateLimitState {
+  limit: number | null;
+  remaining: number | null;
+  resetAt: string | null;
+  /** When the headers were last seen — how fresh the numbers are. */
+  observedAt: string;
 }
 
 export interface ProgressOptions {
@@ -66,6 +80,7 @@ export class ProgressReporter {
   /** Per-slice expectations, set by the survey and revised by the syncers. */
   private readonly expectedByKey = new Map<string, number>();
   private items = 0;
+  private readonly rateLimits = new Map<string, RateLimitState>();
   private readonly startedAt = Date.now();
   private lastRenderAt = 0;
   private lastLineLength = 0;
@@ -89,6 +104,7 @@ export class ProgressReporter {
       items: this.items,
       elapsedMs,
       etaMs: this.estimateEta(elapsedMs),
+      rateLimits: Object.fromEntries(this.rateLimits),
     };
   }
 
@@ -168,6 +184,26 @@ export class ProgressReporter {
 
   recordApiCall(count = 1): void {
     this.apiCalls += count;
+    this.render();
+  }
+
+  /**
+   * Notes what an API just said about its budget.
+   *
+   * Ignored when the response carried no rate limit headers, because "the
+   * proxy stripped them" must not erase the real numbers from two calls ago.
+   */
+  setRateLimit(
+    source: string,
+    state: { limit: number | null; remaining: number | null; resetAt: string | null },
+  ): void {
+    if (state.remaining === null) return;
+    this.rateLimits.set(source, {
+      limit: state.limit,
+      remaining: state.remaining,
+      resetAt: state.resetAt,
+      observedAt: new Date().toISOString(),
+    });
     this.render();
   }
 
@@ -261,6 +297,8 @@ export class ProgressReporter {
       `${formatDuration(elapsedMs)} elapsed`,
     ];
     if (etaMs !== null && etaMs > 0) parts.push(`~${formatDuration(etaMs)} left`);
+    const budget = tightestRateLimit(this.snapshot.rateLimits);
+    if (budget !== null) parts.push(`${String(budget)} rate left`);
     if (this.phase) {
       const position = this.formatPosition();
       parts.push(position ? `${this.phase} (currently on ${position})` : this.phase);
@@ -281,6 +319,16 @@ export class ProgressReporter {
     this.stream.write(`\r${' '.repeat(this.lastLineLength)}\r`);
     this.lastLineLength = 0;
   }
+}
+
+/** The smallest remaining budget across sources — the one that binds. */
+export function tightestRateLimit(rateLimits: Record<string, RateLimitState>): number | null {
+  let tightest: number | null = null;
+  for (const state of Object.values(rateLimits)) {
+    if (state.remaining === null) continue;
+    if (tightest === null || state.remaining < tightest) tightest = state.remaining;
+  }
+  return tightest;
 }
 
 /** A reporter that does nothing, for `--no-progress` and tests. */

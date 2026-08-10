@@ -23,6 +23,7 @@ import { nowIso } from '../util/time.js';
 import { planGithubRepository, syncGithubItem } from '../sources/github/sync.js';
 import { planJiraProject, syncJiraWorkitem } from '../sources/jira/sync.js';
 import { ProgressReporter } from './progress.js';
+import { persistRateLimits } from './rateLimitStore.js';
 import type { ProgressSnapshot } from './progress.js';
 import { isSyncStopped, SyncStopped } from './stop.js';
 import { SYNC_PHASES } from './types.js';
@@ -120,6 +121,7 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       if (!options.dryRun) {
         summary.links = buildCrossLinks(db);
         summary.search = buildSearchIndex(db, { since: startedAtIso });
+        persistRateLimits(db, progress.snapshot.rateLimits);
       }
       return summary;
     }
@@ -316,6 +318,11 @@ export async function runSync(options: RunSyncOptions): Promise<SyncSummary> {
       logger.info('Writing yaml / markdown / json outputs.');
       summary.export = await exportOutputs({ db, config, logger });
     }
+
+    // What the APIs said about their budgets, kept with the data so the
+    // status command, the TUI and the web viewer can answer "how much is
+    // left" between runs. A dry run read the same headers but must not write.
+    if (!options.dryRun) persistRateLimits(db, progress.snapshot.rateLimits);
 
     return summary;
   } finally {

@@ -22,7 +22,14 @@ import { liveSyncState, requestPause, requestResume, requestSync, subscribeLive 
  * deliberate — on a plain `devcontext serve` the viewer looks exactly as it
  * always did.
  */
-export function SyncIndicator({ watch }: { watch: StatusResponse['watch'] }): ReactNode {
+export function SyncIndicator({
+  watch,
+  rateLimits,
+}: {
+  watch: StatusResponse['watch'];
+  /** Last persisted budget from /api/status; live values ride the progress. */
+  rateLimits: StatusResponse['rateLimits'];
+}): ReactNode {
   const sync = useSyncExternalStore(subscribeLive, liveSyncState);
   const [refused, setRefused] = useState(false);
 
@@ -79,7 +86,51 @@ export function SyncIndicator({ watch }: { watch: StatusResponse['watch'] }): Re
         {refused ? <span className="muted small">already running</span> : null}
       </div>
       {running && !paused && progress ? <SyncProgressBar progress={progress} /> : null}
+      <RateLimitLine
+        rateLimits={running && progress ? progress.rateLimits : rateLimits}
+        live={running}
+      />
     </div>
+  );
+}
+
+/**
+ * "GitHub: 4,321 left · resets in 41m" — the budget the sync is spending.
+ *
+ * Live numbers while a sync runs (they ride the progress events); between
+ * runs the ones the last sync persisted, aged with "as of", because a stored
+ * number is not the current truth. Renders nothing when nothing was ever
+ * observed, which keeps a fresh install free of an empty row.
+ */
+function RateLimitLine({
+  rateLimits,
+  live,
+}: {
+  rateLimits: StatusResponse['rateLimits'];
+  live: boolean;
+}): ReactNode {
+  const entries = Object.entries(rateLimits).filter(([, state]) => state.remaining !== null);
+  if (entries.length === 0) return null;
+
+  const text = entries
+    .map(([source, state]) => {
+      const parts = [`${source}: ${String(state.remaining)} left`];
+      if (state.resetAt) parts.push(`resets ${formatRelative(state.resetAt)}`);
+      return parts.join(', ');
+    })
+    .join(' · ');
+  const freshest = entries
+    .map(([, state]) => state.observedAt)
+    .toSorted()
+    .at(-1);
+
+  return (
+    <span
+      className="muted small sync-rate"
+      title={live ? undefined : `as of ${formatRelative(freshest)}`}
+    >
+      {text}
+    </span>
   );
 }
 

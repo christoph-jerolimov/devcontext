@@ -2,7 +2,7 @@ import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { nullLogger, runSync } from '@devcontext/cli';
+import { nullLogger, readRateLimits, runSync } from '@devcontext/cli';
 
 import type { Store } from './data.js';
 import { VIEWS } from './views/index.js';
@@ -75,6 +75,21 @@ export function App({
   }, [stdout]);
 
   const view = VIEWS[viewIndex] ?? VIEWS[0];
+
+  /*
+   * The budget the last sync saw, straight from the shared `meta` table —
+   * the same numbers the status command and the web viewer show. Re-read
+   * after an in-app sync, which is the only way it changes under us.
+   */
+  const rateNote = useMemo(() => {
+    const entries = Object.entries(readRateLimits(store.db)).filter(
+      ([, state]) => state.remaining !== null,
+    );
+    if (entries.length === 0) return '';
+    return entries.map(([source, state]) => `${source} ${String(state.remaining)} left`).join(', ');
+    // dataVersion is the re-read trigger, not an input.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, dataVersion]);
 
   const move = useCallback((delta: number) => {
     setViewIndex((current) => (current + delta + VIEWS.length) % VIEWS.length);
@@ -183,7 +198,7 @@ export function App({
             ? `filter: ${filter}▏  enter to apply · esc to clear`
             : syncing !== null
               ? `syncing ${syncing}…`
-              : `${syncNote === null ? '' : `${syncNote} · `}${filter === '' ? '' : `filter: ${filter} · `}1-${String(VIEWS.length)} or tab to switch · ↑↓ to move · enter to open${detail !== null && syncableReference(detail) ? ' · s to sync' : ''} · / to filter · q to quit`}
+              : `${rateNote === '' ? '' : `rate: ${rateNote} · `}${syncNote === null ? '' : `${syncNote} · `}${filter === '' ? '' : `filter: ${filter} · `}1-${String(VIEWS.length)} or tab to switch · ↑↓ to move · enter to open${detail !== null && syncableReference(detail) ? ' · s to sync' : ''} · / to filter · q to quit`}
         </Text>
       </Box>
     </Box>

@@ -199,6 +199,13 @@ devcontext sync --delay 1000     # at most one API call per second
 Set `respectRateLimit: false` only if a proxy in front of the API strips the
 rate limit headers.
 
+The budget the APIs report is also shown, everywhere a sync is: the progress
+line appends the tightest remaining budget (`4321 rate left`), and the last
+observation of each run is kept in the database, so `devcontext status`, the
+TUI's status line and the web viewer's sidebar all answer "how much is left"
+between runs — each aged with when it was observed, because a stored number
+is not the current truth.
+
 ## Progress
 
 ```

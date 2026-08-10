@@ -8,6 +8,7 @@ import { SyncJournal } from '../db/journal.js';
 import type { SyncRunRow } from '../db/journal.js';
 import { githubStats } from '../db/queries/github.js';
 import { jiraStats } from '../db/queries/jira.js';
+import { readRateLimits } from '../sync/rateLimitStore.js';
 import { printOutput, renderKeyValues, renderTable } from '../output/format.js';
 import { formatDuration, formatRelative } from '../util/time.js';
 import { addOutputOptions, createCommandLogger, parseLimit } from './shared.js';
@@ -50,6 +51,7 @@ export function createStatusCommand(): Command {
       const state = journal.listState();
       const github = githubStats(db);
       const jira = jiraStats(db);
+      const rateLimits = readRateLimits(db);
 
       if (format === 'json') {
         printOutput(
@@ -67,6 +69,7 @@ export function createStatusCommand(): Command {
               outputs: config.outputs,
               github,
               jira,
+              rateLimits,
               runs,
               state,
             },
@@ -107,6 +110,22 @@ export function createStatusCommand(): Command {
             ...Object.entries(jira).map(
               ([key, value]) => [`jira.${key}`, value] as [string, number],
             ),
+            /*
+             * What the APIs said about their budget the last time a sync
+             * spoke to them. Aged deliberately — "as of 5m ago" — because a
+             * stored number is not the current truth, and once the window
+             * has reset it is not even the current budget.
+             */
+            ...Object.entries(rateLimits).map(([source, budget]) => {
+              const parts = [
+                budget.limit === null
+                  ? `${String(budget.remaining ?? '?')} calls left`
+                  : `${String(budget.remaining ?? '?')} of ${String(budget.limit)} calls left`,
+              ];
+              if (budget.resetAt) parts.push(`resets ${formatRelative(budget.resetAt)}`);
+              parts.push(`as of ${formatRelative(budget.observedAt)}`);
+              return [`rate.${source}`, parts.join(', ')] as [string, string];
+            }),
           ],
           format,
         ),

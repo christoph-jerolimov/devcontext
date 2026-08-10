@@ -67,7 +67,9 @@ export function App(): ReactNode {
               items
             </p>
           ) : null}
-          {status.data ? <SyncIndicator watch={status.data.watch} /> : null}
+          {status.data ? (
+            <SyncIndicator watch={status.data.watch} rateLimits={status.data.rateLimits} />
+          ) : null}
         </nav>
 
         <main className="content">

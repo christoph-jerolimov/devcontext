@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 
 import { loadConfig } from '../config/load.js';
+import { tightestRateLimit } from '../sync/progress.js';
 import { runSync } from '../sync/runner.js';
 import { SyncScheduler } from '../sync/watch.js';
 import { ensureDatabase, startWebServer } from '../web/server.js';
@@ -76,6 +77,8 @@ export function createServeCommand(): Command {
                         parts.push(`about ${formatDuration(snapshot.etaMs)} left`);
                       }
                       if (snapshot.position) parts.push(`on ${snapshot.position}`);
+                      const budget = tightestRateLimit(snapshot.rateLimits);
+                      if (budget !== null) parts.push(`${String(budget)} rate left`);
                       logger.info(parts.join(', ') + '.');
                     },
                   });
