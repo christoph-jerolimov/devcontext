@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { nullLogger } from '../util/logger.js';
+import type { ProgressSnapshot as SyncProgressSample } from './progress.js';
 import { SyncScheduler } from './watch.js';
 import type { SchedulerEvent } from './watch.js';
 
@@ -119,6 +120,50 @@ describe('the scheduler', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     const outcomes = events.filter((event) => event.event === 'sync-completed');
     expect(outcomes.map((event) => event.status)).toEqual(['failed', 'completed']);
+    scheduler.stop();
+  });
+
+  it('forwards progress while running and forgets it afterwards', async () => {
+    /*
+     * The snapshot is kept, not only forwarded, because most viewers arrive
+     * in the middle: a page opened two hours into a sync asks /api/status
+     * and must learn a run is going without waiting for the next event. And
+     * it is dropped when the run ends, because a stale snapshot reads as a
+     * sync stuck at 100%.
+     */
+    const events: SchedulerEvent[] = [];
+    let report: ((snapshot: SyncProgressSample) => void) | null = null;
+    let finish: (() => void) | null = null;
+    const scheduler = new SyncScheduler({
+      intervalMs: 60_000,
+      logger: nullLogger,
+      run: (ctx) => {
+        report = ctx.report;
+        return new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      },
+    });
+    scheduler.subscribe((event) => events.push(event));
+
+    scheduler.start();
+    const snapshot: SyncProgressSample = {
+      phase: 'issues',
+      position: '#42, 5 of 231',
+      apiCalls: 50,
+      apiCallsExpected: 200,
+      items: 40,
+      elapsedMs: 60_000,
+      etaMs: 180_000,
+    };
+    report!(snapshot);
+
+    expect(scheduler.progress).toEqual(snapshot);
+    expect(events.at(-1)).toMatchObject({ event: 'sync-progress', progress: snapshot });
+
+    finish!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(scheduler.progress).toBeNull();
     scheduler.stop();
   });
 

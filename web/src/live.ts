@@ -13,8 +13,12 @@
  * burst starts shows the same end result for a fraction of the requests.
  */
 
+import type { SyncProgress } from '@devcontext/shared';
+
 export interface LiveSyncState {
   running: boolean;
+  /** Where the running sync has got to; null between runs. */
+  progress: SyncProgress | null;
   lastFinishedAt: string | null;
   lastError: string | null;
 }
@@ -22,7 +26,12 @@ export interface LiveSyncState {
 const DEBOUNCE_MS = 2000;
 
 let version = 0;
-let syncState: LiveSyncState = { running: false, lastFinishedAt: null, lastError: null };
+let syncState: LiveSyncState = {
+  running: false,
+  progress: null,
+  lastFinishedAt: null,
+  lastError: null,
+};
 let source: EventSource | null = null;
 let pending: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<() => void>();
@@ -46,7 +55,16 @@ function connect(): void {
 
   source.addEventListener('data-changed', () => bumpSoon());
   source.addEventListener('sync-started', () => {
-    syncState = { ...syncState, running: true };
+    syncState = { ...syncState, running: true, progress: null };
+    notify();
+  });
+  source.addEventListener('sync-progress', (event) => {
+    const payload = JSON.parse((event as MessageEvent<string>).data) as {
+      progress: SyncProgress;
+    };
+    // `running: true` as well: a page that connected mid-sync never saw the
+    // start, and the progress itself is the proof one is going.
+    syncState = { ...syncState, running: true, progress: payload.progress };
     notify();
   });
   source.addEventListener('sync-completed', (event) => {
@@ -57,6 +75,7 @@ function connect(): void {
     };
     syncState = {
       running: false,
+      progress: null,
       lastFinishedAt: payload.at,
       lastError: payload.error,
     };

@@ -18,6 +18,16 @@ export interface ProgressOptions {
   stream?: NodeJS.WriteStream;
   /** Minimum time between two redraws. */
   throttleMs?: number;
+  /**
+   * Called with the current snapshot as the sync advances, throttled
+   * separately from the terminal rendering — and independently of `enabled`,
+   * because the consumers are different people: `enabled` is the bar in the
+   * terminal the sync was started from, this is whoever else is watching (the
+   * serve process broadcasting to its viewers).
+   */
+  onSnapshot?: (snapshot: ProgressSnapshot) => void;
+  /** Minimum time between two `onSnapshot` calls. */
+  snapshotThrottleMs?: number;
 }
 
 /**
@@ -181,6 +191,7 @@ export class ProgressReporter {
   }
 
   finish(summary?: string): void {
+    this.notify(true);
     this.clearLine();
     if (summary) this.options.logger.info(summary);
   }
@@ -193,7 +204,19 @@ export class ProgressReporter {
     return Math.round(perCall * remaining);
   }
 
+  private lastSnapshotAt = 0;
+
+  private notify(force: boolean): void {
+    if (!this.options.onSnapshot) return;
+    const now = Date.now();
+    const throttle = this.options.snapshotThrottleMs ?? 1000;
+    if (!force && now - this.lastSnapshotAt < throttle) return;
+    this.lastSnapshotAt = now;
+    this.options.onSnapshot(this.snapshot);
+  }
+
   private render(force = false): void {
+    this.notify(force);
     if (!this.options.enabled) return;
     const now = Date.now();
     if (!force && now - this.lastRenderAt < this.throttleMs) return;

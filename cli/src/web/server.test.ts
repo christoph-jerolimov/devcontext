@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { parseConfig } from '../config/load.js';
 import { Database } from '../db/database.js';
+import type { ProgressSnapshot } from '../sync/progress.js';
 import { SyncScheduler } from '../sync/watch.js';
 import { nullLogger } from '../util/logger.js';
 import { startWebServer } from './server.js';
@@ -284,16 +285,19 @@ describe('watch mode', () => {
   let watchBase: string;
   let scheduler: SyncScheduler;
   let finishRun: (() => void) | null = null;
+  let reportProgress: ((snapshot: ProgressSnapshot) => void) | null = null;
 
   beforeAll(async () => {
     scheduler = new SyncScheduler({
       // Far enough out that only the test ever starts a run.
       intervalMs: 3_600_000,
       logger: nullLogger,
-      run: () =>
-        new Promise<void>((resolve) => {
+      run: (ctx) => {
+        reportProgress = ctx.report;
+        return new Promise<void>((resolve) => {
           finishRun = resolve;
-        }),
+        });
+      },
     });
     watchServer = await startWebServer({
       ...serverOptions,
@@ -315,7 +319,7 @@ describe('watch mode', () => {
   it('reports itself in /api/status', async () => {
     const response = await fetch(`${watchBase}/api/status`);
     const body = (await response.json()) as { watch: unknown };
-    expect(body.watch).toEqual({ intervalMs: 3_600_000, running: false });
+    expect(body.watch).toEqual({ intervalMs: 3_600_000, running: false, progress: null });
   });
 
   it('accepts one trigger, refuses a second, and tells the stream', async () => {
@@ -336,10 +340,31 @@ describe('watch mode', () => {
     const second = await fetch(`${watchBase}/api/sync`, { method: 'POST' });
     expect(second.status).toBe(409);
 
+    /*
+     * Progress reaches a viewer two ways, and both matter: the stream for
+     * pages already open, and /api/status for one opened mid-sync — an
+     * hours-long run must be visible however late somebody looks.
+     */
+    const snapshot: ProgressSnapshot = {
+      phase: 'issues',
+      position: '#42, 5 of 231',
+      apiCalls: 50,
+      apiCallsExpected: 200,
+      items: 40,
+      elapsedMs: 60_000,
+      etaMs: 180_000,
+    };
+    reportProgress?.(snapshot);
+
+    const progressed = await nextEvent(events);
+    expect(progressed.event).toBe('sync-progress');
+    expect(progressed.data).toMatchObject({ progress: snapshot });
+
     const during = (await (await fetch(`${watchBase}/api/status`)).json()) as {
-      watch: { running: boolean };
+      watch: { running: boolean; progress: ProgressSnapshot | null };
     };
     expect(during.watch.running).toBe(true);
+    expect(during.watch.progress).toEqual(snapshot);
 
     finishRun?.();
     const completed = await nextEvent(events);

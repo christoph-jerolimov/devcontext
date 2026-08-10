@@ -105,16 +105,43 @@ pre {
   font-size: 12px;
 }
 
-/* Above the footer count; hidden entirely when there is nothing to say. */
+/* Above the footer count; hidden entirely when there is nothing to say.
+   Anchored at its bottom edge, so the progress rows grow it upward. */
 .sync-indicator {
   position: absolute;
   bottom: 44px;
   left: 20px;
   right: 12px;
   display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.sync-indicator-row {
+  display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+}
+
+.sync-progress-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.25);
+  overflow: hidden;
+}
+
+.sync-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.6s ease;
+}
+
+.sync-progress-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sync-indicator button {
