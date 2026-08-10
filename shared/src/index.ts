@@ -72,6 +72,41 @@ export interface StatusResponse {
   };
   runs: SyncRun[];
   state: SyncState[];
+  /** Non-null when the server was started with `serve --watch`. */
+  watch: WatchStatus | null;
+}
+
+/** Present in `/api/status` when the server also syncs on an interval. */
+export interface WatchStatus {
+  intervalMs: number;
+  /** True while a background sync is writing. */
+  running: boolean;
+}
+
+/*
+ * The `/api/events` stream (server-sent events). Each named event carries one
+ * JSON payload; `data-changed` also fires when a sync outside this process —
+ * a plain `devcontext sync` in another terminal — commits to the database.
+ */
+export interface HelloEvent {
+  watch: { intervalMs: number } | null;
+}
+
+export interface SyncStartedEvent {
+  at: string;
+  reason: 'startup' | 'interval' | 'manual';
+}
+
+export interface SyncCompletedEvent {
+  at: string;
+  status: 'completed' | 'failed';
+  durationMs: number;
+  error: string | null;
+}
+
+export interface DataChangedEvent {
+  /** SQLite's data_version: it only ever moves, its value means nothing. */
+  version: number;
 }
 
 /** One thing that happened: a status change, a comment or a review. */

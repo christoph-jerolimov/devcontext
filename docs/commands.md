@@ -926,6 +926,7 @@ devcontext serve [options]
 | --- | --- |
 | `-p, --port <port>` | port to listen on |
 | `--host <host>` | interface to bind to |
+| `--watch [seconds]` | also sync on an interval while serving (default every 300s) |
 
 ## `devcontext insights`
 

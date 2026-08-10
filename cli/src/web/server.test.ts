@@ -17,17 +17,21 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { parseConfig } from '../config/load.js';
 import { Database } from '../db/database.js';
+import { SyncScheduler } from '../sync/watch.js';
 import { nullLogger } from '../util/logger.js';
 import { startWebServer } from './server.js';
+import type { WebServerOptions } from './server.js';
 
 let workspace: string;
 let server: Server;
 let base: string;
+let databasePath: string;
+let serverOptions: Omit<WebServerOptions, 'watch'>;
 
 const NOW = '2026-08-01T10:00:00Z';
 
-function seed(databasePath: string): void {
-  const db = Database.openAndMigrate(databasePath);
+function seed(path: string): void {
+  const db = Database.openAndMigrate(path);
   try {
     const workitem = (key: string, extra: Record<string, string | number | null> = {}): void => {
       const row: Record<string, string | number | null> = {
@@ -77,7 +81,7 @@ function seed(databasePath: string): void {
 
 beforeAll(async () => {
   workspace = mkdtempSync(join(tmpdir(), 'devcontext-server-'));
-  const databasePath = join(workspace, 'test.db');
+  databasePath = join(workspace, 'test.db');
   seed(databasePath);
 
   const config = parseConfig(
@@ -91,7 +95,7 @@ projects:
     { configPath: join(workspace, 'devcontext.yaml') },
   );
 
-  server = await startWebServer({
+  serverOptions = {
     config,
     logger: nullLogger,
     // Port 0 means "whatever is free", so the suite cannot collide with a
@@ -99,7 +103,11 @@ projects:
     port: 0,
     host: '127.0.0.1',
     databasePath,
-  });
+    // Fast enough that a test can wait for a data-changed event.
+    dataPollMs: 50,
+  };
+
+  server = await startWebServer(serverOptions);
   base = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
 });
 
@@ -202,5 +210,141 @@ describe('GET /api/jira/tree/:key', () => {
   it('404s on an unknown key and on no key at all', async () => {
     expect((await get('/api/jira/tree/PLAT-404')).status).toBe(404);
     expect((await get('/api/jira/tree')).status).toBe(404);
+  });
+});
+
+/** Parses a server-sent event stream into `{event, data}` pairs. */
+async function* sseEvents(response: Response): AsyncGenerator<{ event: string; data: unknown }> {
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    let index = buffer.indexOf('\n\n');
+    while (index !== -1) {
+      const block = buffer.slice(0, index);
+      buffer = buffer.slice(index + 2);
+      let event = 'message';
+      let data = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice('event: '.length);
+        if (line.startsWith('data: ')) data = line.slice('data: '.length);
+      }
+      // Blocks without data are the retry hint and keep-alive comments.
+      if (data !== '') yield { event, data: JSON.parse(data) };
+      index = buffer.indexOf('\n\n');
+    }
+  }
+}
+
+async function nextEvent(
+  events: AsyncGenerator<{ event: string; data: unknown }>,
+): Promise<{ event: string; data: unknown }> {
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('No event arrived within 5s.')), 5000).unref();
+  });
+  const next = await Promise.race([events.next(), timeout]);
+  if (next.done) throw new Error('The event stream ended unexpectedly.');
+  return next.value;
+}
+
+describe('GET /api/events', () => {
+  it('announces a write from another connection as data-changed', async () => {
+    /*
+     * The write below is, as far as the server can tell, a plain
+     * `devcontext sync` running in another terminal: a different connection
+     * committing to the same file. Nothing registers anything anywhere —
+     * SQLite's data_version is what gives it away.
+     */
+    const controller = new AbortController();
+    const response = await fetch(`${base}/api/events`, { signal: controller.signal });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('text/event-stream');
+    const events = sseEvents(response);
+
+    expect(await nextEvent(events)).toEqual({ event: 'hello', data: { watch: null } });
+
+    const writer = Database.open(databasePath);
+    writer.run(
+      `INSERT INTO jira_workitems (site, id, key, project_key, summary, synced_at, raw)
+       VALUES ('acme', 'PLAT-100', 'PLAT-100', 'PLAT', 'Late arrival', ?, '{}')`,
+      [NOW],
+    );
+    writer.close();
+
+    expect((await nextEvent(events)).event).toBe('data-changed');
+    controller.abort();
+  });
+});
+
+describe('watch mode', () => {
+  let watchServer: Server;
+  let watchBase: string;
+  let scheduler: SyncScheduler;
+  let finishRun: (() => void) | null = null;
+
+  beforeAll(async () => {
+    scheduler = new SyncScheduler({
+      // Far enough out that only the test ever starts a run.
+      intervalMs: 3_600_000,
+      logger: nullLogger,
+      run: () =>
+        new Promise<void>((resolve) => {
+          finishRun = resolve;
+        }),
+    });
+    watchServer = await startWebServer({
+      ...serverOptions,
+      watch: { scheduler, intervalMs: 3_600_000 },
+    });
+    watchBase = `http://127.0.0.1:${String((watchServer.address() as AddressInfo).port)}`;
+  });
+
+  afterAll(async () => {
+    scheduler.stop();
+    await new Promise<void>((resolve) => watchServer.close(() => resolve()));
+  });
+
+  it('without watch, the trigger does not exist', async () => {
+    const response = await fetch(`${base}/api/sync`, { method: 'POST' });
+    expect(response.status).toBe(404);
+  });
+
+  it('reports itself in /api/status', async () => {
+    const response = await fetch(`${watchBase}/api/status`);
+    const body = (await response.json()) as { watch: unknown };
+    expect(body.watch).toEqual({ intervalMs: 3_600_000, running: false });
+  });
+
+  it('accepts one trigger, refuses a second, and tells the stream', async () => {
+    const controller = new AbortController();
+    const stream = await fetch(`${watchBase}/api/events`, { signal: controller.signal });
+    const events = sseEvents(stream);
+    expect(await nextEvent(events)).toEqual({
+      event: 'hello',
+      data: { watch: { intervalMs: 3_600_000 } },
+    });
+
+    const first = await fetch(`${watchBase}/api/sync`, { method: 'POST' });
+    expect(first.status).toBe(202);
+    expect((await nextEvent(events)).event).toBe('sync-started');
+
+    // One writer is the rule the whole design leans on; a second request
+    // while one runs is refused, not queued.
+    const second = await fetch(`${watchBase}/api/sync`, { method: 'POST' });
+    expect(second.status).toBe(409);
+
+    const during = (await (await fetch(`${watchBase}/api/status`)).json()) as {
+      watch: { running: boolean };
+    };
+    expect(during.watch.running).toBe(true);
+
+    finishRun?.();
+    const completed = await nextEvent(events);
+    expect(completed.event).toBe('sync-completed');
+    expect(completed.data).toMatchObject({ status: 'completed', error: null });
+    controller.abort();
   });
 });

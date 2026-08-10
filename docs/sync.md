@@ -325,3 +325,8 @@ devcontext has no daemon; use whatever scheduler you already have.
 ```cron
 */30 * * * * cd /home/me/work && /usr/local/bin/devcontext sync --quiet
 ```
+
+If what you actually want is the web viewer staying current,
+`devcontext serve --watch` runs this same sync on an interval inside the
+serving process, and every open page refreshes itself when the data changes —
+see [Watch mode](web.md#watch-mode).

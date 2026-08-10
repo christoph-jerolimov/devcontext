@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import type { IssueDocument } from '../api.ts';
 import type { Contributor } from '../api.ts';
+import { liveVersion, subscribeLive } from '../live.ts';
 import { Markdown } from '../markdown/Markdown.tsx';
 import { useUrlState } from '../router.ts';
 
@@ -13,15 +14,23 @@ interface AsyncResult<T> {
 }
 
 /**
- * Loads data whenever the dependencies change.
+ * Loads data whenever the dependencies change — or the database does.
  *
  * The result is stored together with the dependency key it belongs to, so
  * "loading" is derived during render instead of being set from the effect, and
  * a response that arrives after the filters changed cannot overwrite the newer
  * one.
+ *
+ * Every consumer is also subscribed to the live data version from
+ * `/api/events`. When a sync commits, the version moves and the effect runs
+ * again — but only a change of the *dependencies* shows "Loading…". A live
+ * refresh keeps the old rows on screen until the new ones arrive, because a
+ * page that blanks itself every few minutes is worse than a page that is a
+ * request behind.
  */
 export function useAsync<T>(loader: () => Promise<T>, deps: unknown[]): AsyncResult<T> {
   const key = JSON.stringify(deps);
+  const live = useSyncExternalStore(subscribeLive, liveVersion);
   const [settled, setSettled] = useState<{ key: string | null } & Omit<AsyncResult<T>, 'loading'>>({
     key: null,
     data: null,
@@ -49,7 +58,7 @@ export function useAsync<T>(loader: () => Promise<T>, deps: unknown[]): AsyncRes
     };
     // `loader` is recreated on every render; the dependency key is what matters.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, live]);
 
   if (settled.key !== key) return { data: null, error: null, loading: true };
   return { data: settled.data, error: settled.error, loading: false };

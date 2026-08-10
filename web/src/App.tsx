@@ -4,6 +4,7 @@ import { api } from './api.ts';
 import type { Repository, StatusResponse } from './api.ts';
 import { StateMessage, useAsync } from './components/common.tsx';
 import { Palette } from './components/Palette.tsx';
+import { SyncIndicator } from './components/SyncIndicator.tsx';
 import { useLocation } from './router.ts';
 import { ActivityView } from './views/Activity.tsx';
 import { BurndownView } from './views/Burndown.tsx';
@@ -63,6 +64,7 @@ export function App(): ReactNode {
             {status.data.github.repositories} repositories · {status.data.jira.workitems} work items
           </p>
         ) : null}
+        {status.data ? <SyncIndicator watch={status.data.watch} /> : null}
       </nav>
 
       <main className="content">
