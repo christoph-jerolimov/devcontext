@@ -11,11 +11,38 @@ nothing the viewer does can change your data.
 
 The command used to be called `web`, which still works as an alias.
 
-| Option              | Default                 | Description             |
-| ------------------- | ----------------------- | ----------------------- |
-| `-p, --port <port>` | `web.port`, `4173`      | Port                    |
-| `--host <host>`     | `web.host`, `127.0.0.1` | Interface to bind to    |
-| `--db <path>`       | from the configuration  | Which database to serve |
+| Option              | Default                 | Description                          |
+| ------------------- | ----------------------- | ------------------------------------ |
+| `-p, --port <port>` | `web.port`, `4173`      | Port                                 |
+| `--host <host>`     | `web.host`, `127.0.0.1` | Interface to bind to                 |
+| `--watch [seconds]` | off; `300` when bare    | Also sync on an interval — see below |
+| `--db <path>`       | from the configuration  | Which database to serve              |
+
+## Watch mode
+
+```bash
+devcontext serve --watch        # sync every 5 minutes while serving
+devcontext serve --watch 60     # every minute (minimum 30)
+```
+
+`--watch` makes the one process do both halves of the loop: it serves the
+viewer and runs the same sync `devcontext sync` would, on an interval, into
+the same database. One run at a time — an interval that fires while a sync is
+still going is skipped, because the next one fetches strictly newer data
+anyway — and a failed run is logged and retried at the next interval rather
+than ending the watch.
+
+The viewer notices. Every open page is subscribed to `/api/events` and
+refetches what it is showing when the database changes, without a reload and
+without flashing a loading state; the sidebar shows the sync's progress and a
+**Sync now** button. The events fire on _any_ write to the database, so a
+plain `devcontext sync` run in another terminal refreshes the open pages too —
+watch mode is not required for liveness, only for not having to run the sync
+yourself.
+
+The server still opens the database read-only for serving; the background
+sync writes through its own connection, in WAL mode, which is what lets the
+two meet without blocking each other.
 
 ## Views
 
@@ -168,6 +195,8 @@ The same endpoints power the viewer and are useful on their own:
 | `GET /api/search?q=&kind=&repo=&project=&exact=&limit=`                                 | Ranked full text search across both platforms                                                                            |
 | `GET /api/links?limit=&offset=`                                                         | Cross references between GitHub and Jira                                                                                 |
 | `GET /api/links/:ref`                                                                   | What references one item, and what it references. A GitHub reference is percent encoded: `/api/links/acme/platform%2342` |
+| `GET /api/events`                                                                       | Server-sent events: `data-changed` on any database write, plus `sync-started` / `sync-completed` in watch mode           |
+| `POST /api/sync`                                                                        | Start a sync now (watch mode only). `202` when started, `409` while one is already running                               |
 
 ```bash
 curl -s "http://127.0.0.1:4173/api/jira/workitems?category=In%20Progress" | jq '.[].key'

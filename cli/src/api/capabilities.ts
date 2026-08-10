@@ -22,6 +22,7 @@
 
 import type {
   ActivityResponse,
+  WatchStatus,
   BurndownResponse,
   ClosedResponse,
   DigestResponse,
@@ -80,6 +81,8 @@ export interface ApiContext {
    * the viewer never shows a mapping the file no longer contains.
    */
   directory: Directory;
+  /** Non-null when the server is also syncing on an interval (`--watch`). */
+  watch: WatchStatus | null;
 }
 
 /** What each capability answers with. `unknown` means free-form JSON. */
@@ -306,6 +309,7 @@ export const handlers: ApiHandlers = {
       },
       runs: ctx.journal.listRuns({ limit: 20 }),
       state: ctx.journal.listState(),
+      watch: ctx.watch,
     }) satisfies StatusResponse,
 
   'insights.summary': (ctx, input) => {

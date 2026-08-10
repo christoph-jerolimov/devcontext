@@ -105,6 +105,50 @@ pre {
   font-size: 12px;
 }
 
+/* Above the footer count; hidden entirely when there is nothing to say. */
+.sync-indicator {
+  position: absolute;
+  bottom: 44px;
+  left: 20px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.sync-indicator button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.sync-indicator button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sync-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid var(--muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: sync-spin 0.9s linear infinite;
+}
+
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .sidebar-shortcut {
   margin: 0 0 14px;
   color: var(--muted);

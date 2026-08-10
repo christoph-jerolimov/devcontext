@@ -12,6 +12,7 @@ import type { ResolvedConfig } from '../config/types.js';
 import { Database } from '../db/database.js';
 import { SyncJournal } from '../db/journal.js';
 import { Directory } from '../people/directory.js';
+import type { SyncScheduler } from '../sync/watch.js';
 import { CliError } from '../util/errors.js';
 import type { Logger } from '../util/logger.js';
 
@@ -32,6 +33,10 @@ export interface WebServerOptions {
   port: number;
   host: string;
   databasePath: string;
+  /** Present when `serve --watch` also syncs on an interval. */
+  watch?: { scheduler: SyncScheduler; intervalMs: number };
+  /** How often `/api/events` checks the database for outside writes. */
+  dataPollMs?: number;
 }
 
 /** Finds the built React app that `devcontext web` serves. */
@@ -59,15 +64,37 @@ export function startWebServer(options: WebServerOptions): Promise<Server> {
 
   const db = Database.open(options.databasePath, { create: false, readOnly: true });
   const journal = new SyncJournal(db);
+  const events = new EventHub(db, options.dataPollMs ?? 2000);
+
+  const ctx: RequestContext = {
+    db,
+    journal,
+    config,
+    assets,
+    logger,
+    events,
+    watch: options.watch ?? null,
+  };
 
   const server = createServer((request, response) => {
-    handleRequest(request, response, { db, journal, config, assets, logger }).catch((error) => {
+    handleRequest(request, response, ctx).catch((error) => {
       logger.error(`Request failed: ${(error as Error).message}`);
       sendJson(response, 500, { error: (error as Error).message });
     });
   });
 
-  server.on('close', () => db.close());
+  // Whatever the scheduler announces goes out to every connected viewer.
+  const unsubscribe = options.watch
+    ? options.watch.scheduler.subscribe(({ event, ...payload }) => {
+        events.broadcast(event, payload);
+      })
+    : null;
+
+  server.on('close', () => {
+    unsubscribe?.();
+    events.close();
+    db.close();
+  });
 
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);
@@ -81,6 +108,8 @@ interface RequestContext {
   config: ResolvedConfig;
   assets: string | null;
   logger: Logger;
+  events: EventHub;
+  watch: { scheduler: SyncScheduler; intervalMs: number } | null;
 }
 
 async function handleRequest(
@@ -90,6 +119,30 @@ async function handleRequest(
 ): Promise<void> {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
   ctx.logger.debug(`${request.method} ${url.pathname}${url.search}`);
+
+  // The two endpoints that are not JSON-in-JSON-out live outside the
+  // capability table: a stream has no payload type and a trigger has a verb.
+  if (url.pathname === '/api/events') {
+    ctx.events.attach(response, {
+      watch: ctx.watch ? { intervalMs: ctx.watch.intervalMs } : null,
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/sync' && request.method === 'POST') {
+    if (!ctx.watch) {
+      sendJson(response, 404, {
+        error: 'The server is not running in watch mode. Start it with "devcontext serve --watch".',
+      });
+      return;
+    }
+    if (ctx.watch.scheduler.trigger()) {
+      sendJson(response, 202, { started: true });
+    } else {
+      sendJson(response, 409, { error: 'A sync is already running.' });
+    }
+    return;
+  }
 
   if (url.pathname.startsWith('/api/')) {
     const payload = handleApi(url, ctx);
@@ -118,7 +171,10 @@ async function handleRequest(
  * and adding an endpoint means adding a table row and a handler — the
  * compiler refuses one without the other.
  */
-export function handleApi(url: URL, ctx: Omit<RequestContext, 'assets' | 'logger'>): unknown {
+export function handleApi(
+  url: URL,
+  ctx: Pick<RequestContext, 'db' | 'journal' | 'config' | 'watch'>,
+): unknown {
   // Split first, then decode: a segment may legitimately contain an encoded
   // slash, and decoding earlier would split it into two. This matters for
   // /api/links/:ref, where a GitHub reference arrives as acme/platform%2342 —
@@ -144,6 +200,9 @@ export function handleApi(url: URL, ctx: Omit<RequestContext, 'assets' | 'logger
     journal: ctx.journal,
     config: ctx.config,
     directory: Directory.from(ctx.config),
+    watch: ctx.watch
+      ? { intervalMs: ctx.watch.intervalMs, running: ctx.watch.scheduler.isRunning }
+      : null,
   };
   return dispatch(match.name, api, input);
 }
@@ -204,4 +263,95 @@ export function ensureDatabase(path: string): void {
       hint: 'Run "devcontext sync" first.',
     });
   }
+}
+
+/**
+ * The `/api/events` stream: every connected viewer, and the two timers that
+ * feed them.
+ *
+ * Sync lifecycle events are pushed in from the scheduler. Data changes are
+ * *polled*, via SQLite's `data_version` — it moves whenever another connection
+ * commits, which is exactly the case the server cannot observe from inside:
+ * a plain `devcontext sync` running in another terminal. Polling one pragma
+ * every couple of seconds costs nothing and needs no coordination with the
+ * writer, which is the whole reason the viewer can stay live without the
+ * server owning the sync.
+ *
+ * Both timers only run while somebody is connected; an idle server does not
+ * wake up every two seconds to check a database nobody is looking at.
+ */
+class EventHub {
+  private readonly clients = new Set<ServerResponse>();
+  private poll: NodeJS.Timeout | null = null;
+  private keepAlive: NodeJS.Timeout | null = null;
+  private lastVersion = 0;
+
+  constructor(
+    private readonly db: Database,
+    private readonly pollMs: number,
+  ) {}
+
+  attach(response: ServerResponse, hello: unknown): void {
+    response.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    // How long the browser waits before reconnecting after a dropped stream.
+    response.write('retry: 5000\n\n');
+
+    this.clients.add(response);
+    response.on('close', () => {
+      this.clients.delete(response);
+      if (this.clients.size === 0) this.stopTimers();
+    });
+
+    send(response, 'hello', hello);
+    this.startTimers();
+  }
+
+  broadcast(event: string, payload: unknown): void {
+    for (const client of this.clients) send(client, event, payload);
+  }
+
+  close(): void {
+    this.stopTimers();
+    for (const client of this.clients) client.end();
+    this.clients.clear();
+  }
+
+  private startTimers(): void {
+    if (this.poll === null) {
+      this.lastVersion = this.dataVersion();
+      this.poll = setInterval(() => {
+        const version = this.dataVersion();
+        if (version !== this.lastVersion) {
+          this.lastVersion = version;
+          this.broadcast('data-changed', { version });
+        }
+      }, this.pollMs);
+    }
+    if (this.keepAlive === null) {
+      this.keepAlive = setInterval(() => {
+        // A comment line: ignored by EventSource, but it keeps proxies from
+        // deciding the connection is dead.
+        for (const client of this.clients) client.write(': keep-alive\n\n');
+      }, 30_000);
+    }
+  }
+
+  private stopTimers(): void {
+    if (this.poll !== null) clearInterval(this.poll);
+    if (this.keepAlive !== null) clearInterval(this.keepAlive);
+    this.poll = null;
+    this.keepAlive = null;
+  }
+
+  private dataVersion(): number {
+    return Number(this.db.get<{ data_version: number }>('PRAGMA data_version')?.data_version ?? 0);
+  }
+}
+
+function send(client: ServerResponse, event: string, payload: unknown): void {
+  client.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
