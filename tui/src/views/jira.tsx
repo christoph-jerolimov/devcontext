@@ -14,8 +14,9 @@ export function Workitems({
   filter,
   detail,
   setDetail,
+  dataVersion,
 }: ViewProps): ReactNode {
-  const all = useMemo(() => jira.listWorkitems(store.db, {}), [store]);
+  const all = useMemo(() => jira.listWorkitems(store.db, {}), [store, dataVersion]);
   const rows = useMemo(
     () => all.filter((row) => matches(filter, row.key, row.summary, row.assignee, row.type)),
     [all, filter],
@@ -65,8 +66,16 @@ function statusColour(category: string | null): string | undefined {
   return 'cyan';
 }
 
-export function Sprints({ store, width, height, filter, detail, setDetail }: ViewProps): ReactNode {
-  const all = useMemo(() => jira.listSprints(store.db, {}), [store]);
+export function Sprints({
+  store,
+  width,
+  height,
+  filter,
+  detail,
+  setDetail,
+  dataVersion,
+}: ViewProps): ReactNode {
+  const all = useMemo(() => jira.listSprints(store.db, {}), [store, dataVersion]);
   const rows = useMemo(
     () => all.filter((row) => matches(filter, row.name, row.state)),
     [all, filter],

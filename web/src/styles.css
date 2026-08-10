@@ -560,13 +560,35 @@ input[type='search'] {
   margin: 0;
 }
 
-.detail-header button {
+.detail-header button.detail-close {
   border: none;
   background: transparent;
   color: var(--muted);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
+}
+
+.detail-header .sync-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 10px;
+}
+
+.detail-header .sync-item button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.detail-header .sync-item button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .detail-body {

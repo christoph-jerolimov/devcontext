@@ -45,6 +45,12 @@ plain `devcontext sync` run in another terminal refreshes the open pages too —
 watch mode is not required for liveness, only for not having to run the sync
 yourself.
 
+An opened issue, pull request or work item has a **Sync** button in its
+detail panel: the same targeted sync as `devcontext sync --only <ref>`, run by
+the server for just that item, so fresh comments and state arrive in seconds
+instead of waiting for the next full run. The page refreshes itself when the
+targeted run commits, like any other write.
+
 A running sync can be **paused** from the sidebar (or `POST /api/sync/pause`).
 Pausing leans on the machinery the sync already has for Ctrl-C: the run stops
 politely at its next request, cursors only move when a resource finishes, and
@@ -209,7 +215,7 @@ The same endpoints power the viewer and are useful on their own:
 | `GET /api/links?limit=&offset=`                                                         | Cross references between GitHub and Jira                                                                                         |
 | `GET /api/links/:ref`                                                                   | What references one item, and what it references. A GitHub reference is percent encoded: `/api/links/acme/platform%2342`         |
 | `GET /api/events`                                                                       | Server-sent events: `data-changed` on any database write, plus `sync-started` / `sync-progress` / `sync-completed` in watch mode |
-| `POST /api/sync`                                                                        | Start a sync now (watch mode only). `202` when started, `409` while one is already running or paused                             |
+| `POST /api/sync?only=<ref>`                                                             | Start a sync now (watch mode only); `only` narrows it to the named items. `202` when started, `409` while one runs or is paused  |
 | `POST /api/sync/pause`                                                                  | Stop the run in flight at its next request and hold the interval (watch mode only). Idempotent                                   |
 | `POST /api/sync/resume`                                                                 | Lift the pause; a run cut short by it continues where it left off (watch mode only)                                              |
 

@@ -11,8 +11,16 @@ type Issue = ReturnType<typeof gh.listIssues>[number];
 type Pull = ReturnType<typeof gh.listPullRequests>[number];
 type Run = ReturnType<typeof gh.listWorkflowRuns>[number];
 
-export function Issues({ store, width, height, filter, detail, setDetail }: ViewProps): ReactNode {
-  const all = useMemo(() => gh.listIssues(store.db, { state: 'all' }), [store]);
+export function Issues({
+  store,
+  width,
+  height,
+  filter,
+  detail,
+  setDetail,
+  dataVersion,
+}: ViewProps): ReactNode {
+  const all = useMemo(() => gh.listIssues(store.db, { state: 'all' }), [store, dataVersion]);
   const rows = useMemo(
     () => all.filter((row) => matches(filter, row.title, row.author, row.repo_full_name)),
     [all, filter],
@@ -58,10 +66,18 @@ function IssueDetail({ row }: { row: Issue }): ReactNode {
   );
 }
 
-export function Pulls({ store, width, height, filter, detail, setDetail }: ViewProps): ReactNode {
+export function Pulls({
+  store,
+  width,
+  height,
+  filter,
+  detail,
+  setDetail,
+  dataVersion,
+}: ViewProps): ReactNode {
   // `state: 'all'` on purpose: a merged pull request is most of the history,
   // and hiding it by default is what the web viewer stopped doing too.
-  const all = useMemo(() => gh.listPullRequests(store.db, { state: 'all' }), [store]);
+  const all = useMemo(() => gh.listPullRequests(store.db, { state: 'all' }), [store, dataVersion]);
   const rows = useMemo(
     () => all.filter((row) => matches(filter, row.title, row.author, row.head_ref)),
     [all, filter],
@@ -128,8 +144,16 @@ function pullColour(row: Pull): string | undefined {
   return row.state === 'closed' ? 'red' : 'green';
 }
 
-export function Runs({ store, width, height, filter, detail, setDetail }: ViewProps): ReactNode {
-  const all = useMemo(() => gh.listWorkflowRuns(store.db, {}), [store]);
+export function Runs({
+  store,
+  width,
+  height,
+  filter,
+  detail,
+  setDetail,
+  dataVersion,
+}: ViewProps): ReactNode {
+  const all = useMemo(() => gh.listWorkflowRuns(store.db, {}), [store, dataVersion]);
   const rows = useMemo(
     () => all.filter((row) => matches(filter, row.workflow_name, row.head_branch, row.actor)),
     [all, filter],

@@ -18,6 +18,8 @@ export * as insights from './insights/index.js';
 export { buildDigest } from './insights/digest.js';
 export { buildStateHistory } from './history/build.js';
 export { runSync } from './sync/runner.js';
+export { nullLogger } from './util/logger.js';
+export type { Logger } from './util/logger.js';
 export type { RunSyncOptions, SyncSummary } from './sync/runner.js';
 export { exportOutputs } from './exporters/index.js';
 export { buildIssueDocument, buildPullRequestDocument } from './documents/github.js';

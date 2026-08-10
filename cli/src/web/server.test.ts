@@ -286,6 +286,7 @@ describe('watch mode', () => {
   let scheduler: SyncScheduler;
   let finishRun: (() => void) | null = null;
   let reportProgress: ((snapshot: ProgressSnapshot) => void) | null = null;
+  let lastOnly: string[] | null = null;
 
   beforeAll(async () => {
     scheduler = new SyncScheduler({
@@ -294,6 +295,7 @@ describe('watch mode', () => {
       logger: nullLogger,
       run: (ctx) => {
         reportProgress = ctx.report;
+        lastOnly = ctx.only ?? null;
         return new Promise<void>((resolve) => {
           finishRun = resolve;
         });
@@ -357,6 +359,20 @@ describe('watch mode', () => {
   it('the pause endpoints do not exist outside watch mode', async () => {
     expect((await fetch(`${base}/api/sync/pause`, { method: 'POST' })).status).toBe(404);
     expect((await fetch(`${base}/api/sync/resume`, { method: 'POST' })).status).toBe(404);
+  });
+
+  it('syncs one named item via ?only=, encoded reference and all', async () => {
+    // The "Sync this item" button on an opened pull request sends exactly
+    // this: the reference, percent-encoded because it contains a hash.
+    const response = await fetch(`${watchBase}/api/sync?only=acme%2Fplatform%2342`, {
+      method: 'POST',
+    });
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({ started: true, only: ['acme/platform#42'] });
+    expect(lastOnly).toEqual(['acme/platform#42']);
+    finishRun?.();
+    // Let the run settle so the next test starts from idle.
+    await new Promise((resolve) => setTimeout(resolve, 10));
   });
 
   it('accepts one trigger, refuses a second, and tells the stream', async () => {

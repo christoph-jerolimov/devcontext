@@ -118,6 +118,8 @@ export interface HelloEvent {
 export interface SyncStartedEvent {
   at: string;
   reason: 'startup' | 'interval' | 'manual' | 'resume';
+  /** The named items of a targeted run ("Sync this item"); null for a full one. */
+  only: string[] | null;
 }
 
 export interface SyncProgressEvent {
